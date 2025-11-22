@@ -1,0 +1,15 @@
+{
+  "name": "kayle-id-api",
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy --minify",
+    "cf-typegen": "wrangler types --env-interface CloudflareBindings cloudflare-env.d.ts"
+  },
+  "dependencies": {
+    "hono": "^4.10.6"
+  },
+  "devDependencies": {
+    "wrangler": "^4.4.0"
+  }
+}

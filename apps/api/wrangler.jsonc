@@ -1,0 +1,10 @@
+{
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  "name": "kayle-id-api",
+  "main": "src/index.ts",
+  "compatibility_date": "2025-11-22",
+  "observability": {
+    "enabled": true,
+    "head_sampling_rate": 1
+  }
+}
