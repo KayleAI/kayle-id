@@ -4,9 +4,9 @@
   "version": "0.0.1",
   "private": true,
   "scripts": {
-    "dev": "turbo run dev --filter=api,web",
-    "dev:ios": "turbo run dev --filter=ios",
-    "dev:android": "turbo run dev --filter=android",
+    "dev": "turbo run dev --filter=kayle-id-api --filter=kayle-id-web",
+    "dev:ios": "turbo run dev --filter=kayle-id-ios",
+    "dev:android": "turbo run dev --filter=kayle-id-android",
     "prepare": "husky"
   },
   "devDependencies": {

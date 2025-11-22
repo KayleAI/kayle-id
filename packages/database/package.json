@@ -1,0 +1,22 @@
+{
+  "name": "@kayle-id/database",
+  "module": "index.ts",
+  "type": "module",
+  "private": true,
+  "devDependencies": {
+    "@types/bun": "latest",
+    "@types/pg": "^8.15.6",
+    "drizzle-kit": "^0.31.7"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  },
+  "dependencies": {
+    "@kayle-id/config": "*",
+    "drizzle-orm": "^0.44.7",
+    "pg": "^8.16.3"
+  },
+  "exports": {
+    "./*": "./src/*.ts"
+  }
+}
