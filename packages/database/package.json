@@ -13,6 +13,7 @@
   },
   "dependencies": {
     "@kayle-id/config": "*",
+    "@upstash/redis": "^1.35.6",
     "drizzle-orm": "^0.44.7",
     "pg": "^8.16.3"
   },
