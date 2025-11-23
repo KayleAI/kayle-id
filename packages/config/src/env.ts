@@ -1,16 +1,37 @@
-// @ts-expect-error - cloudflare:workers is not typed, but it exists.
-import { env as cloudflareEnv } from "cloudflare:workers";
 import { createEnv } from "@t3-oss/env-core";
+import { config } from "dotenv";
 import { z } from "zod";
 
+if (process.env.NODE_ENV !== "production") {
+  config({
+    path: "../../.env",
+    quiet: true,
+    debug: false,
+  });
+}
+
+let cloudflareEnv: Record<string, string> = {};
+
+try {
+  const cf = "cloudflare:workers";
+  cloudflareEnv = (await import(/* @vite-ignore */ cf))?.env ?? {};
+} catch {
+  // ignore
+}
+
 export const env = createEnv({
-  server: {
-    DATABASE_URL: z.string().min(1),
+  clientPrefix: "PUBLIC_",
+  client: {
+    /* no client-only variables */
   },
 
-  clientPrefix: "VITE_",
-  client: {
-    /* no client variables */
+  server: {
+    DATABASE_URL: z.string().min(1),
+    BETTER_AUTH_SECRET: z.string().min(1),
+  },
+
+  shared: {
+    PUBLIC_BETTER_AUTH_URL: z.string().min(1),
   },
 
   runtimeEnv: {

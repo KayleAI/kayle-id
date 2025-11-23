@@ -2,7 +2,7 @@
   "name": "kayle-id-api",
   "type": "module",
   "scripts": {
-    "dev": "wrangler dev",
+    "dev": "wrangler dev --env-file .env",
     "deploy": "wrangler deploy --minify",
     "cf-typegen": "wrangler types --env-interface CloudflareBindings cloudflare-env.d.ts"
   },

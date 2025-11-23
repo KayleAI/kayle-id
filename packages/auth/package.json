@@ -1,0 +1,21 @@
+{
+  "name": "@kayle-id/auth",
+  "type": "module",
+  "private": true,
+  "devDependencies": {
+    "@types/bun": "latest",
+    "dotenv": "^17.2.3"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  },
+  "dependencies": {
+    "@kayle-id/config": "*",
+    "@kayle-id/database": "*",
+    "better-auth": "^1.4.1"
+  },
+  "exports": {
+    "./*": "./src/*.ts",
+    "./client/*": "./src/client/*.tsx"
+  }
+}

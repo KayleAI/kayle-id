@@ -1,0 +1,60 @@
+import type { ReactNode } from "react";
+import { createContext, useContext, useEffect, useState } from "react";
+import { client } from "../client";
+import type { Session, User } from "../types";
+
+type AuthContextType = {
+  user: User | null;
+  session: Session | null;
+  status: "loading" | "authenticated" | "unauthenticated";
+  error: Error | null;
+  refresh: () => Promise<void>;
+};
+
+const AuthContext = createContext<AuthContextType | undefined>(undefined);
+
+type AuthProviderProps = {
+  children: ReactNode;
+};
+
+export function AuthProvider({ children }: AuthProviderProps) {
+  const [status, setStatus] = useState<
+    "loading" | "authenticated" | "unauthenticated"
+  >("loading");
+  const { data, isPending, error, refetch } = client.useSession();
+
+  // biome-ignore lint/suspicious/useAwait: this is fine
+  async function refresh() {
+    refetch();
+  }
+
+  useEffect(() => {
+    if (isPending) {
+      return;
+    }
+
+    if (data) {
+      setStatus("authenticated");
+    } else {
+      setStatus("unauthenticated");
+    }
+  }, [data, isPending]);
+
+  const value = {
+    status,
+    session: data?.session ?? null,
+    user: data?.user ?? null,
+    error,
+    refresh,
+  };
+
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+}
+
+export function useAuth() {
+  const context = useContext(AuthContext);
+  if (context === undefined) {
+    throw new Error("useAuth must be used within an AuthProvider");
+  }
+  return context;
+}
