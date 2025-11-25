@@ -3,7 +3,7 @@ import { db } from "@kayle-id/database/drizzle";
 import { redis } from "@kayle-id/database/redis";
 import { type BetterAuthOptions, betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
-import { apiKey, customSession } from "better-auth/plugins";
+import { apiKey, customSession, openAPI } from "better-auth/plugins";
 
 const user = {
   modelName: "auth_users",
@@ -13,6 +13,7 @@ const user = {
 } satisfies BetterAuthOptions["user"];
 
 const plugins = [
+  ...(process.env.NODE_ENV !== "production" ? [openAPI()] : []),
   apiKey({
     apiKeyHeaders: "authorization",
     customAPIKeyGetter({ request }) {
@@ -45,12 +46,12 @@ const plugins = [
 
 export const auth = betterAuth({
   secret: env.BETTER_AUTH_SECRET,
-  url: env.PUBLIC_BETTER_AUTH_URL,
   database: drizzleAdapter(db, {
     provider: "pg",
     usePlural: false,
     camelCase: false,
   }),
+  basePath: "/v1/auth",
   experimental: {
     joins: true,
   },

@@ -4,6 +4,9 @@
     "dev": {
       "persistent": true,
       "cache": false
+    },
+    "cf-typegen": {
+      "cache": false
     }
   }
 }

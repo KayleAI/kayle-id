@@ -7,6 +7,7 @@
     "dev": "turbo run dev --filter=kayle-id-api --filter=kayle-id-web",
     "dev:ios": "turbo run dev --filter=kayle-id-ios",
     "dev:android": "turbo run dev --filter=kayle-id-android",
+    "cf-typegen": "turbo run cf-typegen",
     "prepare": "husky"
   },
   "devDependencies": {

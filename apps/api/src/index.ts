@@ -1,14 +1,20 @@
-import { env } from "@kayle-id/config/env";
+import { server } from "@kayle-id/auth/server";
 import { Hono } from "hono";
-import auth from "./auth";
 
 const app = new Hono();
 
 app.get("/", (c) => {
-  console.log(env.DATABASE_URL);
-  return c.text("Hello Hono!");
+  //
+  return c.json({
+    data: {
+      message: "Hello from Kayle ID!",
+      docs: "https://docs.kayle.id",
+    },
+    error: null,
+  });
 });
 
-app.route("/v1/auth", auth);
+// Auth API
+app.on(["POST", "GET"], "/v1/auth/*", (c) => server.handler(c.req.raw));
 
 export default app;

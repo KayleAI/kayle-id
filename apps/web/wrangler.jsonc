@@ -7,5 +7,11 @@
   "observability": {
     "enabled": true,
     "head_sampling_rate": 1
-  }
+  },
+  "services": [
+    {
+      "binding": "API",
+      "service": "kayle-id-api"
+    }
+  ]
 }
