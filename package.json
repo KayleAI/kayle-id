@@ -8,6 +8,7 @@
     "dev:ios": "turbo run dev --filter=kayle-id-ios",
     "dev:android": "turbo run dev --filter=kayle-id-android",
     "cf-typegen": "turbo run cf-typegen",
+    "db:setup": "cd packages/database && bun run db:migrate && bun run db:seed",
     "prepare": "husky"
   },
   "devDependencies": {
