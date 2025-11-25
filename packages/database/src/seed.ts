@@ -2,7 +2,7 @@ import { file } from "bun";
 import { pool } from "./raw";
 
 async function main() {
-  const seedFile = file(new URL("../../database/seed.sql", import.meta.url));
+  const seedFile = file(new URL("../../../database/seed.sql", import.meta.url));
   const sql = await seedFile.text();
 
   if (!sql.trim()) {
