@@ -48,6 +48,6 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
       - name: Migrate + seed database
-        run: bun run db:migrate && bun run db:seed
+        run: bun run db:setup
       - name: Run tests
         run: cd apps/api && bun test
