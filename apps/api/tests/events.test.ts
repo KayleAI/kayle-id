@@ -1,58 +1,15 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { auth } from "@kayle-id/auth/server";
-import { db } from "@kayle-id/database/drizzle";
-import { auth_users } from "@kayle-id/database/schema/auth";
 import { file } from "bun";
-import { eq } from "drizzle-orm";
 import { compactDecrypt, importPKCS8 } from "jose";
 import events from "@/v1/events";
-
-type EventTestData = {
-  userId: string;
-  apiKey: string;
-  eventId: string;
-};
-
-let TEST_DATA: EventTestData | undefined;
+import { setup, TEST_DATA, teardown } from "./setup.test";
 
 beforeAll(async () => {
-  // TODO: Create a demo event using the public key from the secrets directory
-
-  const [user] = await db
-    .insert(auth_users)
-    .values({
-      id: crypto.randomUUID(),
-      email: `${Math.random()}@example.com`,
-      name: Math.random().toString(36).substring(2, 15),
-    })
-    .returning({
-      id: auth_users.id,
-    })
-    .onConflictDoNothing();
-
-  const { key } = await auth.api.createApiKey({
-    body: {
-      name: "Test API Key",
-      userId: user.id,
-    },
-  });
-
-  // TODO: create a demo event
-
-  TEST_DATA = {
-    userId: user.id,
-    apiKey: key,
-    eventId: "test-event-id",
-  };
+  await setup();
 });
 
 afterAll(async () => {
-  // Deleting the test user will automatically delete the test API key
-  await db
-    .delete(auth_users)
-    .where(eq(auth_users.id, TEST_DATA?.userId as string));
-
-  // TODO: Delete the test event
+  await teardown();
 });
 
 describe("/v1/events", () => {

@@ -27,13 +27,13 @@ export const env = createEnv({
 
   server: {
     DATABASE_URL: z.string().min(1),
-    BETTER_AUTH_SECRET: z.string().min(1),
+    AUTH_SECRET: z.string().min(1),
     REDIS_URL: z.string().min(1),
     REDIS_TOKEN: z.string().min(1),
   },
 
   shared: {
-    PUBLIC_BETTER_AUTH_URL: z.string().min(1),
+    PUBLIC_AUTH_URL: z.string().min(1),
   },
 
   runtimeEnv: {

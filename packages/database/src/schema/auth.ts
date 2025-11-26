@@ -2,7 +2,6 @@ import { relations, sql } from "drizzle-orm";
 import {
   boolean,
   index,
-  integer,
   pgTable,
   text,
   timestamp,
@@ -37,6 +36,7 @@ export const auth_sessions = pgTable(
     userId: uuid("user_id")
       .notNull()
       .references(() => auth_users.id, { onDelete: "cascade" }),
+    activeOrganizationId: text("active_organization_id"),
   },
   (table) => [index("auth_sessions_userId_idx").on(table.userId)]
 );
@@ -81,43 +81,63 @@ export const auth_verifications = pgTable(
   (table) => [index("auth_verifications_identifier_idx").on(table.identifier)]
 );
 
-export const auth_api_keys = pgTable(
-  "auth_api_keys",
+export const auth_organizations = pgTable("auth_organizations", {
+  id: uuid("id").default(sql`pg_catalog.gen_random_uuid()`).primaryKey(),
+  name: text("name").notNull(),
+  slug: text("slug").notNull().unique(),
+  logo: text("logo"),
+  createdAt: timestamp("created_at").notNull(),
+  metadata: text("metadata"),
+});
+
+export const auth_organization_members = pgTable(
+  "auth_organization_members",
   {
     id: uuid("id").default(sql`pg_catalog.gen_random_uuid()`).primaryKey(),
-    name: text("name"),
-    start: text("start"),
-    prefix: text("prefix"),
-    key: text("key").notNull(),
+    organizationId: uuid("organization_id")
+      .notNull()
+      .references(() => auth_organizations.id, { onDelete: "cascade" }),
     userId: uuid("user_id")
       .notNull()
       .references(() => auth_users.id, { onDelete: "cascade" }),
-    refillInterval: integer("refill_interval"),
-    refillAmount: integer("refill_amount"),
-    lastRefillAt: timestamp("last_refill_at"),
-    enabled: boolean("enabled").default(true),
-    rateLimitEnabled: boolean("rate_limit_enabled").default(true),
-    rateLimitTimeWindow: integer("rate_limit_time_window").default(86_400_000),
-    rateLimitMax: integer("rate_limit_max").default(10),
-    requestCount: integer("request_count").default(0),
-    remaining: integer("remaining"),
-    lastRequest: timestamp("last_request"),
-    expiresAt: timestamp("expires_at"),
+    role: text("role").default("member").notNull(),
     createdAt: timestamp("created_at").notNull(),
-    updatedAt: timestamp("updated_at").notNull(),
-    permissions: text("permissions"),
-    metadata: text("metadata"),
   },
   (table) => [
-    index("auth_api_keys_key_idx").on(table.key),
-    index("auth_api_keys_userId_idx").on(table.userId),
+    index("auth_organization_members_organizationId_idx").on(
+      table.organizationId
+    ),
+    index("auth_organization_members_userId_idx").on(table.userId),
+  ]
+);
+
+export const auth_invitations = pgTable(
+  "auth_invitations",
+  {
+    id: uuid("id").default(sql`pg_catalog.gen_random_uuid()`).primaryKey(),
+    organizationId: uuid("organization_id")
+      .notNull()
+      .references(() => auth_organizations.id, { onDelete: "cascade" }),
+    email: text("email").notNull(),
+    role: text("role"),
+    status: text("status").default("pending").notNull(),
+    expiresAt: timestamp("expires_at").notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    inviterId: uuid("inviter_id")
+      .notNull()
+      .references(() => auth_users.id, { onDelete: "cascade" }),
+  },
+  (table) => [
+    index("auth_invitations_organizationId_idx").on(table.organizationId),
+    index("auth_invitations_email_idx").on(table.email),
   ]
 );
 
 export const auth_usersRelations = relations(auth_users, ({ many }) => ({
-  auth_sessions: many(auth_sessions),
-  auth_accounts: many(auth_accounts),
-  auth_api_keys: many(auth_api_keys),
+  auth_sessionss: many(auth_sessions),
+  auth_accountss: many(auth_accounts),
+  auth_organization_memberss: many(auth_organization_members),
+  auth_invitationss: many(auth_invitations),
 }));
 
 export const auth_sessionsRelations = relations(auth_sessions, ({ one }) => ({
@@ -134,9 +154,38 @@ export const auth_accountsRelations = relations(auth_accounts, ({ one }) => ({
   }),
 }));
 
-export const auth_api_keysRelations = relations(auth_api_keys, ({ one }) => ({
-  auth_users: one(auth_users, {
-    fields: [auth_api_keys.userId],
-    references: [auth_users.id],
-  }),
-}));
+export const auth_organizationsRelations = relations(
+  auth_organizations,
+  ({ many }) => ({
+    auth_organization_memberss: many(auth_organization_members),
+    auth_invitationss: many(auth_invitations),
+  })
+);
+
+export const auth_organization_membersRelations = relations(
+  auth_organization_members,
+  ({ one }) => ({
+    auth_organizations: one(auth_organizations, {
+      fields: [auth_organization_members.organizationId],
+      references: [auth_organizations.id],
+    }),
+    auth_users: one(auth_users, {
+      fields: [auth_organization_members.userId],
+      references: [auth_users.id],
+    }),
+  })
+);
+
+export const auth_invitationsRelations = relations(
+  auth_invitations,
+  ({ one }) => ({
+    auth_organizations: one(auth_organizations, {
+      fields: [auth_invitations.organizationId],
+      references: [auth_organizations.id],
+    }),
+    auth_users: one(auth_users, {
+      fields: [auth_invitations.inviterId],
+      references: [auth_users.id],
+    }),
+  })
+);

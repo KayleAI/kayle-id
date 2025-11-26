@@ -16,7 +16,6 @@ export async function createHMAC(
     algorithm = "SHA256",
   }: {
     secret: string | Uint8Array;
-    timestamp?: number;
     algorithm?: Algorithm;
   }
 ): Promise<string> {

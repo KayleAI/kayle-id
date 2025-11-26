@@ -4,7 +4,7 @@ import { redis } from "@kayle-id/database/redis";
 import { auth as authSchema } from "@kayle-id/database/schema";
 import { type BetterAuthOptions, betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
-import { apiKey, customSession, openAPI } from "better-auth/plugins";
+import { customSession, openAPI, organization } from "better-auth/plugins";
 import { magic } from "./magic";
 
 const user = {
@@ -16,31 +16,19 @@ const user = {
 
 const plugins = [
   ...(process.env.NODE_ENV !== "production" ? [openAPI()] : []),
-  apiKey({
-    apiKeyHeaders: "authorization",
-    customAPIKeyGetter({ request }) {
-      if (!request) {
-        return null;
-      }
-
-      const headers = new Headers(request.headers);
-      const authorization = headers.get("authorization");
-      if (!authorization) {
-        return null;
-      }
-      return authorization.split(" ")[1] ?? null;
-    },
-    defaultPrefix: "kk_",
-    requireName: true,
-    enableSessionForAPIKeys: false,
-    storage:
-      process.env.NODE_ENV === "production" ? "secondary-storage" : undefined,
-    ...(process.env.NODE_ENV === "production"
-      ? { fallbackToDatabase: true }
-      : {}),
+  organization({
     schema: {
-      apikey: {
-        modelName: "auth_api_keys",
+      invitation: {
+        modelName: "auth_invitations",
+      },
+      organization: {
+        modelName: "auth_organizations",
+      },
+      member: {
+        modelName: "auth_organization_members",
+      },
+      organizationRole: {
+        modelName: "auth_organization_roles",
       },
     },
   }),
@@ -62,7 +50,7 @@ const plugins = [
 ] satisfies BetterAuthOptions["plugins"];
 
 export const auth = betterAuth({
-  secret: env.BETTER_AUTH_SECRET,
+  secret: env.AUTH_SECRET,
   database: drizzleAdapter(db, {
     provider: "pg",
     usePlural: false,

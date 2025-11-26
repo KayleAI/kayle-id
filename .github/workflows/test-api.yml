@@ -18,6 +18,8 @@ jobs:
       POSTGRES_HOST: postgres
       POSTGRES_PORT: 5432
       NODE_ENV: test
+      # A randomly generated secret for testing
+      AUTH_SECRET: YrI9mdtghMK4xwI9n9W7npc9rcujcB6X
 
     services:
       postgres:

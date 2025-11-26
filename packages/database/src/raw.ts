@@ -6,6 +6,7 @@ import { Pool } from "pg";
  */
 const pool = new Pool({
   connectionString: env.DATABASE_URL,
+  maxUses: 1,
 });
 
 export { pool };
