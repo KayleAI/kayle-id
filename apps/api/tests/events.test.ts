@@ -16,30 +16,31 @@ type EventTestData = {
 let TEST_DATA: EventTestData | undefined;
 
 beforeAll(async () => {
-  // TODO: Create a test user
-  // TODO: Create a test API key
   // TODO: Create a demo event using the public key from the secrets directory
 
-  const { response } = await auth.api.signUpEmail({
-    body: {
+  const [user] = await db
+    .insert(auth_users)
+    .values({
+      id: crypto.randomUUID(),
       email: `${Math.random()}@example.com`,
-      password: Math.random().toString(36).substring(2, 15),
       name: Math.random().toString(36).substring(2, 15),
-    },
-    returnHeaders: true,
-  });
+    })
+    .returning({
+      id: auth_users.id,
+    })
+    .onConflictDoNothing();
 
   const { key } = await auth.api.createApiKey({
     body: {
       name: "Test API Key",
-      userId: response.user.id,
+      userId: user.id,
     },
   });
 
   // TODO: create a demo event
 
   TEST_DATA = {
-    userId: response.user.id,
+    userId: user.id,
     apiKey: key,
     eventId: "test-event-id",
   };
