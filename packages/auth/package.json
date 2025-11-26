@@ -13,7 +13,8 @@
     "@kayle-id/config": "*",
     "@kayle-id/database": "*",
     "better-auth": "^1.4.1",
-    "better-call": "1.1.0"
+    "better-call": "1.1.0",
+    "zod": "4.1.13"
   },
   "exports": {
     "./*": "./src/*.ts",
