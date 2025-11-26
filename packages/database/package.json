@@ -5,17 +5,17 @@
   "private": true,
   "devDependencies": {
     "@types/bun": "latest",
-    "@types/pg": "^8.15.6",
-    "drizzle-kit": "^0.31.7"
+    "@types/pg": "8.15.6",
+    "drizzle-kit": "0.31.7"
   },
   "peerDependencies": {
     "typescript": "^5"
   },
   "dependencies": {
     "@kayle-id/config": "*",
-    "@upstash/redis": "^1.35.6",
-    "drizzle-orm": "^0.44.7",
-    "pg": "^8.16.3"
+    "@upstash/redis": "1.35.6",
+    "drizzle-orm": "0.44.7",
+    "pg": "8.16.3"
   },
   "scripts": {
     "auth:format": "bunx ultracite fix ./src/schema/auth.ts",

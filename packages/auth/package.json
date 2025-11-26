@@ -4,7 +4,7 @@
   "private": true,
   "devDependencies": {
     "@types/bun": "latest",
-    "dotenv": "^17.2.3"
+    "dotenv": "17.2.3"
   },
   "peerDependencies": {
     "typescript": "^5"

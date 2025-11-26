@@ -4,10 +4,10 @@
   "type": "module",
   "private": true,
   "devDependencies": {
-    "@t3-oss/env-core": "^0.13.8",
+    "@t3-oss/env-core": "0.13.8",
     "@types/bun": "latest",
-    "dotenv": "^17.2.3",
-    "zod": "^4.1.12"
+    "dotenv": "17.2.3",
+    "zod": "4.1.12"
   },
   "peerDependencies": {
     "typescript": "^5"
