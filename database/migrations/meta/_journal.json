@@ -1,5 +1,13 @@
 {
   "version": "7",
   "dialect": "postgresql",
-  "entries": []
+  "entries": [
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1764175392810,
+      "tag": "0000_overrated_captain_stacy",
+      "breakpoints": true
+    }
+  ]
 }

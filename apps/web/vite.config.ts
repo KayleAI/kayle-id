@@ -18,6 +18,8 @@ const config = defineConfig({
     tanstackStart(),
     viteReact(),
   ],
+  envPrefix: "PUBLIC_",
+  envDir: new URL("../../", import.meta.url).pathname,
 });
 
 export default config;

@@ -2,16 +2,20 @@
   "name": "kayle-id-api",
   "type": "module",
   "scripts": {
-    "dev": "wrangler dev --env-file .env",
-    "deploy": "wrangler deploy --minify",
-    "cf-typegen": "wrangler types --env-interface CloudflareBindings cloudflare-env.d.ts"
+    "dev": "bunx wrangler dev --env-file ../../.env",
+    "deploy": "bunx wrangler deploy --minify",
+    "cf-typegen": "bunx wrangler types --env-file ../../.env --env-interface CloudflareBindings cloudflare-env.d.ts"
   },
   "dependencies": {
-    "hono": "4.10.6",
+    "@kayle-id/auth": "*",
     "@kayle-id/config": "*",
-    "@kayle-id/database": "*"
+    "@kayle-id/database": "*",
+    "drizzle-orm": "0.44.7",
+    "hono": "4.10.6",
+    "jose": "6.1.2"
   },
   "devDependencies": {
-    "wrangler": "4.4.0"
+    "@types/bun": "latest",
+    "wrangler": "4.51.0"
   }
 }

@@ -22,6 +22,25 @@ export const auth_users = pgTable("auth_users", {
     .notNull(),
 });
 
+export const auth_sessions = pgTable(
+  "auth_sessions",
+  {
+    id: uuid("id").default(sql`pg_catalog.gen_random_uuid()`).primaryKey(),
+    expiresAt: timestamp("expires_at").notNull(),
+    token: text("token").notNull().unique(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at")
+      .$onUpdate(() => /* @__PURE__ */ new Date())
+      .notNull(),
+    ipAddress: text("ip_address"),
+    userAgent: text("user_agent"),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => auth_users.id, { onDelete: "cascade" }),
+  },
+  (table) => [index("auth_sessions_userId_idx").on(table.userId)]
+);
+
 export const auth_accounts = pgTable(
   "auth_accounts",
   {
@@ -96,8 +115,16 @@ export const auth_api_keys = pgTable(
 );
 
 export const auth_usersRelations = relations(auth_users, ({ many }) => ({
-  auth_accountss: many(auth_accounts),
-  auth_api_keyss: many(auth_api_keys),
+  auth_sessions: many(auth_sessions),
+  auth_accounts: many(auth_accounts),
+  auth_api_keys: many(auth_api_keys),
+}));
+
+export const auth_sessionsRelations = relations(auth_sessions, ({ one }) => ({
+  auth_users: one(auth_users, {
+    fields: [auth_sessions.userId],
+    references: [auth_users.id],
+  }),
 }));
 
 export const auth_accountsRelations = relations(auth_accounts, ({ one }) => ({
