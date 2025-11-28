@@ -1,6 +1,6 @@
 import { env } from "@kayle-id/config/env";
 import { db } from "@kayle-id/database/drizzle";
-import { core_api_keys } from "@kayle-id/database/schema/core";
+import { api_keys } from "@kayle-id/database/schema/core";
 import { eq } from "drizzle-orm";
 import { createHMAC } from "@/functions/hmac";
 
@@ -23,11 +23,11 @@ export async function verifyApiKey(
     { organizationId, enabled } = { organizationId: null, enabled: null },
   ] = await db
     .select({
-      organizationId: core_api_keys.organizationId,
-      enabled: core_api_keys.enabled,
+      organizationId: api_keys.organizationId,
+      enabled: api_keys.enabled,
     })
-    .from(core_api_keys)
-    .where(eq(core_api_keys.keyHash, keyHash))
+    .from(api_keys)
+    .where(eq(api_keys.keyHash, keyHash))
     .limit(1);
 
   if (!organizationId) {

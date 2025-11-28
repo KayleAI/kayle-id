@@ -12,7 +12,7 @@
     "db:start": "docker compose up -d",
     "db:stop": "docker compose down",
     "db:logs": "docker compose logs -f",
-    "db:clean": "docker compose down -v && docker volume rm pgdata",
+    "db:clean": "docker compose down -v && docker volume rm kayle-id_kayle-id-data",
     "prepare": "husky"
   },
   "devDependencies": {

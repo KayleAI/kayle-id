@@ -1,5 +1,5 @@
 import { db } from "@kayle-id/database/drizzle";
-import { core_api_keys } from "@kayle-id/database/schema/core";
+import { api_keys } from "@kayle-id/database/schema/core";
 import { and, eq } from "drizzle-orm";
 
 /**
@@ -26,7 +26,7 @@ export async function updateApiKey(
   }
 ): Promise<{ status: "success" | "error"; message?: string }> {
   const [updated] = await db
-    .update(core_api_keys)
+    .update(api_keys)
     .set({
       name,
       enabled,
@@ -34,13 +34,10 @@ export async function updateApiKey(
       metadata,
     })
     .where(
-      and(
-        eq(core_api_keys.id, id),
-        eq(core_api_keys.organizationId, organizationId)
-      )
+      and(eq(api_keys.id, id), eq(api_keys.organizationId, organizationId))
     )
     .returning({
-      updatedId: core_api_keys.id,
+      updatedId: api_keys.id,
     });
 
   if (!updated?.updatedId) {

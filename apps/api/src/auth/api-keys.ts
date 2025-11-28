@@ -1,5 +1,5 @@
 import { db } from "@kayle-id/database/drizzle";
-import { core_api_keys } from "@kayle-id/database/schema/core";
+import { api_keys } from "@kayle-id/database/schema/core";
 import { eq } from "drizzle-orm";
 import { type Context, Hono } from "hono";
 import { authenticate } from "@/v1/auth";
@@ -22,17 +22,17 @@ apiKeys.get("/", async (c) => {
 
   const [data] = await db
     .select({
-      id: core_api_keys.id,
-      name: core_api_keys.name,
-      enabled: core_api_keys.enabled,
-      permissions: core_api_keys.permissions,
-      metadata: core_api_keys.metadata,
-      createdAt: core_api_keys.createdAt,
-      updatedAt: core_api_keys.updatedAt,
-      requestCount: core_api_keys.requestCount,
+      id: api_keys.id,
+      name: api_keys.name,
+      enabled: api_keys.enabled,
+      permissions: api_keys.permissions,
+      metadata: api_keys.metadata,
+      createdAt: api_keys.createdAt,
+      updatedAt: api_keys.updatedAt,
+      requestCount: api_keys.requestCount,
     })
-    .from(core_api_keys)
-    .where(eq(core_api_keys.organizationId, organizationId));
+    .from(api_keys)
+    .where(eq(api_keys.organizationId, organizationId));
 
   if (!data) {
     return c.json({

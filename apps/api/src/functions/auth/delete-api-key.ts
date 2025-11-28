@@ -1,5 +1,5 @@
 import { db } from "@kayle-id/database/drizzle";
-import { core_api_keys } from "@kayle-id/database/schema/core";
+import { api_keys } from "@kayle-id/database/schema/core";
 import { and, eq } from "drizzle-orm";
 
 /**
@@ -13,15 +13,12 @@ export async function deleteApiKey(
   organizationId: string
 ): Promise<{ status: "success" | "error"; message?: string }> {
   const [deleted] = await db
-    .delete(core_api_keys)
+    .delete(api_keys)
     .where(
-      and(
-        eq(core_api_keys.id, id),
-        eq(core_api_keys.organizationId, organizationId)
-      )
+      and(eq(api_keys.id, id), eq(api_keys.organizationId, organizationId))
     )
     .returning({
-      deletedId: core_api_keys.id,
+      deletedId: api_keys.id,
     });
 
   if (!deleted?.deletedId) {

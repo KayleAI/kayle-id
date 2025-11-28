@@ -4,11 +4,15 @@ Privacy-first identity verification.
 
 Kayle ID is a project engineered by [Kayle](https://kayle.ai) to give people control over their own identity.
 
-It's free for everyone to use at [our official website](https://kayle.id), and we don't store **any personal data** on our system. 
-
-Business and institutions implement Kayle ID to verify someone is over a certain age, complete a KYC/AML check, or to meet other requirements.
+It's free for everyone to use at [our official website](https://kayle.id).
 
 This open-source repository contains the official implementation of the Kayle ID system.
+
+## Data Processing
+
+Kayle ID processes end-user identity data to perform document checks.
+
+We minimise what we store, encrypt all verification results, and never use this data for any purpose other than verification. You can read more about our data processing in our [privacy policy](https://kayle.id/privacy).
 
 ## Webhooks
 

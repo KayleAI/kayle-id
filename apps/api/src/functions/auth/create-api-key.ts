@@ -1,6 +1,6 @@
 import { env } from "@kayle-id/config/env";
 import { db } from "@kayle-id/database/drizzle";
-import { core_api_keys } from "@kayle-id/database/schema/core";
+import { api_keys } from "@kayle-id/database/schema/core";
 import { createHMAC } from "@/functions/hmac";
 
 function generateRandomString(length: number): string {
@@ -43,7 +43,7 @@ export async function createApiKey({
   });
 
   const [created] = await db
-    .insert(core_api_keys)
+    .insert(api_keys)
     .values({
       name,
       organizationId,
@@ -52,7 +52,7 @@ export async function createApiKey({
       metadata,
     })
     .returning({
-      id: core_api_keys.id,
+      id: api_keys.id,
     });
 
   if (!created?.id) {

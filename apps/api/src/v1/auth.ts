@@ -1,7 +1,7 @@
 import { auth } from "@kayle-id/auth/server";
 import { env } from "@kayle-id/config/env";
 import { db } from "@kayle-id/database/drizzle";
-import { core_api_keys } from "@kayle-id/database/schema/core";
+import { api_keys } from "@kayle-id/database/schema/core";
 import { eq } from "drizzle-orm";
 import type { Context } from "hono";
 import { createMiddleware } from "hono/factory";
@@ -25,10 +25,10 @@ const authenticate = createMiddleware<{
     });
     const [{ organizationId } = { organizationId: null }] = await db
       .select({
-        organizationId: core_api_keys.organizationId,
+        organizationId: api_keys.organizationId,
       })
-      .from(core_api_keys)
-      .where(eq(core_api_keys.keyHash, keyHash))
+      .from(api_keys)
+      .where(eq(api_keys.keyHash, keyHash))
       .limit(1);
 
     if (!organizationId) {

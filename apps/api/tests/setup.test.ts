@@ -4,7 +4,7 @@ import {
   auth_organizations,
   auth_users,
 } from "@kayle-id/database/schema/auth";
-import { core_api_keys } from "@kayle-id/database/schema/core";
+import { api_keys } from "@kayle-id/database/schema/core";
 import { eq } from "drizzle-orm";
 import { createApiKey } from "@/functions/auth/create-api-key";
 
@@ -82,8 +82,8 @@ const teardown = async () => {
     .delete(auth_organizations)
     .where(eq(auth_organizations.id, TEST_DATA?.organizationId as string));
   await db
-    .delete(core_api_keys)
-    .where(eq(core_api_keys.id, TEST_DATA?.apiKeyId as string));
+    .delete(api_keys)
+    .where(eq(api_keys.id, TEST_DATA?.apiKeyId as string));
 };
 
 export { setup, teardown, TEST_DATA };
