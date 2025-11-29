@@ -1,9 +1,11 @@
+import { OpenAPIHono } from "@hono/zod-openapi";
 import { server } from "@kayle-id/auth/server";
-import { Hono } from "hono";
+import { Scalar } from "@scalar/hono-api-reference";
 import apiKeys from "./auth/api-keys";
+import { config } from "./config";
 import v1 from "./v1";
 
-const app = new Hono<{ Bindings: CloudflareBindings }>();
+const app = new OpenAPIHono<{ Bindings: CloudflareBindings }>();
 
 app.get("/", (c) => {
   const status: "healthy" | "unhealthy" = "healthy";
@@ -25,5 +27,42 @@ app.on(["POST", "GET"], "/v1/auth/*", (c) => server.handler(c.req.raw));
 
 // v1
 app.route("/v1", v1);
+
+app.openAPIRegistry.registerComponent("securitySchemes", "bearerAuth", {
+  type: "http",
+  scheme: "bearer",
+});
+
+// OpenAPI documentation
+app.doc("/openapi", {
+  info: {
+    title: "Kayle ID",
+    version: config.version,
+    description: "Privacy-first identity verification.",
+    license: {
+      name: "Apache License 2.0",
+      url: "https://github.com/kayleai/kayle-id/blob/main/LICENSE",
+    },
+    contact: {
+      name: "Kayle ID",
+      url: "https://kayle.id",
+      email: "help@kayle.id",
+    },
+    termsOfService: "https://kayle.id/terms",
+  },
+  servers: [
+    {
+      url:
+        process.env.NODE_ENV === "production"
+          ? "https://api.kayle.id"
+          : "http://localhost:8787",
+      description: "",
+    },
+  ],
+  security: [{ bearerAuth: [] }],
+  openapi: "3.0.0",
+});
+
+app.get("/reference", Scalar({ url: "/openapi" }));
 
 export default app;
