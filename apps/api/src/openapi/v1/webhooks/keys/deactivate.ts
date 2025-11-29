@@ -1,42 +1,36 @@
 import { createRoute, z } from "@hono/zod-openapi";
 import { ErrorResponse } from "@/openapi/base";
 import { InternalServerErrorResponse } from "@/openapi/errors";
-import { Session } from "@/openapi/models/sessions";
+import { WebhookEncryptionKey } from "@/openapi/models/webhook";
 
-export const getSession = createRoute({
-  method: "get",
-  path: "/:id",
+export const deactivateWebhookEncryptionKey = createRoute({
+  method: "post",
+  path: "/keys/:key_id/deactivate",
   request: {
     params: z.object({
-      id: z
+      key_id: z
         .string()
         .describe(
-          "The ID of the verification session to retrieve (e.g. vs_live_...)."
-        ),
-    }),
-    query: z.object({
-      include_attempts: z
-        .boolean()
-        .optional()
-        .describe(
-          "When true, includes the `attempts` array for the session. When false or omitted, attempts are not returned."
+          "The ID of the webhook encryption key to deactivate (e.g. whk_live_...)."
         ),
     }),
   },
-  tags: ["Sessions"],
-  summary: "Get a session by ID",
+  tags: ["Webhooks"],
+  summary: "Deactivate a webhook encryption key",
+  description:
+    "Deactivate an encryption key. Existing deliveries remain valid; new deliveries will not use this key.",
   security: [{ bearerAuth: [] }],
   responses: {
     200: {
       content: {
         "application/json": {
           schema: z.object({
-            data: Session,
+            data: WebhookEncryptionKey,
             error: z.null(),
           }),
         },
       },
-      description: "Successful operation.",
+      description: "Webhook encryption key deactivated.",
     },
     404: {
       content: {
@@ -46,15 +40,15 @@ export const getSession = createRoute({
               data: null,
               error: {
                 code: "NOT_FOUND",
-                message: "Session not found.",
-                hint: "The session with the given ID was not found.",
-                docs: "https://kayle.id/docs/api/sessions#get-by-id",
+                message: "Webhook encryption key not found.",
+                hint: "The webhook encryption key with the given ID was not found.",
+                docs: "https://kayle.id/docs/api/webhooks/keys#deactivate",
               },
             },
           }),
         },
       },
-      description: "Session not found.",
+      description: "Webhook encryption key not found.",
     },
     500: {
       content: {

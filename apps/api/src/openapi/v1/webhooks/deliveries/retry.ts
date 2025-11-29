@@ -1,42 +1,36 @@
 import { createRoute, z } from "@hono/zod-openapi";
 import { ErrorResponse } from "@/openapi/base";
 import { InternalServerErrorResponse } from "@/openapi/errors";
-import { Session } from "@/openapi/models/sessions";
+import { WebhookDelivery } from "@/openapi/models/webhook";
 
-export const getSession = createRoute({
-  method: "get",
-  path: "/:id",
+export const retryWebhookDelivery = createRoute({
+  method: "post",
+  path: "/:delivery_id/retry",
   request: {
     params: z.object({
-      id: z
+      delivery_id: z
         .string()
         .describe(
-          "The ID of the verification session to retrieve (e.g. vs_live_...)."
-        ),
-    }),
-    query: z.object({
-      include_attempts: z
-        .boolean()
-        .optional()
-        .describe(
-          "When true, includes the `attempts` array for the session. When false or omitted, attempts are not returned."
+          "The ID of the webhook delivery to retry (e.g. whd_live_...)."
         ),
     }),
   },
-  tags: ["Sessions"],
-  summary: "Get a session by ID",
+  tags: ["Webhooks"],
+  summary: "Retry a webhook delivery",
+  description:
+    "Manually requeue a failed (or previously succeeded) webhook delivery for retry.",
   security: [{ bearerAuth: [] }],
   responses: {
     200: {
       content: {
         "application/json": {
           schema: z.object({
-            data: Session,
+            data: WebhookDelivery,
             error: z.null(),
           }),
         },
       },
-      description: "Successful operation.",
+      description: "Webhook delivery requeued for retry.",
     },
     404: {
       content: {
@@ -46,15 +40,15 @@ export const getSession = createRoute({
               data: null,
               error: {
                 code: "NOT_FOUND",
-                message: "Session not found.",
-                hint: "The session with the given ID was not found.",
-                docs: "https://kayle.id/docs/api/sessions#get-by-id",
+                message: "Webhook delivery not found.",
+                hint: "The webhook delivery with the given ID was not found.",
+                docs: "https://kayle.id/docs/api/webhooks/deliveries#retry",
               },
             },
           }),
         },
       },
-      description: "Session not found.",
+      description: "Webhook delivery not found.",
     },
     500: {
       content: {

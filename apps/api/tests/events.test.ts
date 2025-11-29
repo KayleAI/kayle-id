@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { file } from "bun";
 import { compactDecrypt, importPKCS8 } from "jose";
-import events from "@/v1/events";
+import events from "@/v1/webhooks/events";
 import { setup, TEST_DATA, teardown } from "./setup.test";
 
 beforeAll(async () => {

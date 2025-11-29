@@ -1,5 +1,5 @@
 import { OpenAPIHono } from "@hono/zod-openapi";
-import { listWebhookDeliveries } from "openapi/v1/webhooks/deliveries/list";
+import { listWebhookDeliveries } from "@/openapi/v1/webhooks/deliveries/list";
 
 const webhookDeliveries = new OpenAPIHono<{ Bindings: CloudflareBindings }>();
 
@@ -10,9 +10,9 @@ webhookDeliveries.openapi(listWebhookDeliveries, (c) => {
       data: [],
       error: null,
       pagination: {
-        total: 0,
-        page: 1,
         limit: 10,
+        has_more: false,
+        next_cursor: null,
       },
     },
     200

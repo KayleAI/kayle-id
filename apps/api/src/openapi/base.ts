@@ -2,25 +2,37 @@ import { z } from "@hono/zod-openapi";
 
 export const Pagination = z
   .object({
-    total: z
-      .number()
-      .describe("The total number of items")
-      .openapi({ example: 100 }),
-    page: z
-      .number()
-      .describe("The current page number")
-      .openapi({ example: 1 }),
+    /**
+     * The maximum number of items that can be returned in this page.
+     */
     limit: z
       .number()
-      .describe("The number of items per page")
+      .describe("The maximum number of items returned.")
       .openapi({ example: 10 }),
+    /**
+     * Whether there are more items available after this page.
+     */
+    has_more: z
+      .boolean()
+      .describe("Whether there are more items available after this page.")
+      .openapi({ example: false }),
+    /**
+     * A cursor that can be used as `starting_after` to fetch the next page.
+     */
+    next_cursor: z
+      .string()
+      .nullable()
+      .describe(
+        "Cursor to use as `starting_after` to fetch the next page of results, or null if there are no more items."
+      )
+      .openapi({ example: null }),
   })
   .openapi("Pagination");
 
 export const PaginationError = z.object({
-  total: z.literal(0),
-  page: z.literal(1),
-  limit: z.literal(10),
+  limit: z.number(),
+  has_more: z.literal(false),
+  next_cursor: z.null(),
 });
 
 export const ErrorObject = z

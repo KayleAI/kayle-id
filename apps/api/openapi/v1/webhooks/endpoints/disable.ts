@@ -1,42 +1,35 @@
 import { createRoute, z } from "@hono/zod-openapi";
 import { ErrorResponse } from "@/openapi/base";
 import { InternalServerErrorResponse } from "@/openapi/errors";
-import { Session } from "@/openapi/models/sessions";
+import { WebhookEndpoint } from "@/openapi/models/webhook";
 
-export const getSession = createRoute({
-  method: "get",
-  path: "/:id",
+export const disableWebhookEndpoint = createRoute({
+  method: "post",
+  path: "/:endpoint_id/disable",
   request: {
     params: z.object({
-      id: z
+      endpoint_id: z
         .string()
         .describe(
-          "The ID of the verification session to retrieve (e.g. vs_live_...)."
-        ),
-    }),
-    query: z.object({
-      include_attempts: z
-        .boolean()
-        .optional()
-        .describe(
-          "When true, includes the `attempts` array for the session. When false or omitted, attempts are not returned."
+          "The ID of the webhook endpoint to disable (e.g. whe_live_...)."
         ),
     }),
   },
-  tags: ["Sessions"],
-  summary: "Get a session by ID",
+  tags: ["Webhooks"],
+  summary: "Disable a webhook endpoint",
+  description: "Convenience endpoint to mark a webhook endpoint as disabled.",
   security: [{ bearerAuth: [] }],
   responses: {
     200: {
       content: {
         "application/json": {
           schema: z.object({
-            data: Session,
+            data: WebhookEndpoint,
             error: z.null(),
           }),
         },
       },
-      description: "Successful operation.",
+      description: "Webhook endpoint disabled.",
     },
     404: {
       content: {
@@ -46,15 +39,15 @@ export const getSession = createRoute({
               data: null,
               error: {
                 code: "NOT_FOUND",
-                message: "Session not found.",
-                hint: "The session with the given ID was not found.",
-                docs: "https://kayle.id/docs/api/sessions#get-by-id",
+                message: "Webhook endpoint not found.",
+                hint: "The webhook endpoint with the given ID was not found.",
+                docs: "https://kayle.id/docs/api/webhooks/endpoints#disable",
               },
             },
           }),
         },
       },
-      description: "Session not found.",
+      description: "Webhook endpoint not found.",
     },
     500: {
       content: {

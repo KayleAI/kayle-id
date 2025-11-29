@@ -1,59 +1,55 @@
 import { createRoute, z } from "@hono/zod-openapi";
 import { ErrorResponse } from "@/openapi/base";
 import { InternalServerErrorResponse } from "@/openapi/errors";
-import { Session } from "@/openapi/models/sessions";
+import { WebhookEndpoint } from "@/openapi/models/webhook";
 
-export const createSession = createRoute({
+export const createWebhookEndpoint = createRoute({
   method: "post",
   path: "/",
   request: {
-    query: z.object({
-      include_attempts: z
-        .boolean()
-        .optional()
-        .describe(
-          "When true, includes the `attempts` array on the created session. Attempts will be empty on creation."
-        ),
-    }),
     body: {
       content: {
         "application/json": {
           schema: z
             .object({
+              url: z
+                .string()
+                .url()
+                .describe("The URL of the webhook endpoint.")
+                .openapi({ example: "https://example.com/webhooks/kayle" }),
               environment: z
                 .enum(["live", "test"])
                 .optional()
                 .describe(
-                  'The environment to create the session in. Defaults to "live".'
+                  'The environment for the endpoint. Defaults to "live".'
                 ),
-              redirect_url: z
-                .string()
-                .url()
+              enabled: z
+                .boolean()
                 .optional()
                 .describe(
-                  "Optional URL to redirect the user to after the verification session is completed."
+                  "Whether the endpoint should be enabled immediately. Defaults to true."
                 ),
             })
-            .openapi("CreateSessionRequest"),
+            .openapi("CreateWebhookEndpointRequest"),
         },
       },
     },
   },
-  tags: ["Sessions"],
-  summary: "Create a new verification session",
+  tags: ["Webhooks"],
+  summary: "Create a webhook endpoint",
+  description: "Create a webhook endpoint for the authenticated organization.",
   security: [{ bearerAuth: [] }],
   responses: {
     200: {
       content: {
         "application/json": {
           schema: z.object({
-            data: Session,
+            data: WebhookEndpoint,
             error: z.null(),
           }),
         },
       },
-      description:
-        "Successful operation. Returns the newly created verification session.",
+      description: "Successful operation.",
     },
     400: {
       content: {
@@ -64,8 +60,8 @@ export const createSession = createRoute({
               error: {
                 code: "BAD_REQUEST",
                 message: "Bad request.",
-                hint: "The request is invalid.",
-                docs: "https://kayle.id/docs/api/sessions#create",
+                hint: "The request payload is invalid.",
+                docs: "https://kayle.id/docs/api/webhooks/endpoints#create",
               },
             },
           }),

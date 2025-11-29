@@ -1,9 +1,9 @@
 import { OpenAPIHono } from "@hono/zod-openapi";
 import { authenticate } from "./auth";
-import events from "./events";
 import sessions from "./sessions";
-import verifications from "./verifications";
+import sessionAttempts from "./sessions/attempts";
 import webhooks from "./webhooks";
+import events from "./webhooks/events";
 
 const v1 = new OpenAPIHono<{ Bindings: CloudflareBindings }>();
 
@@ -13,7 +13,7 @@ v1.use(authenticate);
 // v1 routes
 v1.route("/events", events);
 v1.route("/sessions", sessions);
-v1.route("/verifications", verifications);
+v1.route("/sessions/attempts", sessionAttempts);
 v1.route("/webhooks", webhooks);
 
 export default v1;
