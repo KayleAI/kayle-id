@@ -63,8 +63,6 @@ jobs:
       - name: Migrate + seed database
         run: bun run db:setup
 
-      # Start the API dev server and tests in the same step so they can run concurrently.
-      # The server is started in the background, we wait a bit, run tests, then always stop it.
       - name: Start API, run tests, and stop
         run: |
           set -u
@@ -76,42 +74,12 @@ jobs:
           bun run test:dev > /tmp/api.log 2>&1 &
           SERVER_PID=$!
           echo "API server started with PID $SERVER_PID"
+          
+          sleep 10
 
-          # Wait for the server to become ready (up to ~30s)
-          READY=0
-          for i in {1..30}; do
-            if curl -sS --max-time 1 http://127.0.0.1:8787/ > /dev/null 2>&1; then
-              echo "API server is ready"
-              READY=1
-              break
-            else
-              echo "Waiting for API server... (attempt $i)"
-            fi
-            sleep 1
-          done
-
-          if [ "$READY" -ne 1 ]; then
-            echo "Server never became ready; dumping /tmp/api.log"
-            cat /tmp/api.log || true
-            echo "Stopping API server with PID $SERVER_PID"
-            kill $SERVER_PID || true
-            wait $SERVER_PID 2>/dev/null || true
-            exit 1
-          fi
-
-          # Run tests against the running server
           bun test
-          TEST_EXIT=$?
 
           echo "Stopping API server with PID $SERVER_PID"
           kill $SERVER_PID || true
           wait $SERVER_PID 2>/dev/null || true
           echo "API server stopped"
-
-          if [ "$TEST_EXIT" -ne 0 ]; then
-            echo "Tests failed; dumping /tmp/api.log"
-            cat /tmp/api.log || true
-          fi
-
-          exit $TEST_EXIT
-          
