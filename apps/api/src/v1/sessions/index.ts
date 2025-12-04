@@ -10,8 +10,7 @@ import { cancelSession } from "@/openapi/v1/sessions/cancel-by-id";
 import { createSession } from "@/openapi/v1/sessions/create";
 import { getSession } from "@/openapi/v1/sessions/get-by-id";
 import { listSessions } from "@/openapi/v1/sessions/list";
-
-type Environment = "live" | "test";
+import { generateId } from "@/utils/generate-id";
 
 const sessions = new OpenAPIHono<{
   Bindings: CloudflareBindings;
@@ -21,27 +20,8 @@ const sessions = new OpenAPIHono<{
   };
 }>();
 
-function generateRandomString(length: number): string {
-  const alphabet = "abcdefghijklmnopqrstuvwxyz0123456789";
-  const randomBytes = new Uint8Array(length);
-
-  crypto.getRandomValues(randomBytes);
-
-  let result = "";
-
-  for (let i = 0; i < length; i += 1) {
-    result += alphabet[randomBytes[i] % alphabet.length];
-  }
-
-  return result;
-}
-
-function generateSessionId(environment: Environment): string {
-  return `vs_${environment}_${generateRandomString(48)}`;
-}
-
 function buildVerificationUrl(c: { env: CloudflareBindings }, id: string) {
-  const base = c.env.PUBLIC_AUTH_URL ?? "https://app.kayle.id";
+  const base = c.env.PUBLIC_AUTH_URL ?? "https://verify.kayle.id";
   const url = new URL(`/verify/session/${id}`, base);
 
   return url.toString();
@@ -58,7 +38,7 @@ function mapSessionRowToResponse({
 }) {
   return {
     id: row.id,
-    environment: row.environment as Environment,
+    environment: row.environment,
     status: row.status,
     redirect_url: row.redirectUrl ?? null,
     verification_url: verificationUrl,
@@ -174,10 +154,10 @@ sessions.openapi(createSession, async (c) => {
   const query = c.req.valid("query") ?? {};
   const body = c.req.valid("json");
 
-  const environment: Environment = (body.environment as Environment) ?? "live";
+  const environment = body.environment ?? "live";
   const redirectUrl = body.redirect_url ?? null;
 
-  const id = generateSessionId(environment);
+  const id = generateId({ type: "vs", environment });
 
   const [created] = await db
     .insert(verification_sessions)
@@ -316,9 +296,9 @@ sessions.openapi(cancelSession, async (c) => {
       );
 
     await db.insert(events).values({
-      id: `evt_${row.environment}_${generateRandomString(32)}`,
+      id: generateId({ type: "evt", environment: row.environment }),
       organizationId,
-      environment: row.environment as Environment,
+      environment: row.environment,
       type: "verification.session.cancelled",
       triggerId: row.id,
       triggerType: "verification_session",

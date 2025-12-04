@@ -29,10 +29,12 @@
         "@kayle-id/config": "*",
         "@kayle-id/database": "*",
         "@scalar/hono-api-reference": "0.9.25",
+        "capnweb": "0.2.0",
         "drizzle-orm": "0.44.7",
         "hono": "4.10.6",
         "hono-openapi": "1.1.1",
         "jose": "6.1.2",
+        "zod": "4.1.13",
       },
       "devDependencies": {
         "@types/bun": "latest",
@@ -634,6 +636,8 @@
     "cac": ["cac@6.7.14", "", {}, "sha512-b6Ilus+c3RrdDk+JhLKUAQfzzgLEPy6wcXqS7f/xe1EETvsDP6GORG7SFuOs6cID5YkqchW/LXZbX5bc8j7ZcQ=="],
 
     "caniuse-lite": ["caniuse-lite@1.0.30001757", "", {}, "sha512-r0nnL/I28Zi/yjk1el6ilj27tKcdjLsNqAOZr0yVjWPrSQyHgKI2INaEWw21bAQSv2LXRt1XuCS/GomNpWOxsQ=="],
+
+    "capnweb": ["capnweb@0.2.0", "", {}, "sha512-fQSW5h6HIefRM4rHZMyAsWcu/qE/6Qr2OC8B99whifjDJatI5KLFcODSykKmpyCCKF50N3HvZ5lB26YBdh0fRg=="],
 
     "chai": ["chai@5.3.3", "", { "dependencies": { "assertion-error": "^2.0.1", "check-error": "^2.1.1", "deep-eql": "^5.0.1", "loupe": "^3.1.0", "pathval": "^2.0.0" } }, "sha512-4zNhdJD/iOjSH0A05ea+Ke6MU5mmpQcbQsSOkgdaUMJ9zTlDTD/GYlwohmIE2u0gaxHYiVHEn1Fw9mZ/ktJWgw=="],
 

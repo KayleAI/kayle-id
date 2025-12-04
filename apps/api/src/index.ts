@@ -4,6 +4,7 @@ import { Scalar } from "@scalar/hono-api-reference";
 import apiKeys from "./auth/api-keys";
 import { config } from "./config";
 import v1 from "./v1";
+import verify from "./verify";
 
 const app = new OpenAPIHono<{ Bindings: CloudflareBindings }>();
 
@@ -20,20 +21,20 @@ app.get("/", (c) => {
   });
 });
 
-app.route("/v1/auth/api-keys", apiKeys);
-
-// Auth API
+// Auth Handlers
 app.on(["POST", "GET"], "/v1/auth/*", (c) => server.handler(c.req.raw));
+app.route("/v1/auth/api-keys", apiKeys);
 
 // v1
 app.route("/v1", v1);
+app.route("/verify", verify);
 
+// OpenAPI documentation
 app.openAPIRegistry.registerComponent("securitySchemes", "bearerAuth", {
   type: "http",
   scheme: "bearer",
 });
 
-// OpenAPI documentation
 app.doc("/openapi", {
   info: {
     title: "Kayle ID",
@@ -65,4 +66,6 @@ app.doc("/openapi", {
 
 app.get("/reference", Scalar({ url: "/openapi" }));
 
-export default app;
+export default {
+  fetch: app.fetch,
+};

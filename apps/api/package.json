@@ -14,10 +14,12 @@
     "@kayle-id/config": "*",
     "@kayle-id/database": "*",
     "@scalar/hono-api-reference": "0.9.25",
+    "capnweb": "0.2.0",
     "drizzle-orm": "0.44.7",
     "hono": "4.10.6",
     "hono-openapi": "1.1.1",
-    "jose": "6.1.2"
+    "jose": "6.1.2",
+    "zod": "4.1.13"
   },
   "devDependencies": {
     "@types/bun": "latest",
