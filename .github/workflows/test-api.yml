@@ -78,7 +78,14 @@ jobs:
           echo "API server started with PID $SERVER_PID"
 
           # Give the server a moment to boot
-          sleep 8
+          for i in {1..30}; do
+            if curl -sSf http://127.0.0.1:8787/ > /dev/null; then
+              echo "API server is ready"
+              break
+            fi
+            echo "Waiting for API server..."
+            sleep 1
+          done
 
           # Run tests against the running server
           bun test
