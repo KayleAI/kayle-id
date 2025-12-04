@@ -77,15 +77,26 @@ jobs:
           SERVER_PID=$!
           echo "API server started with PID $SERVER_PID"
 
-          # Give the server a moment to boot
+          # Wait for the server to become ready (up to ~30s)
+          READY=0
           for i in {1..30}; do
             if curl -sSf http://127.0.0.1:8787/ > /dev/null; then
               echo "API server is ready"
+              READY=1
               break
             fi
             echo "Waiting for API server..."
             sleep 1
           done
+
+          if [ "$READY" -ne 1 ]; then
+            echo "Server never became ready; dumping /tmp/api.log"
+            cat /tmp/api.log || true
+            echo "Stopping API server with PID $SERVER_PID"
+            kill $SERVER_PID || true
+            wait $SERVER_PID 2>/dev/null || true
+            exit 1
+          fi
 
           # Run tests against the running server
           bun test
@@ -96,4 +107,10 @@ jobs:
           wait $SERVER_PID 2>/dev/null || true
           echo "API server stopped"
 
+          if [ "$TEST_EXIT" -ne 0 ]; then
+            echo "Tests failed; dumping /tmp/api.log"
+            cat /tmp/api.log || true
+          fi
+
           exit $TEST_EXIT
+          
