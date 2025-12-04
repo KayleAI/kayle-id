@@ -62,51 +62,44 @@ jobs:
         run: bun install --frozen-lockfile
       - name: Migrate + seed database
         run: bun run db:setup
-      - name: Start API
+      - name: Start API, wait, run tests, and stop
         run: |
+          set -e
+
           cd apps/api
+
+          # Start the dev:test server in the background
           bun run dev:test > /tmp/api.log 2>&1 &
-          echo $! > /tmp/api.pid
-          echo "API server started with PID $(cat /tmp/api.pid)"
-      - name: Wait for API to be ready
-        run: |
-          echo "Waiting for API server to be ready..."
-          tail -30 /tmp/api.log || true
+          SERVER_PID=$!
+          echo "API server started with PID $SERVER_PID"
+
+          # Wait for Wrangler to say it's ready OR for HTTP 200
           for i in $(seq 1 60); do
             echo "Attempt $i/60: checking readiness..."
 
-            # First, see if Wrangler has logged that it's ready
             if grep -q "Ready on http://localhost:8787" /tmp/api.log; then
               echo "Found 'Ready on http://localhost:8787' in logs"
-              curl -s http://localhost:8787/ | head -5 || true
-              exit 0
+              break
             fi
 
-            # Fallback to HTTP check in case the log format changes
             HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8787/ 2>/dev/null || echo "000")
             if [ "$HTTP_CODE" = "200" ]; then
               echo "API server is ready! (HTTP $HTTP_CODE)"
-              curl -s http://localhost:8787/ | head -5 || true
-              exit 0
+              break
             fi
 
             echo "Not ready yet (HTTP $HTTP_CODE). Sleeping 1s..."
             sleep 1
           done
 
-          echo "API server failed to indicate readiness within 60 seconds"
-          echo "Full API logs:"
-          cat /tmp/api.log || true
-          exit 1
-      - name: Run tests
-        run: cd apps/api && bun test
-      - name: Stop API
-        if: always()
-        run: |
-          if [ -f /tmp/api.pid ]; then
-            PID=$(cat /tmp/api.pid)
-            echo "Stopping API server with PID $PID"
-            kill $PID || true
-            wait $PID 2>/dev/null || true
-            echo "API server stopped"
-          fi
+          echo "Hit / once to confirm:"
+          curl -s http://localhost:8787/ | head -5 || true
+
+          # Run tests against the running server
+          bun test
+
+          # Always try to stop the server
+          echo "Stopping API server with PID $SERVER_PID"
+          kill $SERVER_PID || true
+          wait $SERVER_PID 2>/dev/null || true
+          echo "API server stopped"
