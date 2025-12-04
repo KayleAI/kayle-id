@@ -72,18 +72,29 @@ jobs:
         run: |
           echo "Waiting for API server to be ready..."
           tail -30 /tmp/api.log || true
-          for i in $(seq 1 30); do
-            echo "Attempt $i/30: Checking http://localhost:8787/..."
-            HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8787/ 2>&1 || echo "000")
+          for i in $(seq 1 60); do
+            echo "Attempt $i/60: checking readiness..."
+
+            # First, see if Wrangler has logged that it's ready
+            if grep -q "Ready on http://localhost:8787" /tmp/api.log; then
+              echo "Found 'Ready on http://localhost:8787' in logs"
+              curl -s http://localhost:8787/ | head -5 || true
+              exit 0
+            fi
+
+            # Fallback to HTTP check in case the log format changes
+            HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8787/ 2>/dev/null || echo "000")
             if [ "$HTTP_CODE" = "200" ]; then
               echo "API server is ready! (HTTP $HTTP_CODE)"
               curl -s http://localhost:8787/ | head -5 || true
               exit 0
             fi
-            echo "Waiting 2 seconds before next attempt..."
-            sleep 2
+
+            echo "Not ready yet (HTTP $HTTP_CODE). Sleeping 1s..."
+            sleep 1
           done
-          echo "API server failed to start within 60 seconds"
+
+          echo "API server failed to indicate readiness within 60 seconds"
           echo "Full API logs:"
           cat /tmp/api.log || true
           exit 1
