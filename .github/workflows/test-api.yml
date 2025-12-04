@@ -57,7 +57,7 @@ jobs:
       - name: Start API
         run: |
           cd apps/api
-          bun run dev > /tmp/api.log 2>&1 &
+          bun run dev:test > /tmp/api.log 2>&1 &
           echo $! > /tmp/api.pid
           echo "API server started with PID $(cat /tmp/api.pid)"
       - name: Wait for API to be ready
