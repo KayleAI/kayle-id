@@ -63,15 +63,41 @@ jobs:
       - name: Wait for API to be ready
         run: |
           echo "Waiting for API server to be ready..."
-          for i in {1..30}; do
-            if curl -f http://localhost:8787/ > /dev/null 2>&1; then
-              echo "API server is ready!"
-              exit 0
+          echo "Giving server 5 seconds to initialize..."
+          sleep 5
+          echo "Checking if process is running..."
+          if [ -f /tmp/api.pid ]; then
+            PID=$(cat /tmp/api.pid)
+            if ps -p $PID > /dev/null 2>&1; then
+              echo "Process $PID is running"
+            else
+              echo "Process $PID not found - server may have crashed"
+              cat /tmp/api.log || true
+              exit 1
             fi
-            echo "Attempt $i/30: API server not ready yet, waiting..."
+          fi
+          echo "Checking API logs for ready message..."
+          tail -30 /tmp/api.log || true
+          for i in $(seq 1 30); do
+            echo "Attempt $i/30: Checking http://localhost:8787/..."
+            HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8787/ 2>&1 || echo "000")
+            if [ "$HTTP_CODE" = "200" ]; then
+              echo "API server is ready! (HTTP $HTTP_CODE)"
+              curl -s http://localhost:8787/ | head -5 || true
+              exit 0
+            elif [ "$HTTP_CODE" = "000" ]; then
+              echo "Connection failed (curl error), server may not be ready yet"
+              curl -v http://localhost:8787/ 2>&1 | head -10 || true
+            else
+              echo "Got HTTP $HTTP_CODE, server responding but may not be ready"
+            fi
+            echo "Waiting 2 seconds before next attempt..."
             sleep 2
           done
           echo "API server failed to start within 60 seconds"
+          echo "Checking what's listening on port 8787:"
+          netstat -tlnp 2>/dev/null | grep 8787 || ss -tlnp 2>/dev/null | grep 8787 || echo "Could not check port 8787"
+          echo "Full API logs:"
           cat /tmp/api.log || true
           exit 1
       - name: Run tests
