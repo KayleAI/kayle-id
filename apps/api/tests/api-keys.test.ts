@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import app from "@/index";
+import apiKeys from "@/auth/api-keys";
 import { setup, TEST_DATA, teardown } from "./setup.test";
 
 beforeAll(async () => {
@@ -15,7 +15,7 @@ describe("API Key Endpoints", () => {
    * Test whether we can get a list of API keys
    */
   test.todo("List of API Keys", async () => {
-    const response = await app.request("/v1/auth/api-keys", {
+    const response = await apiKeys.request("/", {
       method: "GET",
       headers: {
         "Content-Type": "application/json",
@@ -36,7 +36,7 @@ describe("API Key Endpoints", () => {
    * Test whether we can create a new API key
    */
   test("Ensure API Keys cannot be listed using an API key", async () => {
-    const response = await app.request("/v1/auth/api-keys", {
+    const response = await apiKeys.request("/", {
       method: "GET",
       headers: {
         "Content-Type": "application/json",

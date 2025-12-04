@@ -4,7 +4,8 @@
   "type": "module",
   "scripts": {
     "dev": "bunx wrangler dev --env-file ../../.env",
-    "dev:test": "cp ../../.env.test.example ./.env.test && bunx wrangler dev --env-file ./.env.test",
+    "test:setup": "cp ../../.env.test.example ./.env.test",
+    "test:dev": "bunx wrangler dev --env-file ./.env.test",
     "deploy": "bunx wrangler deploy --minify",
     "cf-typegen": "bunx wrangler types --env-file ../../.env --env-interface CloudflareBindings cloudflare-env.d.ts"
   },
