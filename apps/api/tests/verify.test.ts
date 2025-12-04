@@ -1,6 +1,19 @@
-import { describe, expect, test } from "bun:test";
+import { beforeAll, describe, expect, test } from "bun:test";
 import { newWebSocketRpcSession } from "capnweb";
 import type { VerifySession } from "@/shared/verify";
+
+beforeAll(async () => {
+  // wait for the API to be ready
+  for (let i = 0; i < 10; i++) {
+    const response = await fetch("http://localhost:8787/");
+    if (response.ok) {
+      break;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+  }
+
+  throw new Error("Local API not ready after 10 seconds");
+});
 
 /**
  * Test whether we can connect to a verify session
