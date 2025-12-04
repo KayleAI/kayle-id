@@ -1,4 +1,5 @@
 import { beforeAll, describe, expect, test } from "bun:test";
+import { file } from "bun";
 import { newWebSocketRpcSession } from "capnweb";
 import type { VerifySession } from "@/shared/verify";
 
@@ -21,34 +22,53 @@ async function fetchWithTimeout(
 
 beforeAll(
   async () => {
-    // Wait for the API to be ready before running verification tests.
-    // We cap total wait below the hook timeout to avoid timing out the hook itself.
-    const maxWaitMs = 25_000;
-    const start = Date.now();
+    try {
+      // Wait for the API to be ready before running verification tests.
+      // We cap total wait below the hook timeout to avoid timing out the hook itself.
+      const maxWaitMs = 25_000;
+      const start = Date.now();
 
-    while (true) {
-      const elapsed = Date.now() - start;
-      if (elapsed >= maxWaitMs) {
-        break;
+      while (true) {
+        const elapsed = Date.now() - start;
+        if (elapsed >= maxWaitMs) {
+          break;
+        }
+
+        const remaining = maxWaitMs - elapsed;
+        const probeTimeout = remaining > 1000 ? 1000 : remaining;
+
+        const response = await fetchWithTimeout(
+          "http://localhost:8787/",
+          probeTimeout
+        );
+
+        if (response?.ok) {
+          return;
+        }
+
+        // Short sleep between probes
+        await new Promise((resolve) => setTimeout(resolve, 500));
       }
 
-      const remaining = maxWaitMs - elapsed;
-      const probeTimeout = remaining > 1000 ? 1000 : remaining;
-
-      const response = await fetchWithTimeout(
-        "http://localhost:8787/",
-        probeTimeout
-      );
-
-      if (response?.ok) {
-        return;
+      throw new Error("Local API not ready after 25 seconds");
+    } catch (error) {
+      // If the API never became ready, dump Wrangler logs to help debugging CI
+      try {
+        const logFile = file("/tmp/api.log");
+        if (await logFile.exists()) {
+          const logs = await logFile.text();
+          console.error("===== /tmp/api.log (Wrangler) =====");
+          console.error(logs);
+          console.error("===== end of /tmp/api.log =====");
+        } else {
+          console.error("No /tmp/api.log file found");
+        }
+      } catch (logError) {
+        console.error("Failed to read /tmp/api.log", logError);
       }
 
-      // Short sleep between probes
-      await new Promise((resolve) => setTimeout(resolve, 500));
+      throw error;
     }
-
-    throw new Error("Local API not ready after 25 seconds");
   },
   {
     timeout: 30_000,
