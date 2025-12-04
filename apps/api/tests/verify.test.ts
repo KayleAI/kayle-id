@@ -12,13 +12,17 @@ async function fetchWithTimeout(
 
   try {
     return await fetch(url, { signal: controller.signal });
-  } catch {
+  } catch (err) {
     // abort / network error -> treat as "not ready"
+    console.error("fetchWithTimeout error:", err);
     return null;
   } finally {
     clearTimeout(timer);
   }
 }
+
+let lastStatus: number | null = null;
+let lastBody: string | null = null;
 
 beforeAll(
   async () => {
@@ -46,12 +50,24 @@ beforeAll(
           return;
         }
 
+        if (response) {
+          lastStatus = response.status;
+          try {
+            lastBody = await response.text();
+          } catch {
+            // ignore body read errors
+          }
+        }
+
         // Short sleep between probes
         await new Promise((resolve) => setTimeout(resolve, 500));
       }
 
       throw new Error("Local API not ready after 25 seconds");
     } catch (error) {
+      console.error("Last probe status:", lastStatus);
+      console.error("Last probe body:", lastBody);
+
       // If the API never became ready, dump Wrangler logs to help debugging CI
       try {
         const logFile = file("/tmp/api.log");
