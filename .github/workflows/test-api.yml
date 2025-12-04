@@ -68,12 +68,10 @@ jobs:
 
           cd apps/api
 
-          # Start the dev:test server in the background
           bun run dev:test > /tmp/api.log 2>&1 &
           SERVER_PID=$!
           echo "API server started with PID $SERVER_PID"
 
-          # Wait for Wrangler to say it's ready OR for HTTP 200
           for i in $(seq 1 60); do
             echo "Attempt $i/60: checking readiness..."
 
@@ -82,7 +80,14 @@ jobs:
               break
             fi
 
-            HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8787/ 2>/dev/null || echo "000")
+            HTTP_CODE=$(
+              curl \
+                --connect-timeout 1 \
+                --max-time 2 \
+                -s -o /dev/null -w "%{http_code}" \
+                http://localhost:8787/ 2>/dev/null || echo "000"
+            )
+
             if [ "$HTTP_CODE" = "200" ]; then
               echo "API server is ready! (HTTP $HTTP_CODE)"
               break
@@ -93,12 +98,10 @@ jobs:
           done
 
           echo "Hit / once to confirm:"
-          curl -s http://localhost:8787/ | head -5 || true
+          curl --connect-timeout 1 --max-time 2 -s http://localhost:8787/ | head -5 || true
 
-          # Run tests against the running server
           bun test
 
-          # Always try to stop the server
           echo "Stopping API server with PID $SERVER_PID"
           kill $SERVER_PID || true
           wait $SERVER_PID 2>/dev/null || true
