@@ -80,12 +80,13 @@ jobs:
           # Wait for the server to become ready (up to ~30s)
           READY=0
           for i in {1..30}; do
-            if curl -sSf http://127.0.0.1:8787/ > /dev/null; then
+            if curl -sS --max-time 1 http://127.0.0.1:8787/ > /dev/null 2>&1; then
               echo "API server is ready"
               READY=1
               break
+            else
+              echo "Waiting for API server... (attempt $i)"
             fi
-            echo "Waiting for API server..."
             sleep 1
           done
 
