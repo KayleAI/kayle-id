@@ -66,6 +66,4 @@ app.doc("/openapi", {
 
 app.get("/reference", Scalar({ url: "/openapi" }));
 
-export default {
-  fetch: app.fetch,
-};
+export default app;
