@@ -21,29 +21,37 @@ async function fetchWithTimeout(
 
 beforeAll(
   async () => {
-    // Wait for the API to be ready before running verification tests
-    let ready = false;
+    // Wait for the API to be ready before running verification tests.
+    // We cap total wait below the hook timeout to avoid timing out the hook itself.
+    const maxWaitMs = 25_000;
+    const start = Date.now();
 
-    for (let i = 0; i < 30; i++) {
-      try {
-        const response = await fetchWithTimeout("http://localhost:8787/", 1000);
-        if (response?.ok) {
-          ready = true;
-          break;
-        }
-      } catch {
-        // Ignore connection errors while the server is still starting
+    while (true) {
+      const elapsed = Date.now() - start;
+      if (elapsed >= maxWaitMs) {
+        break;
       }
 
-      await new Promise((resolve) => setTimeout(resolve, 1000));
+      const remaining = maxWaitMs - elapsed;
+      const probeTimeout = remaining > 1000 ? 1000 : remaining;
+
+      const response = await fetchWithTimeout(
+        "http://localhost:8787/",
+        probeTimeout
+      );
+
+      if (response?.ok) {
+        return;
+      }
+
+      // Short sleep between probes
+      await new Promise((resolve) => setTimeout(resolve, 500));
     }
 
-    if (!ready) {
-      throw new Error("Local API not ready after 30 seconds");
-    }
+    throw new Error("Local API not ready after 25 seconds");
   },
   {
-    timeout: 60_000,
+    timeout: 30_000,
   }
 );
 
