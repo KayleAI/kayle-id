@@ -8,7 +8,7 @@ import type { VerifySession } from "@/shared/verify";
 describe("Verification Flows", () => {
   test("Can connect to a verification session", async () => {
     using stub = newWebSocketRpcSession<VerifySession>(
-      "ws://localhost:8787/v1/verify/connect"
+      "ws://127.0.0.1:8787/v1/verify/connect"
     );
 
     expect(await stub.ping()).toBe("pong");
@@ -16,7 +16,7 @@ describe("Verification Flows", () => {
 
   test("Can authenticate a verification session", async () => {
     using stub = newWebSocketRpcSession<VerifySession>(
-      "ws://localhost:8787/v1/verify/connect"
+      "ws://127.0.0.1:8787/v1/verify/connect"
     );
 
     // TODO: Actually authenticate the session

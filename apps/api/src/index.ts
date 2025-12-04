@@ -56,7 +56,7 @@ app.doc("/openapi", {
       url:
         process.env.NODE_ENV === "production"
           ? "https://api.kayle.id"
-          : "http://localhost:8787",
+          : "http://127.0.0.1:8787",
       description: "",
     },
   ],
