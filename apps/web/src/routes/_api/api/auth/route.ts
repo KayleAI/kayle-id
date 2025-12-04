@@ -4,10 +4,8 @@ import { createFileRoute } from "@tanstack/react-router";
 export const Route = createFileRoute("/_api/api/auth")({
   server: {
     handlers: {
-      ANY: async ({ request }) => {
+      ALL: async ({ request }) => {
         const url = new URL(request.url);
-
-        console.log(url.pathname?.replace("/api/auth/", ""));
 
         const response = await env.API.fetch(
           `http://internal/v1/auth/${url.pathname?.replace("/api/auth/", "")}`,
