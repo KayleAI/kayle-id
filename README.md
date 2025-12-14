@@ -27,7 +27,7 @@ A platform must first verify HMAC signature to prove authenticity of the JWE, an
 A public-private key pair can be generated using the following command:
 
 ```bash
-openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -out secrets/rsa_private.pem && openssl rsa -pubout -in secrets/rsa_private.pem -out secrets/rsa_public.pem
+openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -out tests/secrets/rsa_private.pem && openssl rsa -pubout -in tests/secrets/rsa_private.pem -out tests/secrets/rsa_public.pem
 ```
 
 ## License

@@ -10,14 +10,14 @@ test("createJWE", async () => {
   const payload = "Hello, world!";
   const jwe = await createJWE(payload, {
     publicKey: await file(
-      new URL("../../../../secrets/rsa_public.pem", import.meta.url)
+      new URL("../../../../tests/secrets/rsa_public.pem", import.meta.url)
     ).text(),
   });
   expect(jwe).toBeString();
 
   // Decrypt the JWE using the private key
   const privateKey = await file(
-    new URL("../../../../secrets/rsa_private.pem", import.meta.url)
+    new URL("../../../../tests/secrets/rsa_private.pem", import.meta.url)
   ).text();
 
   const { plaintext, protectedHeader } = await compactDecrypt(

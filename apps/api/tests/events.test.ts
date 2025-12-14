@@ -60,9 +60,9 @@ describe("/v1/events", () => {
     // Assert whether the event contains the encrypted payload
     expect(data?.event?.encrypted_payload).toBeObject();
 
-    // Now try to decrypt the encrypted payload using the private key from the secrets directory
+    // Now try to decrypt the encrypted payload using the private key from the tests/secrets directory
     const privateKey = await file(
-      new URL("../../../secrets/rsa_private.pem", import.meta.url)
+      new URL("../../../tests/secrets/rsa_private.pem", import.meta.url)
     ).text();
     const encryptedPayload = data?.event?.encrypted_payload;
     const decryptedPayload = await compactDecrypt(
