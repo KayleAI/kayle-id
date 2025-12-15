@@ -1,9 +1,9 @@
 import { OpenAPIHono } from "@hono/zod-openapi";
-import { authenticate } from "./auth";
-import sessions from "./sessions";
-import sessionAttempts from "./sessions/attempts";
-import webhooks from "./webhooks";
-import events from "./webhooks/events";
+import { authenticate } from "@/v1/auth";
+import sessions from "@/v1/sessions";
+import sessionAttempts from "@/v1/sessions/attempts";
+import webhooks from "@/v1/webhooks";
+import events from "@/v1/webhooks/events";
 
 const v1 = new OpenAPIHono<{ Bindings: CloudflareBindings }>();
 

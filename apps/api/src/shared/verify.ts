@@ -54,12 +54,12 @@ export class VerifySession extends RpcTarget {
   }
 
   /**
-   * Get the session ID.
+   * Get the session.
    *
-   * @returns The session ID.
+   * @returns The session.
    */
   getSession() {
-    return `${this.session.id}_1`;
+    return this.session;
   }
 
   /**

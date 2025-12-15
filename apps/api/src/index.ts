@@ -1,10 +1,10 @@
 import { OpenAPIHono } from "@hono/zod-openapi";
 import { server } from "@kayle-id/auth/server";
 import { Scalar } from "@scalar/hono-api-reference";
+import apiKeys from "@/auth/api-keys";
+import { config } from "@/config";
 import v1 from "@/v1";
 import verify from "@/v1/verify";
-import apiKeys from "./auth/api-keys";
-import { config } from "./config";
 
 const app = new OpenAPIHono<{ Bindings: CloudflareBindings }>();
 
