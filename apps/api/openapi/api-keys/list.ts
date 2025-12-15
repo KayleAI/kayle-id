@@ -2,6 +2,8 @@ import { createRoute, z } from "@hono/zod-openapi";
 import { ErrorResponseWithPagination, Pagination } from "@/openapi/base";
 
 export const internalListApiKeys = createRoute({
+  // Hide this route in production as it's not needed for the public API.
+  hide: process.env.NODE_ENV === "production",
   method: "get",
   path: "/",
   request: {

@@ -2,6 +2,8 @@ import { createRoute, z } from "@hono/zod-openapi";
 import { ErrorResponse } from "@/openapi/base";
 
 export const internalDeleteApiKey = createRoute({
+  // Hide this route in production as it's not needed for the public API.
+  hide: process.env.NODE_ENV === "production",
   method: "delete",
   path: "/{id}",
   request: {
