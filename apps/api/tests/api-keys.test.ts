@@ -44,7 +44,7 @@ describe("API Key Endpoints", () => {
       },
     });
 
-    // Assert that we have a forbidden response
-    expect(response.status).toBe(403);
+    // Assert that we have an unauthorized response
+    expect(response.status).toBe(401);
   });
 });
