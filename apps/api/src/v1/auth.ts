@@ -7,6 +7,30 @@ import type { Context } from "hono";
 import { createMiddleware } from "hono/factory";
 import { createHMAC } from "@/functions/hmac";
 
+const sessionMiddleware = createMiddleware<{
+  Bindings: CloudflareBindings;
+  Variables: {
+    type: "api" | "session";
+    organizationId?: string;
+    userId?: string;
+  };
+}>(async (c, next) => {
+  const response = await auth.api.getSession(c.req.raw);
+
+  if (!response?.session) {
+    return unauthorized(c);
+  }
+
+  if (!response.session?.activeOrganizationId) {
+    return forbidden(c);
+  }
+
+  c.set("type", "session");
+  c.set("organizationId", response.session?.activeOrganizationId);
+  c.set("userId", response.session?.userId);
+  await next();
+});
+
 const authenticate = createMiddleware<{
   Bindings: CloudflareBindings;
   Variables: {
@@ -68,4 +92,4 @@ function forbidden(c: Context) {
   return c.json({ error: { code: "FORBIDDEN", message: "Forbidden" } }, 403);
 }
 
-export { authenticate };
+export { authenticate, sessionMiddleware };

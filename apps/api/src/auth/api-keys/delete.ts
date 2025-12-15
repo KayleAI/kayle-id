@@ -1,10 +1,11 @@
 import { OpenAPIHono } from "@hono/zod-openapi";
 import { internalDeleteApiKey } from "openapi/api-keys/delete";
+import { checkPermission } from "@/functions/auth/check-permission";
 import { deleteApiKey } from "@/functions/auth/delete-api-key";
 
 const deleteApiKeyRoute = new OpenAPIHono<{
   Bindings: CloudflareBindings;
-  Variables: { organizationId: string };
+  Variables: { organizationId: string; userId: string };
 }>();
 
 deleteApiKeyRoute.openapi(internalDeleteApiKey, async (c) => {
@@ -13,6 +14,27 @@ deleteApiKeyRoute.openapi(internalDeleteApiKey, async (c) => {
   const { id } = c.req.valid("param");
 
   try {
+    // ensure the user has permission to create API keys
+    const hasPermission = await checkPermission(
+      c.get("userId"),
+      organizationId
+    );
+
+    if (!hasPermission) {
+      return c.json(
+        {
+          data: null,
+          error: {
+            code: "FORBIDDEN",
+            message: "You are not authorized to create API keys",
+            hint: "Please contact an administrator to request access.",
+            docs: "https://kayle.id/docs/api/errors#forbidden",
+          } as const,
+        },
+        403
+      );
+    }
+
     const { status, message } = await deleteApiKey(id, organizationId);
 
     if (status === "error") {

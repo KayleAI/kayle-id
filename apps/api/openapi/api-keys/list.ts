@@ -49,6 +49,14 @@ export const internalListApiKeys = createRoute({
       },
       description: "Retrieve API keys.",
     },
+    403: {
+      content: {
+        "application/json": {
+          schema: ErrorResponseWithPagination,
+        },
+      },
+      description: "Forbidden.",
+    },
     500: {
       content: {
         "application/json": {

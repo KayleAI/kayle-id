@@ -1,10 +1,11 @@
 import { OpenAPIHono } from "@hono/zod-openapi";
 import { internalUpdateApiKey } from "openapi/api-keys/update";
+import { checkPermission } from "@/functions/auth/check-permission";
 import { updateApiKey } from "@/functions/auth/update-api-key";
 
 const updateApiKeyRoute = new OpenAPIHono<{
   Bindings: CloudflareBindings;
-  Variables: { organizationId: string };
+  Variables: { organizationId: string; userId: string };
 }>();
 
 updateApiKeyRoute.openapi(internalUpdateApiKey, async (c) => {
@@ -14,6 +15,27 @@ updateApiKeyRoute.openapi(internalUpdateApiKey, async (c) => {
   const { name, enabled, metadata, permissions } = c.req.valid("json");
 
   try {
+    // ensure the user has permission to update API keys
+    const hasPermission = await checkPermission(
+      c.get("userId"),
+      organizationId
+    );
+
+    if (!hasPermission) {
+      return c.json(
+        {
+          data: null,
+          error: {
+            code: "FORBIDDEN",
+            message: "You are not authorized to update API keys",
+            hint: "Please contact an administrator to request access.",
+            docs: "https://kayle.id/docs/api/errors#forbidden",
+          } as const,
+        },
+        403
+      );
+    }
+
     const { status, message } = await updateApiKey(id, organizationId, {
       name,
       enabled,

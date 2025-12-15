@@ -47,6 +47,14 @@ export const internalUpdateApiKey = createRoute({
       },
       description: "Bad request.",
     },
+    403: {
+      content: {
+        "application/json": {
+          schema: ErrorResponse,
+        },
+      },
+      description: "Forbidden.",
+    },
     500: {
       content: {
         "application/json": {

@@ -3,10 +3,11 @@ import { db } from "@kayle-id/database/drizzle";
 import { api_keys } from "@kayle-id/database/schema/core";
 import { and, eq, gt } from "drizzle-orm";
 import { internalListApiKeys } from "openapi/api-keys/list";
+import { checkPermission } from "@/functions/auth/check-permission";
 
 const listApiKeys = new OpenAPIHono<{
   Bindings: CloudflareBindings;
-  Variables: { organizationId: string; type: "api" | "session" };
+  Variables: { organizationId: string; userId: string };
 }>();
 
 listApiKeys.openapi(internalListApiKeys, async (c) => {
@@ -14,6 +15,29 @@ listApiKeys.openapi(internalListApiKeys, async (c) => {
 
   const query = c.req.valid("query");
   const limit = query.limit ?? 10;
+
+  // ensure the user has permission to list API keys
+  const hasPermission = await checkPermission(c.get("userId"), organizationId);
+
+  if (!hasPermission) {
+    return c.json(
+      {
+        data: null,
+        error: {
+          code: "FORBIDDEN",
+          message: "You are not authorized to list API keys",
+          hint: "Please contact an administrator to request access.",
+          docs: "https://kayle.id/docs/api/errors#forbidden",
+        } as const,
+        pagination: {
+          limit,
+          has_more: false,
+          next_cursor: null,
+        },
+      },
+      403
+    );
+  }
 
   try {
     const where = and(
