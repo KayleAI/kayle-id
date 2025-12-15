@@ -1,5 +1,6 @@
+import configCss from "@kayleai/ui/config.css?url";
+import uiCss from "@kayleai/ui/styles.css?url";
 import { createRootRoute, HeadContent, Scripts } from "@tanstack/react-router";
-import appCss from "@/styles.css?url";
 
 export const Route = createRootRoute({
   head: () => ({
@@ -39,7 +40,11 @@ export const Route = createRootRoute({
     links: [
       {
         rel: "stylesheet",
-        href: appCss,
+        href: configCss,
+      },
+      {
+        rel: "stylesheet",
+        href: uiCss,
       },
     ],
   }),
@@ -52,10 +57,8 @@ function RootDocument({ children }: { children: React.ReactNode }) {
       <head>
         <HeadContent />
       </head>
-      <body className="flex min-h-dvh flex-col bg-zinc-100 p-2">
-        <div className="flex grow items-center justify-center p-6 lg:rounded-lg lg:bg-white lg:p-10 lg:shadow-xs lg:ring-1 lg:ring-neutral-950/5">
-          {children}
-        </div>
+      <body className="isolate font-sans antialiased">
+        {children}
         <Scripts />
       </body>
     </html>

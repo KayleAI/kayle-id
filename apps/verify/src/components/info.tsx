@@ -1,3 +1,4 @@
+import { Button } from "@kayleai/ui/button";
 import { Link } from "@tanstack/react-router";
 import clsx from "clsx";
 import { Logo } from "@/components/logo";
@@ -79,7 +80,7 @@ export default function InfoCard({
   };
 
   return (
-    <div className="relative flex flex-col items-center justify-center">
+    <div className="relative flex w-full flex-col items-center justify-center">
       <div className="w-full max-w-md space-y-8">
         {/* Header */}
         <div>
@@ -123,26 +124,31 @@ export default function InfoCard({
         </div>
 
         {/* Footer Links */}
-        <p className="text-center text-neutral-500 text-xs">
+        <p className="inline-block text-center text-neutral-500 text-xs">
           By using Kayle ID, you agree to our{" "}
-          <Link
-            className="text-neutral-900"
-            rel="noopener noreferrer"
-            target="_blank"
-            to="/terms"
+          <Button
+            className="inline-block px-0 text-neutral-900 text-xs!"
+            render={
+              <a href="/terms" rel="noopener noreferrer" target="_blank">
+                Terms of Service
+              </a>
+            }
+            variant="link"
           >
             Terms of Service
-          </Link>{" "}
+          </Button>{" "}
           and{" "}
-          <Link
-            className="text-neutral-900"
-            rel="noopener noreferrer"
-            target="_blank"
-            to="/privacy"
+          <Button
+            className="inline-block px-0 text-neutral-900 text-xs!"
+            render={
+              <a href="/privacy" rel="noopener noreferrer" target="_blank">
+                Privacy Policy
+              </a>
+            }
+            variant="link"
           >
             Privacy Policy
-          </Link>
-          .
+          </Button>
         </p>
       </div>
     </div>
@@ -164,21 +170,16 @@ function PrimaryButton({
   }
 
   return button.onClick ? (
-    <button
-      className="w-full rounded-full bg-neutral-900 px-4 py-3 text-center font-medium text-sm text-white transition-all duration-200 ease-in-out hover:bg-neutral-800 focus:outline-none focus:ring-2 focus:ring-neutral-900 focus:ring-offset-2 disabled:opacity-50"
-      disabled={button.disabled}
-      onClick={button.onClick}
-      type="button"
-    >
+    <Button disabled={button.disabled} onClick={button.onClick} type="button">
       {button.label}
-    </button>
+    </Button>
   ) : (
-    <Link
-      className="w-full rounded-full bg-neutral-900 px-4 py-3 text-center font-medium text-sm text-white transition-all duration-200 ease-in-out hover:bg-neutral-800 focus:outline-none focus:ring-2 focus:ring-neutral-900 focus:ring-offset-2"
-      to={button.href ?? "/sign-in"}
-    >
-      {button.label ?? "Sign In"}
-    </Link>
+    <Button
+      render={
+        <Link to={button.href ?? "/sign-in"}>{button.label ?? "Sign In"}</Link>
+      }
+      variant="default"
+    />
   );
 }
 
@@ -197,20 +198,20 @@ function SecondaryButton({
   }
 
   return button.onClick ? (
-    <button
-      className="w-full rounded-full border border-neutral-200 bg-white px-4 py-3 text-center font-medium text-neutral-900 text-sm transition-all duration-200 ease-in-out hover:bg-neutral-50 focus:outline-none focus:ring-2 focus:ring-neutral-900 focus:ring-offset-2 disabled:opacity-50"
+    <Button
       disabled={button.disabled}
       onClick={button.onClick}
       type="button"
+      variant="outline"
     >
       {button.label}
-    </button>
+    </Button>
   ) : (
-    <Link
-      className="w-full rounded-full border border-neutral-200 bg-white px-4 py-3 text-center font-medium text-neutral-900 text-sm transition-all duration-200 ease-in-out hover:bg-neutral-50 focus:outline-none focus:ring-2 focus:ring-neutral-900 focus:ring-offset-2"
-      to={button.href ?? "/home"}
-    >
-      {button.label ?? "Go Home"}
-    </Link>
+    <Button
+      render={
+        <Link to={button.href ?? "/home"}>{button.label ?? "Go Home"}</Link>
+      }
+      variant="outline"
+    />
   );
 }
