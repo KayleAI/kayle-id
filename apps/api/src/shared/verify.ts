@@ -1,4 +1,5 @@
 import { type RpcStub, RpcTarget } from "capnweb";
+import type { VerificationSession } from "@/types/verification";
 
 type RpcClients = {
   onMessage(text: string): void;
@@ -7,13 +8,13 @@ type RpcClients = {
 export class VerifySession extends RpcTarget {
   // biome-ignore lint/correctness/noUnusedPrivateClassMembers: this is fine
   private readonly env: CloudflareBindings;
-  private readonly sessionId: string;
+  private readonly session: VerificationSession;
   private client?: RpcStub<RpcClients>;
 
-  constructor(env: CloudflareBindings, sessionId: string) {
+  constructor(env: CloudflareBindings, session: VerificationSession) {
     super();
     this.env = env;
-    this.sessionId = sessionId;
+    this.session = session;
   }
 
   /**
@@ -58,7 +59,7 @@ export class VerifySession extends RpcTarget {
    * @returns The session ID.
    */
   getSession() {
-    return this.sessionId;
+    return `${this.session.id}_1`;
   }
 
   /**

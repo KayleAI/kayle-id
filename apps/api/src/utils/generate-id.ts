@@ -21,7 +21,7 @@ export function generateRandomString(length: number): string {
 export function generateId({
   type,
   environment,
-  length = 48,
+  length = 64,
 }: {
   /**
    * The type of ID to generate. For example, vs, whk, va, etc

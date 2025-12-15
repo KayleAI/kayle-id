@@ -8,5 +8,6 @@
     "cf-typegen": {
       "cache": false
     }
-  }
+  },
+  "ui": "tui"
 }

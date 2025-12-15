@@ -1,9 +1,9 @@
 {
-  "name": "kayle-id-web",
+  "name": "kayle-id-verify",
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "vite dev --port 3000",
+    "dev": "vite dev --port 2999",
     "build": "vite build",
     "serve": "vite preview",
     "test": "vitest run",
@@ -12,17 +12,22 @@
     "cf-typegen": "wrangler types --env-interface CloudflareBindings cloudflare-env.d.ts"
   },
   "dependencies": {
-    "@kayle-id/auth": "*",
     "@cloudflare/vite-plugin": "1.15.3",
+    "@t3-oss/env-core": "0.13.10",
+    "@tailwindcss/vite": "4.1.17",
     "@tanstack/react-router": "1.132.0",
     "@tanstack/react-router-ssr-query": "1.131.7",
     "@tanstack/react-start": "1.132.0",
     "@tanstack/router-plugin": "1.132.0",
+    "@kayle-id/config": "*",
+    "capnweb": "0.2.0",
+    "clsx": "2.1.1",
+    "motion": "12.23.26",
     "react": "19.2.0",
     "react-dom": "19.2.0",
-    "@tailwindcss/vite": "4.1.17",
     "tailwindcss": "4.1.17",
-    "vite-tsconfig-paths": "5.1.4"
+    "vite-tsconfig-paths": "5.1.4",
+    "zod": "4.2.0"
   },
   "devDependencies": {
     "@testing-library/dom": "10.4.0",
