@@ -74,7 +74,7 @@ function SessionEnvironment({ sessionId }: { sessionId: string }) {
           />
         </svg>
         <span className="relative translate-y-px">
-          You are in a test environment.
+          You are in a test environment
         </span>
       </div>
     </aside>

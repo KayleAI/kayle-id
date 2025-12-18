@@ -1,7 +1,7 @@
 import { OpenAPIHono } from "@hono/zod-openapi";
-import { internalCreateApiKey } from "openapi/api-keys/create";
 import { checkPermission } from "@/functions/auth/check-permission";
 import { createApiKey } from "@/functions/auth/create-api-key";
+import { internalCreateApiKey } from "./openapi";
 
 const createApiKeyRoute = new OpenAPIHono<{
   Bindings: CloudflareBindings;

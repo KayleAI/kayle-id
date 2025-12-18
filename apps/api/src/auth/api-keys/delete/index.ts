@@ -1,7 +1,7 @@
 import { OpenAPIHono } from "@hono/zod-openapi";
-import { internalDeleteApiKey } from "openapi/api-keys/delete";
 import { checkPermission } from "@/functions/auth/check-permission";
 import { deleteApiKey } from "@/functions/auth/delete-api-key";
+import { internalDeleteApiKey } from "./openapi";
 
 const deleteApiKeyRoute = new OpenAPIHono<{
   Bindings: CloudflareBindings;

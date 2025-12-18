@@ -1,10 +1,9 @@
 import { OpenAPIHono } from "@hono/zod-openapi";
-import { server } from "@kayle-id/auth/server";
 import { Scalar } from "@scalar/hono-api-reference";
-import apiKeys from "@/auth/api-keys";
 import { config } from "@/config";
 import v1 from "@/v1";
 import verify from "@/v1/verify";
+import auth from "./auth";
 
 const app = new OpenAPIHono<{ Bindings: CloudflareBindings }>();
 
@@ -22,11 +21,10 @@ app.get("/", (c) => {
 });
 
 // Auth Handlers
-app.on(["POST", "GET"], "/v1/auth/*", (c) => server.handler(c.req.raw));
-app.route("/v1/auth/api-keys", apiKeys);
-app.route("/v1/verify", verify);
+app.route("/v1/auth", auth);
 
 // v1
+app.route("/v1/verify", verify);
 app.route("/v1", v1);
 
 // OpenAPI documentation

@@ -13,6 +13,7 @@
   },
   "dependencies": {
     "@kayle-id/auth": "*",
+    "@kayle-id/config": "*",
     "@cloudflare/vite-plugin": "1.15.3",
     "@tanstack/react-router": "1.132.0",
     "@tanstack/react-router-ssr-query": "1.131.7",

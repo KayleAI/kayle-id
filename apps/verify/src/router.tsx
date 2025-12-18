@@ -1,4 +1,4 @@
-import { createRouter } from "@tanstack/react-router";
+import { createRouter, type NotFoundRouteProps } from "@tanstack/react-router";
 import { NotFound } from "./components/not-found";
 import { routeTree } from "./routeTree.gen";
 
@@ -6,7 +6,9 @@ import { routeTree } from "./routeTree.gen";
 export const getRouter = () => {
   const router = createRouter({
     routeTree,
-    defaultNotFoundComponent: NotFound,
+    defaultNotFoundComponent: NotFound as unknown as (
+      props: NotFoundRouteProps
+    ) => React.ReactNode,
     scrollRestoration: true,
     defaultPreloadStaleTime: 0,
   });

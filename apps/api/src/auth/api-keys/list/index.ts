@@ -2,8 +2,8 @@ import { OpenAPIHono } from "@hono/zod-openapi";
 import { db } from "@kayle-id/database/drizzle";
 import { api_keys } from "@kayle-id/database/schema/core";
 import { and, eq, gt } from "drizzle-orm";
-import { internalListApiKeys } from "openapi/api-keys/list";
 import { checkPermission } from "@/functions/auth/check-permission";
+import { internalListApiKeys } from "./openapi";
 
 const listApiKeys = new OpenAPIHono<{
   Bindings: CloudflareBindings;
