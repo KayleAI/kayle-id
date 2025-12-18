@@ -1,7 +1,7 @@
 import { Button } from "@kayleai/ui/button";
+import { Logo } from "@kayleai/ui/logo";
 import { Link } from "@tanstack/react-router";
 import clsx from "clsx";
-import { Logo } from "@/components/logo";
 import OctagonCheck from "@/icons/octagon-check";
 import OctagonInfo from "@/icons/octagon-info";
 import OctagonAlert from "@/icons/octagon-warning";
@@ -87,10 +87,10 @@ export default function InfoCard({
           <div className="mb-8">
             <Logo className="" />
           </div>
-          <h1 className="mb-4 font-light text-3xl text-neutral-900 tracking-tight">
+          <h1 className="mb-4 font-light text-3xl text-foreground tracking-tight">
             {header.title}
           </h1>
-          <p className="text-lg text-neutral-600">{header.description}</p>
+          <p className="text-lg text-muted-foreground">{header.description}</p>
         </div>
 
         {/* Message */}
@@ -124,10 +124,10 @@ export default function InfoCard({
         </div>
 
         {/* Footer Links */}
-        <p className="inline-block text-center text-neutral-500 text-xs">
+        <p className="inline-block text-center text-muted-foreground text-xs">
           By using Kayle ID, you agree to our{" "}
           <Button
-            className="inline-block px-0 text-neutral-900 text-xs!"
+            className="inline-block px-0 text-foreground text-xs!"
             render={
               <a href="/terms" rel="noopener noreferrer" target="_blank">
                 Terms of Service
@@ -139,7 +139,7 @@ export default function InfoCard({
           </Button>{" "}
           and{" "}
           <Button
-            className="inline-block px-0 text-neutral-900 text-xs!"
+            className="inline-block px-0 text-foreground text-xs!"
             render={
               <a href="/privacy" rel="noopener noreferrer" target="_blank">
                 Privacy Policy

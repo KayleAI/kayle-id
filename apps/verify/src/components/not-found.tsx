@@ -1,4 +1,5 @@
 import { ERROR_MESSAGES } from "@kayle-id/config/error-messages";
+import { Layout } from "@kayleai/ui/layout";
 import InfoCard from "./info";
 
 /**
@@ -52,16 +53,18 @@ export function NotFound({
 
   // Generic not found page
   return (
-    <InfoCard
-      colour="red"
-      header={{
-        title: "Page Not Found",
-        description: "The page you are looking for does not exist.",
-      }}
-      message={{
-        title: "We couldn't find the page you were looking for",
-        description: "Please check the URL you followed and try again.",
-      }}
-    />
+    <Layout>
+      <InfoCard
+        colour="red"
+        header={{
+          title: "Page Not Found",
+          description: "The page you are looking for does not exist.",
+        }}
+        message={{
+          title: "We couldn't find the page you were looking for",
+          description: "Please check the URL you followed and try again.",
+        }}
+      />
+    </Layout>
   );
 }

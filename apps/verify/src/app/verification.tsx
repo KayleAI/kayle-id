@@ -1,4 +1,5 @@
 import { ERROR_MESSAGES } from "@kayle-id/config/error-messages";
+import { Layout } from "@kayleai/ui/layout";
 import { useLoaderData } from "@tanstack/react-router";
 import { useMemo } from "react";
 import InfoCard from "@/components/info";
@@ -11,16 +12,14 @@ export function VerificationApp() {
   });
 
   return (
-    <div className="flex min-h-dvh flex-col bg-zinc-100 p-2">
-      <div className="relative flex grow items-center justify-center overflow-hidden p-6 lg:rounded-lg lg:bg-white lg:p-10 lg:shadow-xs lg:ring-1 lg:ring-neutral-950/5">
-        <SessionProvider sessionId={sessionId}>
-          <SessionApp />
-          <SessionError />
-          <SessionLoader />
-          <SessionEnvironment sessionId={sessionId} />
-        </SessionProvider>
-      </div>
-    </div>
+    <Layout>
+      <SessionProvider sessionId={sessionId}>
+        <SessionApp />
+        <SessionError />
+        <SessionLoader />
+        <SessionEnvironment sessionId={sessionId} />
+      </SessionProvider>
+    </Layout>
   );
 }
 
