@@ -62,6 +62,7 @@ export const auth = betterAuth({
     // Eventually we'll want to enable joins but for now we're facing an issue with them not.
     joins: false,
   },
+  trustedOrigins: ["https://localhost:3000", "https://kayle.id"],
   appName: "Kayle ID",
   advanced: {
     cookiePrefix: "kayle-id",

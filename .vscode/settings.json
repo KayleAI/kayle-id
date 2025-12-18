@@ -31,5 +31,6 @@
   "editor.codeActionsOnSave": {
     "source.fixAll.biome": "explicit",
     "source.organizeImports.biome": "explicit"
-  }
+  },
+  "tailwindCSS.experimental.configFile": "apps/platform/node_modules/@kayleai/ui/dist/css/index.css"
 }
