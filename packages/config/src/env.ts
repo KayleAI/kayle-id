@@ -4,7 +4,7 @@ import { z } from "zod";
 
 if (process.env.NODE_ENV !== "production") {
   config({
-    path: "../../.env",
+    path: "../../../.env",
     quiet: true,
     debug: false,
   });
@@ -45,5 +45,5 @@ export const env = createEnv({
 
   emptyStringAsUndefined: true,
 
-  skipValidation: process.env.NODE_ENV === "test",
+  skipValidation: process.env.NODE_ENV !== "test",
 });

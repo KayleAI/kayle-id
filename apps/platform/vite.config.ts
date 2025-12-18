@@ -8,16 +8,23 @@ import viteTsConfigPaths from "vite-tsconfig-paths";
 const config = defineConfig({
   plugins: [
     cloudflare({ viteEnvironment: { name: "ssr" }, inspectorPort: 9230 }),
-    // this is the plugin that enables path aliases
+    tailwindcss(),
     viteTsConfigPaths({
       projects: ["./tsconfig.json"],
     }),
-    tailwindcss(),
-    tanstackStart(),
+    tanstackStart({
+      srcDirectory: "src", // This is the default
+      router: {
+        // Specifies the directory TanStack Router uses for your routes.
+        routesDirectory: "routes", // Defaults to "routes", relative to srcDirectory
+      },
+    }),
     viteReact(),
   ],
-  envPrefix: "PUBLIC_",
-  envDir: new URL("../../", import.meta.url).pathname,
+  envPrefix: ["PUBLIC_", "VITE_"],
+  server: {
+    port: 3000,
+  },
 });
 
 export default config;

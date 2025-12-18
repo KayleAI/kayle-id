@@ -2,10 +2,10 @@ import { createHmac } from "node:crypto";
 import { createFileRoute } from "@tanstack/react-router";
 import { env } from "@/config/env";
 
-export const Route = createFileRoute("/_api/api/auth")({
+export const Route = createFileRoute("/_api/api/auth/$")({
   server: {
     handlers: {
-      ALL: async ({ request }) => {
+      ANY: async ({ request }) => {
         const host =
           process.env.NODE_ENV === "production"
             ? "https://kayle.id"
@@ -21,7 +21,7 @@ export const Route = createFileRoute("/_api/api/auth")({
           .replace(/\/\/+/g, "/");
 
         const response = await env.API.fetch(
-          `http://api-internal/${targetPath}${url.search}`,
+          `http://api/${targetPath}${url.search}`,
           {
             credentials: "include",
             method: request.method,
@@ -54,19 +54,16 @@ export const Route = createFileRoute("/_api/api/auth")({
             let redirectUrl: string;
 
             // If the Location header points to the internal API, rewrite it to the public URL
-            if (location.startsWith("http://api-internal/v1/auth/")) {
+            if (location.startsWith("http://api/v1/auth/")) {
               // Rewrite internal URL to public-facing URL
               const publicPath = location.replace(
-                "http://api-internal/v1/auth/",
+                "http://api/v1/auth/",
                 "/api/"
               );
               redirectUrl = new URL(publicPath, host).toString();
             } else if (location.startsWith("/v1/auth/")) {
               // Handle relative paths starting with /internal/
-              const publicPath = location.replace(
-                "/v1/auth/",
-                "/api-internal/v1/auth/"
-              );
+              const publicPath = location.replace("/v1/auth/", "/api/v1/auth/");
               redirectUrl = new URL(publicPath, host).toString();
             } else {
               // Already a public URL or relative path - use as-is

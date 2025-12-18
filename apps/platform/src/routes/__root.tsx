@@ -1,7 +1,12 @@
 import { AuthProvider } from "@kayle-id/auth/client/provider";
 import configCss from "@kayleai/ui/config.css?url";
 import uiCss from "@kayleai/ui/styles.css?url";
-import { createRootRoute, HeadContent, Scripts } from "@tanstack/react-router";
+import {
+  createRootRoute,
+  HeadContent,
+  Outlet,
+  Scripts,
+} from "@tanstack/react-router";
 
 export const Route = createRootRoute({
   head: () => ({
@@ -49,17 +54,19 @@ export const Route = createRootRoute({
       },
     ],
   }),
-  shellComponent: RootDocument,
+  component: RootDocument,
 });
 
-function RootDocument({ children }: { children: React.ReactNode }) {
+function RootDocument() {
   return (
     <html lang="en">
       <head>
         <HeadContent />
       </head>
-      <body>
-        <AuthProvider>{children}</AuthProvider>
+      <body className="font-sans antialiased">
+        <AuthProvider>
+          <Outlet />
+        </AuthProvider>
         <Scripts />
       </body>
     </html>

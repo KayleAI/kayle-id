@@ -5,7 +5,7 @@ import apiKeys from "@/auth/api-keys";
 const auth = new OpenAPIHono<{ Bindings: CloudflareBindings }>();
 
 // Auth Handlers
-auth.on(["POST", "GET"], "/v1/auth/*", (c) => server.handler(c.req.raw));
-auth.route("/v1/auth/api-keys", apiKeys);
+auth.route("/api-keys", apiKeys);
+auth.on(["POST", "GET"], "/*", (c) => server.handler(c.req.raw));
 
 export default auth;

@@ -1,6 +1,11 @@
 import configCss from "@kayleai/ui/config.css?url";
 import uiCss from "@kayleai/ui/styles.css?url";
-import { createRootRoute, HeadContent, Scripts } from "@tanstack/react-router";
+import {
+  createRootRoute,
+  HeadContent,
+  Outlet,
+  Scripts,
+} from "@tanstack/react-router";
 
 export const Route = createRootRoute({
   head: () => ({
@@ -48,17 +53,17 @@ export const Route = createRootRoute({
       },
     ],
   }),
-  shellComponent: RootDocument,
+  component: RootLayout,
 });
 
-function RootDocument({ children }: { children: React.ReactNode }) {
+function RootLayout() {
   return (
     <html lang="en">
       <head>
         <HeadContent />
       </head>
       <body className="isolate font-sans antialiased">
-        {children}
+        <Outlet />
         <Scripts />
       </body>
     </html>
