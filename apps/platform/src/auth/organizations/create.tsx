@@ -5,8 +5,11 @@ import { Input } from "@kayleai/ui/input";
 import { Logo } from "@kayleai/ui/logo";
 import { useNavigate } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
+import { Loading } from "@/components/loading";
+import { parseErrorResponse } from "@/utils/parse-error-response";
 
 const SLUG_REGEX = /^[a-z0-9-]+$/;
+const DEFAULT_ERROR = "Failed to create organization";
 
 export function CreateOrganization() {
   const { refresh } = useAuth();
@@ -15,6 +18,7 @@ export function CreateOrganization() {
   const slugRef = useRef<HTMLInputElement>(null);
   const [name, setName] = useState("");
   const [slug, setSlug] = useState("");
+  const [created, setCreated] = useState(false);
   const [logoPreview, setLogoPreview] = useState<string | null>(null);
   const [logoBase64, setLogoBase64] = useState<string | null>(null);
   const [logoContentType, setLogoContentType] = useState<string | null>(null);
@@ -110,43 +114,38 @@ export function CreateOrganization() {
 
     setIsLoading(true);
 
+    const logo =
+      logoBase64 && logoContentType
+        ? { data: logoBase64, contentType: logoContentType }
+        : undefined;
+
     try {
       const response = await fetch("/api/auth/orgs", {
         method: "POST",
-        body: JSON.stringify({
-          name,
-          slug,
-          logo:
-            logoBase64 && logoContentType
-              ? {
-                  data: logoBase64,
-                  contentType: logoContentType,
-                }
-              : undefined,
-        }),
-        headers: {
-          "Content-Type": "application/json",
-        },
+        body: JSON.stringify({ name, slug, logo }),
+        headers: { "Content-Type": "application/json" },
       });
 
       if (!response.ok) {
-        throw new Error("Failed to create organization");
+        throw new Error(await parseErrorResponse(response, DEFAULT_ERROR));
       }
 
       const result: { data: { id: string } } = await response.json();
+
       await client.organization.setActive({
-        organizationId: result?.data?.id ?? undefined,
+        organizationId: result.data.id,
         organizationSlug: slug,
       });
       await refresh();
 
-      navigate({ to: "/dashboard" });
+      setCreated(true);
+      setTimeout(() => navigate({ to: "/dashboard" }), 1000);
     } catch (err) {
-      setError(
+      const message =
         err instanceof Error
           ? err.message
-          : "Failed to create organization. Please try again."
-      );
+          : `${DEFAULT_ERROR}. Please try again.`;
+      setError(message);
     } finally {
       setIsLoading(false);
     }
@@ -159,6 +158,14 @@ export function CreateOrganization() {
   const handleSlugClick = () => {
     slugRef.current?.focus();
   };
+
+  if (created) {
+    return (
+      <div className="fixed inset-0">
+        <Loading layout />
+      </div>
+    );
+  }
 
   return (
     <div className="relative flex flex-col items-center justify-center">

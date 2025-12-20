@@ -26,16 +26,18 @@ function generateRandomString(length: number): string {
  */
 export async function createApiKey({
   name,
+  environment = "live",
   organizationId,
   metadata = {},
   permissions = [],
 }: {
   name: string;
+  environment?: "live" | "test";
   organizationId: string;
   permissions?: string[];
   metadata?: Record<string, string | number | boolean>;
 }): Promise<{ id: string; apiKey: string }> {
-  const apiKey = `kk_${generateRandomString(32)}`;
+  const apiKey = `kk_${environment}_${generateRandomString(32)}`;
 
   const keyHash = await createHMAC(apiKey, {
     algorithm: "SHA256",
@@ -47,6 +49,7 @@ export async function createApiKey({
     .values({
       name,
       organizationId,
+      environment,
       keyHash,
       permissions,
       metadata,

@@ -1,4 +1,3 @@
-import { useAuth } from "@kayle-id/auth/client/provider";
 import type { ApiKey } from "@kayle-id/auth/types";
 import { Alert, AlertDescription, AlertTitle } from "@kayleai/ui/alert";
 import { Button } from "@kayleai/ui/button";
@@ -24,14 +23,15 @@ import { Textarea } from "@kayleai/ui/textarea";
 import { cn } from "@kayleai/ui/utils/cn";
 import { useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import { useReducer, useState } from "react";
 import { formatDate } from "@/utils/format-date";
+import { useCopyToClipboard } from "@/utils/use-copy";
 
 export function ApiKeysTable({ apiKeys }: { apiKeys: ApiKey[] }) {
   return (
-    <div className="rounded-md border">
+    <div className="overflow-hidden rounded-md border">
       <Table>
-        <TableHeader>
+        <TableHeader className="sticky top-0 z-10 bg-muted">
           <TableRow>
             <TableHead>Name</TableHead>
             <TableHead>Status</TableHead>
@@ -84,65 +84,225 @@ export function ApiKeysTable({ apiKeys }: { apiKeys: ApiKey[] }) {
   );
 }
 
+type FormState = {
+  status: "idle" | "loading" | "success" | "error";
+  name: string;
+  environment: "live" | "test";
+  errorMessage: string;
+  apiKey: string | null;
+};
+
+type FormAction =
+  | { type: "SET_NAME"; name: string }
+  | { type: "SET_ENVIRONMENT"; environment: "live" | "test" }
+  | { type: "SUBMIT" }
+  | { type: "SUCCESS"; apiKey: string }
+  | { type: "ERROR"; message: string }
+  | { type: "RESET" }
+  | { type: "CLEAR_ERROR" };
+
+const initialFormState: FormState = {
+  status: "idle",
+  name: "",
+  environment: "live",
+  errorMessage: "",
+  apiKey: null,
+};
+
+function formReducer(state: FormState, action: FormAction): FormState {
+  switch (action.type) {
+    case "SET_NAME":
+      return {
+        ...state,
+        name: action.name,
+        status: state.status === "error" ? "idle" : state.status,
+        errorMessage: state.status === "error" ? "" : state.errorMessage,
+      };
+    case "SET_ENVIRONMENT":
+      return { ...state, environment: action.environment };
+    case "SUBMIT":
+      return { ...state, status: "loading", errorMessage: "" };
+    case "SUCCESS":
+      return { ...state, status: "success", apiKey: action.apiKey };
+    case "ERROR":
+      return { ...state, status: "error", errorMessage: action.message };
+    case "RESET":
+      return initialFormState;
+    case "CLEAR_ERROR":
+      return { ...state, status: "idle", errorMessage: "" };
+    default:
+      return state;
+  }
+}
+
+function ApiKeySuccessView({
+  apiKey,
+  onClose,
+}: {
+  apiKey: string;
+  onClose: () => void;
+}) {
+  const { copied, copy } = useCopyToClipboard();
+
+  return (
+    <>
+      <DialogHeader>
+        <DialogTitle>API Key Created</DialogTitle>
+      </DialogHeader>
+      <div className="space-y-2">
+        <Label className="font-medium text-sm" htmlFor="api-key">
+          Your API Key
+        </Label>
+        <div className="relative">
+          <Textarea
+            className="min-h-[0px]! resize-none pr-20 font-mono text-sm"
+            id="api-key"
+            readOnly
+            value={apiKey}
+          />
+          <Button
+            className="-translate-y-1/2 absolute top-1/2 right-2"
+            onClick={() => copy(apiKey)}
+            size="sm"
+            type="button"
+            variant="outline"
+          >
+            {copied ? "Copied!" : "Copy"}
+          </Button>
+        </div>
+        <p className="text-muted-foreground text-xs">
+          You won't be able to view this API key again.
+        </p>
+      </div>
+      <DialogFooter>
+        <Button onClick={onClose}>I've saved my API key</Button>
+      </DialogFooter>
+    </>
+  );
+}
+
+function ApiKeyFormView({
+  state,
+  dispatch,
+  onSubmit,
+}: {
+  state: FormState;
+  dispatch: React.Dispatch<FormAction>;
+  onSubmit: () => void;
+}) {
+  const isLoading = state.status === "loading";
+
+  return (
+    <>
+      <DialogHeader>
+        <DialogTitle>Create API Key</DialogTitle>
+      </DialogHeader>
+      <div className="space-y-4">
+        {state.status === "error" && state.errorMessage && (
+          <Alert variant="destructive">
+            <AlertTitle>Error</AlertTitle>
+            <AlertDescription>{state.errorMessage}</AlertDescription>
+          </Alert>
+        )}
+        <div className="space-y-2">
+          <Label htmlFor="name">Name</Label>
+          <Input
+            disabled={isLoading}
+            id="name"
+            onChange={(e) =>
+              dispatch({ type: "SET_NAME", name: e.target.value })
+            }
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && state.name.trim()) {
+                onSubmit();
+              }
+            }}
+            placeholder="API Key Name"
+            value={state.name}
+          />
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="environment">Environment</Label>
+          <fieldset className="inline-flex rounded-full border">
+            <Button
+              className={cn(
+                "rounded-r-none border-r",
+                state.environment === "live"
+                  ? "bg-primary text-primary-foreground"
+                  : "bg-background hover:bg-muted"
+              )}
+              id="environment"
+              onClick={() =>
+                dispatch({ type: "SET_ENVIRONMENT", environment: "live" })
+              }
+              type="button"
+              variant={state.environment === "live" ? "default" : "ghost"}
+            >
+              Live
+            </Button>
+            <Button
+              className={cn(
+                "rounded-l-none",
+                state.environment === "test"
+                  ? "bg-primary text-primary-foreground"
+                  : "bg-background hover:bg-muted"
+              )}
+              onClick={() =>
+                dispatch({ type: "SET_ENVIRONMENT", environment: "test" })
+              }
+              type="button"
+              variant={state.environment === "test" ? "default" : "ghost"}
+            >
+              Test
+            </Button>
+          </fieldset>
+        </div>
+      </div>
+      <DialogFooter>
+        <Button disabled={isLoading || !state.name.trim()} onClick={onSubmit}>
+          {isLoading ? "Creating..." : "Create API Key"}
+        </Button>
+      </DialogFooter>
+    </>
+  );
+}
+
 export function CreateApiKey() {
   const [isOpen, setIsOpen] = useState(false);
-  const [status, setStatus] = useState<
-    "idle" | "loading" | "success" | "error"
-  >("idle");
-  const [name, setName] = useState("");
-  const [errorMessage, setErrorMessage] = useState("");
-  const { session } = useAuth();
-  const [apiKey, setApiKey] = useState<string | null>(null);
-  const [copied, setCopied] = useState(false);
+  const [state, dispatch] = useReducer(formReducer, initialFormState);
   const queryClient = useQueryClient();
 
-  // Reset form when dialog closes after success
-  useEffect(() => {
-    if (!isOpen && status === "success") {
-      // Small delay to allow dialog close animation
-      const timer = setTimeout(() => {
-        setStatus("idle");
-        setName("");
-        setApiKey(null);
-        setErrorMessage("");
-        setCopied(false);
-      }, 150);
-      return () => clearTimeout(timer);
-    }
-  }, [isOpen, status]);
-
-  const handleCreateApiKey = async () => {
-    // Validate form
-    if (!name.trim()) {
-      setStatus("error");
-      setErrorMessage("Please enter a name for your API key");
+  const handleSubmit = async () => {
+    if (!state.name.trim()) {
+      dispatch({
+        type: "ERROR",
+        message: "Please enter a name for your API key",
+      });
       return;
     }
 
-    setStatus("loading");
-    setErrorMessage("");
+    dispatch({ type: "SUBMIT" });
 
     try {
       const response = await fetch("/api/auth/api-keys", {
         method: "POST",
         body: JSON.stringify({
-          name: name.trim(),
-          organizationId: session?.activeOrganizationId,
+          name: state.name.trim(),
+          environment: state.environment,
         }),
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: { "Content-Type": "application/json" },
       });
 
       if (!response.ok) {
-        const errorData = (await response.json().catch(() => ({
-          error: null,
-        }))) as { error?: { message?: string } } | null;
-        setStatus("error");
-        setErrorMessage(
-          errorData?.error?.message ??
-            "Failed to create API key. Please try again."
-        );
+        const errorData = (await response.json().catch(() => null)) as {
+          error?: { message?: string };
+        } | null;
+        dispatch({
+          type: "ERROR",
+          message:
+            errorData?.error?.message ??
+            "Failed to create API key. Please try again.",
+        });
         return;
       }
 
@@ -150,154 +310,56 @@ export function CreateApiKey() {
       const key = data.data?.key;
 
       if (!key) {
-        setStatus("error");
-        setErrorMessage("API key was not returned. Please try again.");
+        dispatch({
+          type: "ERROR",
+          message: "API key was not returned. Please try again.",
+        });
         return;
       }
 
-      setApiKey(key);
-      setStatus("success");
-      // Invalidate API keys query to refresh the list
+      dispatch({ type: "SUCCESS", apiKey: key });
       await queryClient.invalidateQueries({ queryKey: ["api-keys"] });
     } catch (err) {
-      setStatus("error");
-      setErrorMessage(
-        err instanceof Error
-          ? err.message
-          : "Failed to create API key. Please try again."
-      );
+      dispatch({
+        type: "ERROR",
+        message:
+          err instanceof Error
+            ? err.message
+            : "Failed to create API key. Please try again.",
+      });
     }
   };
 
-  const handleCopy = async () => {
-    if (!apiKey) {
-      return;
-    }
-
-    try {
-      await navigator.clipboard.writeText(apiKey);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    } catch {
-      // Fallback for older browsers
-      const textarea = document.createElement("textarea");
-      textarea.value = apiKey;
-      textarea.style.position = "fixed";
-      textarea.style.opacity = "0";
-      document.body.appendChild(textarea);
-      textarea.select();
-      try {
-        document.execCommand("copy");
-        setCopied(true);
-        setTimeout(() => setCopied(false), 2000);
-      } catch {
-        // Copy failed
-      }
-      document.body.removeChild(textarea);
-    }
+  const handleClose = () => {
+    setIsOpen(false);
+    // Reset form after dialog close animation
+    setTimeout(() => dispatch({ type: "RESET" }), 150);
   };
 
-  const handleDialogClose = (open: boolean) => {
-    setIsOpen(open);
-    // Reset error state when dialog is manually closed
-    if (!open && status === "error") {
-      setStatus("idle");
-      setErrorMessage("");
+  const handleOpenChange = (open: boolean) => {
+    if (open) {
+      setIsOpen(true);
+    } else {
+      handleClose();
     }
   };
 
   return (
-    <div className="contents">
-      <Dialog onOpenChange={handleDialogClose} open={isOpen}>
-        <DialogTrigger
-          render={
-            <Button onClick={() => setIsOpen(true)}>Create API Key</Button>
-          }
-        />
-        <DialogContent className="flex w-full max-w-lg! flex-col">
-          {status === "success" ? (
-            <>
-              <DialogHeader>
-                <DialogTitle>API Key Created</DialogTitle>
-              </DialogHeader>
-              <div className="space-y-2">
-                <Label className="font-medium text-sm" htmlFor="api-key">
-                  Your API Key
-                </Label>
-                <div className="relative">
-                  <Textarea
-                    className="min-h-[0px]! resize-none pr-20 font-mono text-sm"
-                    id="api-key"
-                    readOnly
-                    value={apiKey ?? ""}
-                  />
-                  <Button
-                    className="-translate-y-1/2 absolute top-1/2 right-2"
-                    onClick={handleCopy}
-                    size="sm"
-                    type="button"
-                    variant="outline"
-                  >
-                    {copied ? "Copied!" : "Copy"}
-                  </Button>
-                </div>
-                <p className="text-muted-foreground text-xs">
-                  You won't be able to view this API key again.
-                </p>
-              </div>
-              <DialogFooter>
-                <Button onClick={() => setIsOpen(false)}>
-                  I've saved my API key
-                </Button>
-              </DialogFooter>
-            </>
-          ) : (
-            <>
-              <DialogHeader>
-                <DialogTitle>Create API Key</DialogTitle>
-              </DialogHeader>
-              <div className="space-y-4">
-                {status === "error" && errorMessage && (
-                  <Alert variant="destructive">
-                    <AlertTitle>Error</AlertTitle>
-                    <AlertDescription>{errorMessage}</AlertDescription>
-                  </Alert>
-                )}
-                <div className="space-y-2">
-                  <Label htmlFor="name">Name</Label>
-                  <Input
-                    disabled={status === "loading"}
-                    id="name"
-                    onChange={(e) => {
-                      setName(e.target.value);
-                      // Clear error when user starts typing
-                      if (status === "error") {
-                        setStatus("idle");
-                        setErrorMessage("");
-                      }
-                    }}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" && name.trim()) {
-                        handleCreateApiKey();
-                      }
-                    }}
-                    placeholder="API Key Name"
-                    value={name}
-                  />
-                </div>
-              </div>
-              <DialogFooter>
-                <Button
-                  disabled={status === "loading" || !name.trim()}
-                  onClick={handleCreateApiKey}
-                >
-                  {status === "loading" ? "Creating..." : "Create API Key"}
-                </Button>
-              </DialogFooter>
-            </>
-          )}
-        </DialogContent>
-      </Dialog>
-    </div>
+    <Dialog onOpenChange={handleOpenChange} open={isOpen}>
+      <DialogTrigger
+        render={<Button onClick={() => setIsOpen(true)}>Create API Key</Button>}
+      />
+      <DialogContent className="flex w-full max-w-lg! flex-col">
+        {state.status === "success" && state.apiKey ? (
+          <ApiKeySuccessView apiKey={state.apiKey} onClose={handleClose} />
+        ) : (
+          <ApiKeyFormView
+            dispatch={dispatch}
+            onSubmit={handleSubmit}
+            state={state}
+          />
+        )}
+      </DialogContent>
+    </Dialog>
   );
 }

@@ -34,24 +34,40 @@ createOrganizationRoute.openapi(internalCreateOrganization, async (c) => {
     });
   }
 
-  const state = await auth.api.createOrganization({
-    body: {
-      name,
-      slug,
-      logo: logoData
-        ? `https://${process.env.NODE_ENV === "production" ? "cdn" : "cdn-dev"}.kayle.id/${logoData.key}`
-        : undefined,
-      userId: c.get("userId"),
-    },
-  });
+  try {
+    const state = await auth.api.createOrganization({
+      body: {
+        name,
+        slug,
+        logo: logoData
+          ? `https://${process.env.NODE_ENV === "production" ? "cdn" : "cdn-dev"}.kayle.id/${logoData.key}`
+          : undefined,
+        userId: c.get("userId"),
+      },
+    });
 
-  if (!state?.id) {
+    if (!state?.id) {
+      throw new Error("Failed to create organization — No ID returned");
+    }
+
+    return c.json(
+      {
+        data: { id: state.id },
+        error: null,
+      },
+      200
+    );
+  } catch (error) {
+    console.error("Failed to create organization", error);
     return c.json(
       {
         data: null,
         error: {
           code: "INTERNAL_SERVER_ERROR",
-          message: "Failed to create organization",
+          message:
+            error instanceof Error
+              ? error.message
+              : "Failed to create organization",
           hint: "Please try again in a few moments.",
           docs: "https://kayle.id/docs/api/errors#internal_server_error",
         } as const,
@@ -59,14 +75,6 @@ createOrganizationRoute.openapi(internalCreateOrganization, async (c) => {
       500
     );
   }
-
-  return c.json(
-    {
-      data: { id: state.id },
-      error: null,
-    },
-    200
-  );
 });
 
 export default createOrganizationRoute;

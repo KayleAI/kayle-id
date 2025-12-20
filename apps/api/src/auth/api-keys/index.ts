@@ -11,7 +11,7 @@ apiKeys.use(sessionMiddleware);
 
 apiKeys.route("/", listApiKeys);
 apiKeys.route("/", createApiKeyRoute);
-apiKeys.route("/:id", updateApiKeyRoute);
-apiKeys.route("/:id", deleteApiKeyRoute);
+apiKeys.route("/", updateApiKeyRoute);
+apiKeys.route("/", deleteApiKeyRoute);
 
 export default apiKeys;

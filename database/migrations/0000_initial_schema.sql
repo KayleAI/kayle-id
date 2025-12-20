@@ -210,3 +210,4 @@ CREATE INDEX "webhook_encryption_keys_webhook_endpoint_id_idx" ON "webhook_encry
 CREATE INDEX "webhook_encryption_keys_is_active_idx" ON "webhook_encryption_keys" USING btree ("is_active");--> statement-breakpoint
 CREATE INDEX "wh_endpoints_org_env_idx" ON "webhook_endpoints" USING btree ("organization_id","environment");--> statement-breakpoint
 CREATE INDEX "wh_endpoints_enabled_idx" ON "webhook_endpoints" USING btree ("enabled");
+ALTER TABLE "api_keys" ADD COLUMN "environment" text DEFAULT 'live' NOT NULL;

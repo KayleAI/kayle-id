@@ -134,7 +134,7 @@ export function SelectOrganizations() {
             disabled={isLoading !== null}
             nativeButton={false}
             render={
-              <Link to="/create-organization">Create new organization</Link>
+              <Link to="/organizations/create">Create new organization</Link>
             }
             variant="outline"
           >

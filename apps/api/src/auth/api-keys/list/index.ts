@@ -50,6 +50,7 @@ listApiKeys.openapi(internalListApiKeys, async (c) => {
         id: api_keys.id,
         name: api_keys.name,
         enabled: api_keys.enabled,
+        environment: api_keys.environment,
         permissions: api_keys.permissions,
         metadata: api_keys.metadata,
         createdAt: api_keys.createdAt,

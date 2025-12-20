@@ -12,7 +12,7 @@ export const internalCreateApiKey = createRoute({
         "application/json": {
           schema: z.object({
             name: z.string().min(1),
-            organizationId: z.string().min(1),
+            environment: z.enum(["live", "test"]).optional(),
             permissions: z.array(z.string()).optional(),
             metadata: z.record(z.string(), z.any()).optional(),
           }),

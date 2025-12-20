@@ -21,6 +21,9 @@ export const api_keys = pgTable(
     organizationId: uuid("organization_id")
       .notNull()
       .references(() => auth_organizations.id, { onDelete: "cascade" }),
+    environment: text({ enum: ["live", "test"] })
+      .default("live")
+      .notNull(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at")
       .defaultNow()
