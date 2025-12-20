@@ -1,11 +1,17 @@
 import { env } from "@kayle-id/config/env";
 import { db } from "@kayle-id/database/drizzle";
-import { redis } from "@kayle-id/database/redis";
+//import { redis } from "@kayle-id/database/redis";
 import { auth as authSchema } from "@kayle-id/database/schema";
+import {
+  auth_organization_members,
+  auth_organizations,
+} from "@kayle-id/database/schema/auth";
 import { type BetterAuthOptions, betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { customSession, openAPI, organization } from "better-auth/plugins";
+import { eq } from "drizzle-orm";
 import { magic } from "./magic";
+import type { Organization } from "./types";
 
 const user = {
   modelName: "auth_users",
@@ -93,7 +99,7 @@ export const auth = betterAuth({
   verification: {
     modelName: "auth_verifications",
   },
-  ...(process.env.NODE_ENV === "production"
+  /*...(process.env.NODE_ENV === "production"
     ? // Only enable secondary storage in production
       {
         secondaryStorage: {
@@ -110,18 +116,46 @@ export const auth = betterAuth({
           },
         },
       }
-    : {}),
-
+    : {}),*/
   plugins: [
     ...plugins,
     customSession(
       // biome-ignore lint/nursery/noShadow: this is fine
-      // biome-ignore lint/suspicious/useAwait: this is fine
       async ({ user, session }) => {
         // Extend the session with more fields
+        let activeOrganization: Organization | null = null;
+
+        const organizations: Organization[] = await db
+          .select({
+            id: auth_organizations.id,
+            name: auth_organizations.name,
+            slug: auth_organizations.slug,
+            logo: auth_organizations.logo,
+          })
+          .from(auth_organizations)
+          .innerJoin(
+            auth_organization_members,
+            eq(auth_organizations.id, auth_organization_members.organizationId)
+          )
+          .where(eq(auth_organization_members.userId, user.id));
+
+        if (session.activeOrganizationId) {
+          const foundOrg =
+            organizations.find((o) => o.id === session.activeOrganizationId) ??
+            organizations[0] ??
+            null;
+          activeOrganization = foundOrg ? { ...foundOrg } : null;
+        }
+
         return {
-          user,
-          session,
+          user: {
+            ...user,
+            organizations,
+          },
+          session: {
+            ...session,
+            activeOrganization,
+          },
         };
       },
       {

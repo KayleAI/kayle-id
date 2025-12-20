@@ -7,5 +7,13 @@
     "enabled": true,
     "head_sampling_rate": 1
   },
-  "compatibility_flags": ["nodejs_compat"]
+  "compatibility_flags": ["nodejs_compat"],
+  "r2_buckets": [
+    {
+      "binding": "STORAGE",
+      "bucket_name": "kayle-id-r2",
+      "preview_bucket_name": "kayle-id-r2-preview",
+      "remote": true
+    }
+  ]
 }

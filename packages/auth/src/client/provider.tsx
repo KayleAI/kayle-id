@@ -1,9 +1,11 @@
 import type { ReactNode } from "react";
 import { createContext, useContext, useEffect, useState } from "react";
 import { client } from "../client";
-import type { Session, User } from "../types";
+import type { Organization, Session, User } from "../types";
 
 type AuthContextType = {
+  activeOrganization: Organization | null;
+  organizations: Organization[];
   user: User | null;
   session: Session | null;
   status: "loading" | "authenticated" | "unauthenticated";
@@ -21,6 +23,9 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const [status, setStatus] = useState<
     "loading" | "authenticated" | "unauthenticated"
   >("loading");
+  const [activeOrganization, setActiveOrganization] =
+    useState<Organization | null>(null);
+  const [organizations, setOrganizations] = useState<Organization[]>([]);
   const { data, isPending, error, refetch } = client.useSession();
 
   // biome-ignore lint/suspicious/useAwait: this is fine
@@ -35,12 +40,16 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
     if (data) {
       setStatus("authenticated");
+      setActiveOrganization(data.session?.activeOrganization ?? null);
+      setOrganizations(data.user?.organizations ?? []);
     } else {
       setStatus("unauthenticated");
     }
   }, [data, isPending]);
 
   const value = {
+    activeOrganization,
+    organizations,
     status,
     session: data?.session ?? null,
     user: data?.user ?? null,

@@ -15,6 +15,9 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as AuthVerifyRouteImport } from './routes/_auth/verify'
 import { Route as AuthSignInRouteImport } from './routes/_auth/sign-in'
 import { Route as AppDashboardRouteImport } from './routes/_app/dashboard'
+import { Route as AppApiKeysRouteImport } from './routes/_app/api-keys'
+import { Route as AuthOrganizationsSelectRouteImport } from './routes/_auth/organizations/select'
+import { Route as AuthOrganizationsCreateRouteImport } from './routes/_auth/organizations/create'
 import { Route as ApiApiAuthSplatRouteImport } from './routes/_api/api/auth/$'
 
 const AuthRoute = AuthRouteImport.update({
@@ -45,6 +48,21 @@ const AppDashboardRoute = AppDashboardRouteImport.update({
   path: '/dashboard',
   getParentRoute: () => AppRoute,
 } as any)
+const AppApiKeysRoute = AppApiKeysRouteImport.update({
+  id: '/api-keys',
+  path: '/api-keys',
+  getParentRoute: () => AppRoute,
+} as any)
+const AuthOrganizationsSelectRoute = AuthOrganizationsSelectRouteImport.update({
+  id: '/organizations/select',
+  path: '/organizations/select',
+  getParentRoute: () => AuthRoute,
+} as any)
+const AuthOrganizationsCreateRoute = AuthOrganizationsCreateRouteImport.update({
+  id: '/organizations/create',
+  path: '/organizations/create',
+  getParentRoute: () => AuthRoute,
+} as any)
 const ApiApiAuthSplatRoute = ApiApiAuthSplatRouteImport.update({
   id: '/_api/api/auth/$',
   path: '/api/auth/$',
@@ -53,16 +71,22 @@ const ApiApiAuthSplatRoute = ApiApiAuthSplatRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/api-keys': typeof AppApiKeysRoute
   '/dashboard': typeof AppDashboardRoute
   '/sign-in': typeof AuthSignInRoute
   '/verify': typeof AuthVerifyRoute
+  '/organizations/create': typeof AuthOrganizationsCreateRoute
+  '/organizations/select': typeof AuthOrganizationsSelectRoute
   '/api/auth/$': typeof ApiApiAuthSplatRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/api-keys': typeof AppApiKeysRoute
   '/dashboard': typeof AppDashboardRoute
   '/sign-in': typeof AuthSignInRoute
   '/verify': typeof AuthVerifyRoute
+  '/organizations/create': typeof AuthOrganizationsCreateRoute
+  '/organizations/select': typeof AuthOrganizationsSelectRoute
   '/api/auth/$': typeof ApiApiAuthSplatRoute
 }
 export interface FileRoutesById {
@@ -70,24 +94,46 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/_app': typeof AppRouteWithChildren
   '/_auth': typeof AuthRouteWithChildren
+  '/_app/api-keys': typeof AppApiKeysRoute
   '/_app/dashboard': typeof AppDashboardRoute
   '/_auth/sign-in': typeof AuthSignInRoute
   '/_auth/verify': typeof AuthVerifyRoute
+  '/_auth/organizations/create': typeof AuthOrganizationsCreateRoute
+  '/_auth/organizations/select': typeof AuthOrganizationsSelectRoute
   '/_api/api/auth/$': typeof ApiApiAuthSplatRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/dashboard' | '/sign-in' | '/verify' | '/api/auth/$'
+  fullPaths:
+    | '/'
+    | '/api-keys'
+    | '/dashboard'
+    | '/sign-in'
+    | '/verify'
+    | '/organizations/create'
+    | '/organizations/select'
+    | '/api/auth/$'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/dashboard' | '/sign-in' | '/verify' | '/api/auth/$'
+  to:
+    | '/'
+    | '/api-keys'
+    | '/dashboard'
+    | '/sign-in'
+    | '/verify'
+    | '/organizations/create'
+    | '/organizations/select'
+    | '/api/auth/$'
   id:
     | '__root__'
     | '/'
     | '/_app'
     | '/_auth'
+    | '/_app/api-keys'
     | '/_app/dashboard'
     | '/_auth/sign-in'
     | '/_auth/verify'
+    | '/_auth/organizations/create'
+    | '/_auth/organizations/select'
     | '/_api/api/auth/$'
   fileRoutesById: FileRoutesById
 }
@@ -142,6 +188,27 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppDashboardRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/api-keys': {
+      id: '/_app/api-keys'
+      path: '/api-keys'
+      fullPath: '/api-keys'
+      preLoaderRoute: typeof AppApiKeysRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_auth/organizations/select': {
+      id: '/_auth/organizations/select'
+      path: '/organizations/select'
+      fullPath: '/organizations/select'
+      preLoaderRoute: typeof AuthOrganizationsSelectRouteImport
+      parentRoute: typeof AuthRoute
+    }
+    '/_auth/organizations/create': {
+      id: '/_auth/organizations/create'
+      path: '/organizations/create'
+      fullPath: '/organizations/create'
+      preLoaderRoute: typeof AuthOrganizationsCreateRouteImport
+      parentRoute: typeof AuthRoute
+    }
     '/_api/api/auth/$': {
       id: '/_api/api/auth/$'
       path: '/api/auth/$'
@@ -153,10 +220,12 @@ declare module '@tanstack/react-router' {
 }
 
 interface AppRouteChildren {
+  AppApiKeysRoute: typeof AppApiKeysRoute
   AppDashboardRoute: typeof AppDashboardRoute
 }
 
 const AppRouteChildren: AppRouteChildren = {
+  AppApiKeysRoute: AppApiKeysRoute,
   AppDashboardRoute: AppDashboardRoute,
 }
 
@@ -165,11 +234,15 @@ const AppRouteWithChildren = AppRoute._addFileChildren(AppRouteChildren)
 interface AuthRouteChildren {
   AuthSignInRoute: typeof AuthSignInRoute
   AuthVerifyRoute: typeof AuthVerifyRoute
+  AuthOrganizationsCreateRoute: typeof AuthOrganizationsCreateRoute
+  AuthOrganizationsSelectRoute: typeof AuthOrganizationsSelectRoute
 }
 
 const AuthRouteChildren: AuthRouteChildren = {
   AuthSignInRoute: AuthSignInRoute,
   AuthVerifyRoute: AuthVerifyRoute,
+  AuthOrganizationsCreateRoute: AuthOrganizationsCreateRoute,
+  AuthOrganizationsSelectRoute: AuthOrganizationsSelectRoute,
 }
 
 const AuthRouteWithChildren = AuthRoute._addFileChildren(AuthRouteChildren)

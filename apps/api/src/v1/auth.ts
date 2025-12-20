@@ -81,14 +81,14 @@ const authenticate = createMiddleware<{
   await next();
 });
 
-function unauthorized(c: Context) {
+export function unauthorized(c: Context) {
   return c.json(
     { error: { code: "UNAUTHORIZED", message: "Unauthorized" } },
     401
   );
 }
 
-function forbidden(c: Context) {
+export function forbidden(c: Context) {
   return c.json({ error: { code: "FORBIDDEN", message: "Forbidden" } }, 403);
 }
 

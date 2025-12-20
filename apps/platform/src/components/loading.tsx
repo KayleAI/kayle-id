@@ -1,9 +1,11 @@
 import { Layout } from "@kayleai/ui/layout";
 import { Logo } from "@kayleai/ui/logo";
 
-export function Loading() {
+export function Loading({ layout = false }: { layout?: boolean }) {
+  const Component = layout ? Layout : "div";
+
   return (
-    <Layout>
+    <Component>
       <div className="flex h-full flex-col items-center justify-center gap-6">
         <Logo className="text-foreground" variant="default" />
 
@@ -15,6 +17,6 @@ export function Loading() {
           </div>
         </div>
       </div>
-    </Layout>
+    </Component>
   );
 }
