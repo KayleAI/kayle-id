@@ -8,12 +8,6 @@ export const listSessions = createRoute({
   path: "/",
   request: {
     query: z.object({
-      environment: z
-        .enum(["live", "test"])
-        .optional()
-        .describe(
-          "Filter sessions by environment. If omitted, sessions from all environments are returned."
-        ),
       status: z
         .enum(["created", "in_progress", "completed", "expired", "cancelled"])
         .optional()

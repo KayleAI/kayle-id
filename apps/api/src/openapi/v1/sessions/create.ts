@@ -20,12 +20,6 @@ export const createSession = createRoute({
         "application/json": {
           schema: z
             .object({
-              environment: z
-                .enum(["live", "test"])
-                .optional()
-                .describe(
-                  'The environment to create the session in. Defaults to "live".'
-                ),
               redirect_url: z
                 .string()
                 .url()

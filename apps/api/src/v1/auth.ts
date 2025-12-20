@@ -34,6 +34,7 @@ const sessionMiddleware = createMiddleware<{
 const authenticate = createMiddleware<{
   Bindings: CloudflareBindings;
   Variables: {
+    environment: "live" | "test" | "either";
     type: "api" | "session";
     organizationId?: string;
   };
@@ -47,9 +48,15 @@ const authenticate = createMiddleware<{
       algorithm: "SHA256",
       secret: env.AUTH_SECRET,
     });
-    const [{ organizationId } = { organizationId: null }] = await db
+    const [
+      { organizationId, environment } = {
+        organizationId: null,
+        environment: "live",
+      },
+    ] = await db
       .select({
         organizationId: api_keys.organizationId,
+        environment: api_keys.environment,
       })
       .from(api_keys)
       .where(eq(api_keys.keyHash, keyHash))
@@ -60,6 +67,7 @@ const authenticate = createMiddleware<{
     }
 
     c.set("type", "api");
+    c.set("environment", environment);
     c.set("organizationId", organizationId);
 
     return await next();
@@ -77,6 +85,7 @@ const authenticate = createMiddleware<{
   }
 
   c.set("type", "session");
+  c.set("environment", "either");
   c.set("organizationId", response.session?.activeOrganizationId);
   await next();
 });

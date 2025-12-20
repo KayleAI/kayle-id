@@ -16,6 +16,7 @@ const sessions = new OpenAPIHono<{
   Bindings: CloudflareBindings;
   Variables: {
     organizationId: string;
+    environment: "live" | "test" | "either";
     type: "api" | "session";
   };
 }>();
@@ -71,10 +72,12 @@ sessions.openapi(listSessions, async (c) => {
 
   const limit = query.limit ?? 10;
 
+  const environment = c.get("environment");
+
   const where = and(
     eq(verification_sessions.organizationId, organizationId),
-    ...(query.environment
-      ? [eq(verification_sessions.environment, query.environment)]
+    ...(environment !== "either"
+      ? [eq(verification_sessions.environment, environment)]
       : []),
     ...(query.status ? [eq(verification_sessions.status, query.status)] : []),
     ...(query.created_from
@@ -154,7 +157,9 @@ sessions.openapi(createSession, async (c) => {
   const query = c.req.valid("query") ?? {};
   const body = c.req.valid("json");
 
-  const environment = body.environment ?? "live";
+  const baseEnvironment = c.get("environment");
+  const environment = baseEnvironment === "either" ? "live" : baseEnvironment;
+
   const redirectUrl = body.redirect_url ?? null;
 
   const id = generateId({ type: "vs", environment });
