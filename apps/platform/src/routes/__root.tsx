@@ -1,6 +1,7 @@
 import { AuthProvider } from "@kayle-id/auth/client/provider";
 import configCss from "@kayleai/ui/config.css?url";
 import uiCss from "@kayleai/ui/styles.css?url";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
   createRootRoute,
   HeadContent,
@@ -58,6 +59,8 @@ export const Route = createRootRoute({
 });
 
 function RootDocument() {
+  const queryClient = new QueryClient();
+
   return (
     <html lang="en">
       <head>
@@ -65,7 +68,9 @@ function RootDocument() {
       </head>
       <body className="font-sans antialiased">
         <AuthProvider>
-          <Outlet />
+          <QueryClientProvider client={queryClient}>
+            <Outlet />
+          </QueryClientProvider>
         </AuthProvider>
         <Scripts />
       </body>

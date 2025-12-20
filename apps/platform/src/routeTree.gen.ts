@@ -15,9 +15,10 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as AuthVerifyRouteImport } from './routes/_auth/verify'
 import { Route as AuthSignInRouteImport } from './routes/_auth/sign-in'
 import { Route as AppDashboardRouteImport } from './routes/_app/dashboard'
-import { Route as AppApiKeysRouteImport } from './routes/_app/api-keys'
+import { Route as AppApiKeysIndexRouteImport } from './routes/_app/api-keys/index'
 import { Route as AuthOrganizationsSelectRouteImport } from './routes/_auth/organizations/select'
 import { Route as AuthOrganizationsCreateRouteImport } from './routes/_auth/organizations/create'
+import { Route as AppApiKeysKeyRouteImport } from './routes/_app/api-keys/$key'
 import { Route as ApiApiAuthSplatRouteImport } from './routes/_api/api/auth/$'
 
 const AuthRoute = AuthRouteImport.update({
@@ -48,9 +49,9 @@ const AppDashboardRoute = AppDashboardRouteImport.update({
   path: '/dashboard',
   getParentRoute: () => AppRoute,
 } as any)
-const AppApiKeysRoute = AppApiKeysRouteImport.update({
-  id: '/api-keys',
-  path: '/api-keys',
+const AppApiKeysIndexRoute = AppApiKeysIndexRouteImport.update({
+  id: '/api-keys/',
+  path: '/api-keys/',
   getParentRoute: () => AppRoute,
 } as any)
 const AuthOrganizationsSelectRoute = AuthOrganizationsSelectRouteImport.update({
@@ -63,6 +64,11 @@ const AuthOrganizationsCreateRoute = AuthOrganizationsCreateRouteImport.update({
   path: '/organizations/create',
   getParentRoute: () => AuthRoute,
 } as any)
+const AppApiKeysKeyRoute = AppApiKeysKeyRouteImport.update({
+  id: '/api-keys/$key',
+  path: '/api-keys/$key',
+  getParentRoute: () => AppRoute,
+} as any)
 const ApiApiAuthSplatRoute = ApiApiAuthSplatRouteImport.update({
   id: '/_api/api/auth/$',
   path: '/api/auth/$',
@@ -71,22 +77,24 @@ const ApiApiAuthSplatRoute = ApiApiAuthSplatRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
-  '/api-keys': typeof AppApiKeysRoute
   '/dashboard': typeof AppDashboardRoute
   '/sign-in': typeof AuthSignInRoute
   '/verify': typeof AuthVerifyRoute
+  '/api-keys/$key': typeof AppApiKeysKeyRoute
   '/organizations/create': typeof AuthOrganizationsCreateRoute
   '/organizations/select': typeof AuthOrganizationsSelectRoute
+  '/api-keys': typeof AppApiKeysIndexRoute
   '/api/auth/$': typeof ApiApiAuthSplatRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
-  '/api-keys': typeof AppApiKeysRoute
   '/dashboard': typeof AppDashboardRoute
   '/sign-in': typeof AuthSignInRoute
   '/verify': typeof AuthVerifyRoute
+  '/api-keys/$key': typeof AppApiKeysKeyRoute
   '/organizations/create': typeof AuthOrganizationsCreateRoute
   '/organizations/select': typeof AuthOrganizationsSelectRoute
+  '/api-keys': typeof AppApiKeysIndexRoute
   '/api/auth/$': typeof ApiApiAuthSplatRoute
 }
 export interface FileRoutesById {
@@ -94,46 +102,50 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/_app': typeof AppRouteWithChildren
   '/_auth': typeof AuthRouteWithChildren
-  '/_app/api-keys': typeof AppApiKeysRoute
   '/_app/dashboard': typeof AppDashboardRoute
   '/_auth/sign-in': typeof AuthSignInRoute
   '/_auth/verify': typeof AuthVerifyRoute
+  '/_app/api-keys/$key': typeof AppApiKeysKeyRoute
   '/_auth/organizations/create': typeof AuthOrganizationsCreateRoute
   '/_auth/organizations/select': typeof AuthOrganizationsSelectRoute
+  '/_app/api-keys/': typeof AppApiKeysIndexRoute
   '/_api/api/auth/$': typeof ApiApiAuthSplatRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
-    | '/api-keys'
     | '/dashboard'
     | '/sign-in'
     | '/verify'
+    | '/api-keys/$key'
     | '/organizations/create'
     | '/organizations/select'
+    | '/api-keys'
     | '/api/auth/$'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
-    | '/api-keys'
     | '/dashboard'
     | '/sign-in'
     | '/verify'
+    | '/api-keys/$key'
     | '/organizations/create'
     | '/organizations/select'
+    | '/api-keys'
     | '/api/auth/$'
   id:
     | '__root__'
     | '/'
     | '/_app'
     | '/_auth'
-    | '/_app/api-keys'
     | '/_app/dashboard'
     | '/_auth/sign-in'
     | '/_auth/verify'
+    | '/_app/api-keys/$key'
     | '/_auth/organizations/create'
     | '/_auth/organizations/select'
+    | '/_app/api-keys/'
     | '/_api/api/auth/$'
   fileRoutesById: FileRoutesById
 }
@@ -188,11 +200,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppDashboardRouteImport
       parentRoute: typeof AppRoute
     }
-    '/_app/api-keys': {
-      id: '/_app/api-keys'
+    '/_app/api-keys/': {
+      id: '/_app/api-keys/'
       path: '/api-keys'
       fullPath: '/api-keys'
-      preLoaderRoute: typeof AppApiKeysRouteImport
+      preLoaderRoute: typeof AppApiKeysIndexRouteImport
       parentRoute: typeof AppRoute
     }
     '/_auth/organizations/select': {
@@ -209,6 +221,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthOrganizationsCreateRouteImport
       parentRoute: typeof AuthRoute
     }
+    '/_app/api-keys/$key': {
+      id: '/_app/api-keys/$key'
+      path: '/api-keys/$key'
+      fullPath: '/api-keys/$key'
+      preLoaderRoute: typeof AppApiKeysKeyRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_api/api/auth/$': {
       id: '/_api/api/auth/$'
       path: '/api/auth/$'
@@ -220,13 +239,15 @@ declare module '@tanstack/react-router' {
 }
 
 interface AppRouteChildren {
-  AppApiKeysRoute: typeof AppApiKeysRoute
   AppDashboardRoute: typeof AppDashboardRoute
+  AppApiKeysKeyRoute: typeof AppApiKeysKeyRoute
+  AppApiKeysIndexRoute: typeof AppApiKeysIndexRoute
 }
 
 const AppRouteChildren: AppRouteChildren = {
-  AppApiKeysRoute: AppApiKeysRoute,
   AppDashboardRoute: AppDashboardRoute,
+  AppApiKeysKeyRoute: AppApiKeysKeyRoute,
+  AppApiKeysIndexRoute: AppApiKeysIndexRoute,
 }
 
 const AppRouteWithChildren = AppRoute._addFileChildren(AppRouteChildren)

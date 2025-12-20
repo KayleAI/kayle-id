@@ -14,8 +14,9 @@
   "dependencies": {
     "@cloudflare/vite-plugin": "1.19.0",
     "@kayle-id/auth": "*",
-    "@kayleai/ui": "0.0.5",
+    "@kayleai/ui": "0.0.6",
     "@tailwindcss/vite": "4.1.17",
+    "@tanstack/react-query": "5.90.12",
     "@tanstack/react-router": "1.141.6",
     "@tanstack/react-router-ssr-query": "1.141.6",
     "@tanstack/react-start": "1.141.7",

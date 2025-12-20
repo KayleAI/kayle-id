@@ -23,7 +23,7 @@ function AppLayout() {
   }
 
   return (
-    <Layout>
+    <Layout notCenter>
       <Outlet />
     </Layout>
   );

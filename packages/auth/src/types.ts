@@ -9,3 +9,14 @@ export type Organization = {
   slug: string;
   logo: string | null;
 };
+
+export type ApiKey = {
+  id: string;
+  name: string;
+  enabled: boolean;
+  permissions: string[];
+  metadata: Record<string, unknown>;
+  createdAt: string;
+  updatedAt: string;
+  requestCount: number;
+};
