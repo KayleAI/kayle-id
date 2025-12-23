@@ -4,6 +4,7 @@
   "type": "module",
   "private": true,
   "devDependencies": {
+    "@cloudflare/workers-types": "4.20251223.0",
     "@t3-oss/env-core": "0.13.8",
     "@types/bun": "latest",
     "dotenv": "17.2.3",

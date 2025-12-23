@@ -1,3 +1,4 @@
+import type { R2Bucket } from "@cloudflare/workers-types";
 import { createEnv } from "@t3-oss/env-core";
 import { config } from "dotenv";
 import { z } from "zod";
@@ -31,6 +32,9 @@ export const env = createEnv({
     AUTH_SECRET: z.string().min(1),
     REDIS_URL: z.string().min(1),
     REDIS_TOKEN: z.string().min(1),
+
+    // Cloudflare Specific Variables
+    STORAGE: z.custom<R2Bucket>(),
   },
 
   shared: {

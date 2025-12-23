@@ -30,8 +30,8 @@ describe("Handling API Keys", () => {
     // biome-ignore lint/performance/useTopLevelRegex: this is test regex
     expect(apiKey).toMatch(/^kk_/);
 
-    // Assert that the API key is 32 + 3 (kk_) = 35 characters long
-    expect(apiKey.length).toBe(35);
+    // Assert that the API key is 32 + 3 (kk_) + 5 (test_ or live_) = 40 characters long
+    expect(apiKey.length).toBe(40);
   });
 
   /**

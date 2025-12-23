@@ -1,6 +1,6 @@
-import { env } from "cloudflare:workers";
 import { OpenAPIHono } from "@hono/zod-openapi";
 import { auth } from "@kayle-id/auth/server";
+import { env } from "@kayle-id/config/env";
 import { internalCreateOrganization } from "./openapi";
 
 const createOrganizationRoute = new OpenAPIHono<{
