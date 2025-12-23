@@ -27,6 +27,31 @@ app.route("/v1/auth", auth);
 app.route("/v1/verify", verify);
 app.route("/v1", v1);
 
+// R2 Emulation — Only for development & testing
+if (process.env.NODE_ENV !== "production") {
+  app.get("/r2/*", async (c) => {
+    const key = c.req.path.substring("/r2/".length);
+    const file = await c.env.STORAGE.get(key);
+
+    if (!file) {
+      return c.json(
+        {
+          error: "file not found",
+          status: 404,
+        },
+        404
+      );
+    }
+
+    const headers = new Headers();
+    headers.append("etag", file.httpEtag);
+
+    return new Response(file.body, {
+      headers,
+    });
+  });
+}
+
 // OpenAPI documentation
 app.openAPIRegistry.registerComponent("securitySchemes", "bearerAuth", {
   type: "http",

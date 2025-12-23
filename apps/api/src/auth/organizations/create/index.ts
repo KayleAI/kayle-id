@@ -14,7 +14,7 @@ createOrganizationRoute.openapi(internalCreateOrganization, async (c) => {
   let logoData: R2Object | null = null;
 
   if (logo) {
-    // Convert base64 string to Blob
+    // Convert base64 string to Uint8Array
     const base64Data = logo.data;
     const contentType = logo.contentType;
     const binaryString = atob(base64Data);
@@ -22,12 +22,11 @@ createOrganizationRoute.openapi(internalCreateOrganization, async (c) => {
     for (let i = 0; i < binaryString.length; i++) {
       bytes[i] = binaryString.charCodeAt(i);
     }
-    const blob = new Blob([bytes], { type: contentType });
 
     // Generate a unique key for the logo
     const logoKey = `logos/${crypto.randomUUID()}`;
 
-    logoData = await env.STORAGE.put(logoKey, blob, {
+    logoData = await env.STORAGE.put(logoKey, bytes, {
       httpMetadata: {
         contentType,
       },
@@ -39,9 +38,14 @@ createOrganizationRoute.openapi(internalCreateOrganization, async (c) => {
       body: {
         name,
         slug,
-        logo: logoData
-          ? `https://${process.env.NODE_ENV === "production" ? "cdn" : "cdn-dev"}.kayle.id/${logoData.key}`
-          : undefined,
+        ...(logoData
+          ? {
+              logo:
+                process.env.NODE_ENV === "production"
+                  ? `https://cdn.kayle.id/${logoData.key}`
+                  : `http://127.0.0.1:8787/r2/${logoData.key}`,
+            }
+          : {}),
         userId: c.get("userId"),
       },
     });
