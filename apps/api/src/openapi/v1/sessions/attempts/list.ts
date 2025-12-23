@@ -11,7 +11,7 @@ export const listSessionAttempts = createRoute({
         .string()
         .optional()
         .describe(
-          "Filter attempts by verification session ID (e.g. vs_live_...). At least one of `session_id` or `status` must be provided."
+          "Filter attempts by verification session ID (e.g. vs_live_...)."
         ),
       status: z
         .enum(["in_progress", "succeeded", "failed", "cancelled"])

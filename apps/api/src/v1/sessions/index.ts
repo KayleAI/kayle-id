@@ -21,8 +21,11 @@ const sessions = new OpenAPIHono<{
   };
 }>();
 
-function buildVerificationUrl(c: { env: CloudflareBindings }, id: string) {
-  const base = c.env.PUBLIC_AUTH_URL ?? "https://verify.kayle.id";
+function buildVerificationUrl(id: string) {
+  const base =
+    process.env.NODE_ENV === "production"
+      ? "https://verify.kayle.id"
+      : "https://localhost:2999";
   const url = new URL(`/verify/session/${id}`, base);
 
   return url.toString();
@@ -131,7 +134,7 @@ sessions.openapi(listSessions, async (c) => {
   const data = pageRows.map((row) =>
     mapSessionRowToResponse({
       row,
-      verificationUrl: buildVerificationUrl(c, row.id),
+      verificationUrl: buildVerificationUrl(row.id),
       attempts: query.include_attempts
         ? (attemptsBySessionId[row.id] ?? [])
         : undefined,
@@ -177,7 +180,7 @@ sessions.openapi(createSession, async (c) => {
 
   const data = mapSessionRowToResponse({
     row: created,
-    verificationUrl: buildVerificationUrl(c, created.id),
+    verificationUrl: buildVerificationUrl(created.id),
     attempts: query.include_attempts ? [] : undefined,
   });
 
@@ -232,7 +235,7 @@ sessions.openapi(getSession, async (c) => {
 
   const data = mapSessionRowToResponse({
     row,
-    verificationUrl: buildVerificationUrl(c, row.id),
+    verificationUrl: buildVerificationUrl(row.id),
     attempts,
   });
 
@@ -310,24 +313,7 @@ sessions.openapi(cancelSession, async (c) => {
     });
   }
 
-  const [updated] = await db
-    .select()
-    .from(verification_sessions)
-    .where(eq(verification_sessions.id, row.id))
-    .limit(1);
-
-  const data = mapSessionRowToResponse({
-    row: updated,
-    verificationUrl: buildVerificationUrl(c, updated.id),
-  });
-
-  return c.json(
-    {
-      data,
-      error: null,
-    },
-    200
-  );
+  return c.body(null, 204);
 });
 
 export default sessions;

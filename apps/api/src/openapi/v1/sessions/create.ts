@@ -8,7 +8,7 @@ export const createSession = createRoute({
   path: "/",
   request: {
     query: z.object({
-      include_attempts: z
+      include_attempts: z.coerce
         .boolean()
         .optional()
         .describe(
@@ -31,6 +31,7 @@ export const createSession = createRoute({
             .openapi("CreateSessionRequest"),
         },
       },
+      required: false,
     },
   },
   tags: ["Sessions"],

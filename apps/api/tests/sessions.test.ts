@@ -1,21 +1,124 @@
-import { describe, expect, test } from "bun:test";
-import sessions from "@/v1/sessions";
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import type z from "zod";
+import type { Session } from "@/openapi/models/sessions";
+import v1 from "@/v1";
+import { setup, TEST_DATA, teardown } from "./setup.test";
+
+beforeAll(async () => {
+  await setup();
+});
+
+afterAll(async () => {
+  await teardown();
+});
+
+let createdSessionId: string | undefined;
 
 describe("/v1/sessions", () => {
+  test.serial("Can create a session", async () => {
+    const response = await v1.request("/sessions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${TEST_DATA?.apiKey}`,
+      },
+    });
+
+    const { data } = (await response.json()) as {
+      data: z.infer<typeof Session>;
+    };
+
+    // Assert that we have a successful response
+    expect(response.status).toBe(200);
+
+    // Assert that we have a session
+    expect(data).toBeDefined();
+    expect(data?.id).toBeDefined();
+    expect(data?.status).toBe("created");
+    // we expect redirect_url to be null because we didn't provide it
+    // by not providing it, when the session is completed, it will
+    //  default to the Kayle ID's success page
+    expect(data?.redirect_url).toBeNull();
+    expect(data?.verification_url).toBeDefined();
+
+    // Store the created session ID for later use
+    createdSessionId = data.id;
+  });
+
   /**
    * Test whether we can receive a list of sessions
    */
-  test.todo("GET /", async () => {
-    const response = await sessions.request("/", {
+  test.serial("Can list sessions", async () => {
+    const response = await v1.request("/sessions", {
       method: "GET",
       headers: {
-        "Content-Type": "application/json",
-        // TODO: Use a test API key
-        Authorization: `Bearer ${process.env.TEST_API_KEY}`,
+        Authorization: `Bearer ${TEST_DATA?.apiKey}`,
       },
     });
 
     // Assert that we have a successful response
     expect(response.status).toBe(200);
+
+    const { data } = (await response.json()) as {
+      data: z.infer<typeof Session>[];
+    };
+
+    // Assert that we have a session
+    expect(data).toBeDefined();
+    expect(data?.length).toBeGreaterThan(0);
+    expect(data?.[0]?.id).toBeDefined();
+    expect(data?.[0]?.status).toBe("created");
+
+    // Assert that the created session is in the list
+    expect(data?.some((session) => session.id === createdSessionId)).toBe(true);
+  });
+
+  test.serial("Can get a session by ID", async () => {
+    if (!createdSessionId) {
+      throw new Error("Created session ID is not defined");
+    }
+
+    const response = await v1.request(`/sessions/${createdSessionId}`, {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${TEST_DATA?.apiKey}`,
+      },
+    });
+
+    // Assert that we have a successful response
+    expect(response.status).toBe(200);
+
+    const { data } = (await response.json()) as {
+      data: z.infer<typeof Session>;
+    };
+
+    // Assert that the session is returned
+    expect(data?.id).toBe(createdSessionId);
+  });
+
+  test.serial("Can cancel a session by ID", async () => {
+    const response = await v1.request(`/sessions/${createdSessionId}/cancel`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${TEST_DATA?.apiKey}`,
+      },
+    });
+
+    // Assert that we have a successful response
+    expect(response.status).toBe(204);
+
+    // Assert that the session is cancelled
+    const updatedSession = await v1.request(`/sessions/${createdSessionId}`, {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${TEST_DATA?.apiKey}`,
+      },
+    });
+
+    const { data } = (await updatedSession.json()) as {
+      data: z.infer<typeof Session>;
+    };
+
+    // Assert that the session is cancelled
+    expect(data?.status).toBe("cancelled");
   });
 });
