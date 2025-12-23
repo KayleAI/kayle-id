@@ -28,9 +28,8 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const [organizations, setOrganizations] = useState<Organization[]>([]);
   const { data, isPending, error, refetch } = client.useSession();
 
-  // biome-ignore lint/suspicious/useAwait: this is fine
   async function refresh() {
-    refetch();
+    await refetch();
   }
 
   useEffect(() => {
