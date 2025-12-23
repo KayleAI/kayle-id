@@ -8,7 +8,7 @@ export const Route = createFileRoute("/_auth/organizations/select")({
 });
 
 function SelectOrganizationLayout() {
-  const { status, user } = useAuth();
+  const { status, organizations } = useAuth();
 
   if (status === "loading") {
     return <Loading />;
@@ -18,7 +18,7 @@ function SelectOrganizationLayout() {
     return <Navigate to="/sign-in" />;
   }
 
-  if (!user?.organizations.length) {
+  if (!organizations.length) {
     return <Navigate to="/organizations/create" />;
   }
 

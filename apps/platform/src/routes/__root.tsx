@@ -62,11 +62,11 @@ function RootDocument() {
   const queryClient = new QueryClient();
 
   return (
-    <html lang="en">
+    <html className="overscroll-none" lang="en">
       <head>
         <HeadContent />
       </head>
-      <body className="font-sans antialiased">
+      <body className="overscroll-none font-sans antialiased">
         <AuthProvider>
           <QueryClientProvider client={queryClient}>
             <Outlet />

@@ -1,14 +1,15 @@
 import { useAuth } from "@kayle-id/auth/client/provider";
-import { Layout } from "@kayleai/ui/layout";
+import { Toaster } from "@kayleai/ui/sonner";
 import { createFileRoute, Navigate, Outlet } from "@tanstack/react-router";
+import { AppLayout } from "@/components/app-layout";
 import { Loading } from "@/components/loading";
 
 export const Route = createFileRoute("/_app")({
-  component: AppLayout,
+  component: AppLayoutRoute,
 });
 
-function AppLayout() {
-  const { status, session } = useAuth();
+function AppLayoutRoute() {
+  const { status, activeOrganization } = useAuth();
 
   if (status === "loading") {
     return <Loading layout />;
@@ -18,13 +19,14 @@ function AppLayout() {
     return <Navigate search={{ email: undefined }} to="/sign-in" />;
   }
 
-  if (!session?.activeOrganization) {
+  if (!activeOrganization) {
     return <Navigate to="/organizations/select" />;
   }
 
   return (
-    <Layout notCenter>
+    <AppLayout>
       <Outlet />
-    </Layout>
+      <Toaster />
+    </AppLayout>
   );
 }

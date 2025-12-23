@@ -40,8 +40,8 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
     if (data) {
       setStatus("authenticated");
-      setActiveOrganization(data.session?.activeOrganization ?? null);
-      setOrganizations(data.user?.organizations ?? []);
+      setActiveOrganization(data?.activeOrganization ?? null);
+      setOrganizations(data?.organizations ?? []);
     } else {
       setStatus("unauthenticated");
     }

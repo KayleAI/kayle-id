@@ -14,7 +14,7 @@
   "dependencies": {
     "@cloudflare/vite-plugin": "1.19.0",
     "@kayle-id/auth": "*",
-    "@kayleai/ui": "0.0.6",
+    "@kayleai/ui": "0.0.7",
     "@tailwindcss/vite": "4.1.17",
     "@tanstack/react-query": "5.90.12",
     "@tanstack/react-router": "1.141.6",
@@ -24,6 +24,8 @@
     "lucide-react": "0.562.0",
     "react": "19.2.0",
     "react-dom": "19.2.0",
+    "react-haiku": "2.4.1",
+    "sonner": "2.0.7",
     "tailwindcss": "4.1.17",
     "vite-tsconfig-paths": "5.1.4"
   },

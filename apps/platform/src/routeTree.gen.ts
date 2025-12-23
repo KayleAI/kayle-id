@@ -13,12 +13,17 @@ import { Route as AuthRouteImport } from './routes/_auth'
 import { Route as AppRouteImport } from './routes/_app'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AuthVerifyRouteImport } from './routes/_auth/verify'
+import { Route as AuthSignOutRouteImport } from './routes/_auth/sign-out'
 import { Route as AuthSignInRouteImport } from './routes/_auth/sign-in'
 import { Route as AppDashboardRouteImport } from './routes/_app/dashboard'
+import { Route as AuthAccountIndexRouteImport } from './routes/_auth/account/index'
 import { Route as AppApiKeysIndexRouteImport } from './routes/_app/api-keys/index'
 import { Route as AuthOrganizationsSelectRouteImport } from './routes/_auth/organizations/select'
 import { Route as AuthOrganizationsCreateRouteImport } from './routes/_auth/organizations/create'
+import { Route as AuthAccountSettingsRouteImport } from './routes/_auth/account/settings'
 import { Route as AppApiKeysKeyRouteImport } from './routes/_app/api-keys/$key'
+import { Route as AuthOrganizationsActiveSettingsRouteImport } from './routes/_auth/organizations/_active/settings'
+import { Route as AuthOrganizationsActiveMembersRouteImport } from './routes/_auth/organizations/_active/members'
 import { Route as ApiApiAuthSplatRouteImport } from './routes/_api/api/auth/$'
 
 const AuthRoute = AuthRouteImport.update({
@@ -39,6 +44,11 @@ const AuthVerifyRoute = AuthVerifyRouteImport.update({
   path: '/verify',
   getParentRoute: () => AuthRoute,
 } as any)
+const AuthSignOutRoute = AuthSignOutRouteImport.update({
+  id: '/sign-out',
+  path: '/sign-out',
+  getParentRoute: () => AuthRoute,
+} as any)
 const AuthSignInRoute = AuthSignInRouteImport.update({
   id: '/sign-in',
   path: '/sign-in',
@@ -48,6 +58,11 @@ const AppDashboardRoute = AppDashboardRouteImport.update({
   id: '/dashboard',
   path: '/dashboard',
   getParentRoute: () => AppRoute,
+} as any)
+const AuthAccountIndexRoute = AuthAccountIndexRouteImport.update({
+  id: '/account/',
+  path: '/account/',
+  getParentRoute: () => AuthRoute,
 } as any)
 const AppApiKeysIndexRoute = AppApiKeysIndexRouteImport.update({
   id: '/api-keys/',
@@ -64,11 +79,28 @@ const AuthOrganizationsCreateRoute = AuthOrganizationsCreateRouteImport.update({
   path: '/organizations/create',
   getParentRoute: () => AuthRoute,
 } as any)
+const AuthAccountSettingsRoute = AuthAccountSettingsRouteImport.update({
+  id: '/account/settings',
+  path: '/account/settings',
+  getParentRoute: () => AuthRoute,
+} as any)
 const AppApiKeysKeyRoute = AppApiKeysKeyRouteImport.update({
   id: '/api-keys/$key',
   path: '/api-keys/$key',
   getParentRoute: () => AppRoute,
 } as any)
+const AuthOrganizationsActiveSettingsRoute =
+  AuthOrganizationsActiveSettingsRouteImport.update({
+    id: '/organizations/_active/settings',
+    path: '/organizations/settings',
+    getParentRoute: () => AuthRoute,
+  } as any)
+const AuthOrganizationsActiveMembersRoute =
+  AuthOrganizationsActiveMembersRouteImport.update({
+    id: '/organizations/_active/members',
+    path: '/organizations/members',
+    getParentRoute: () => AuthRoute,
+  } as any)
 const ApiApiAuthSplatRoute = ApiApiAuthSplatRouteImport.update({
   id: '/_api/api/auth/$',
   path: '/api/auth/$',
@@ -79,23 +111,33 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/dashboard': typeof AppDashboardRoute
   '/sign-in': typeof AuthSignInRoute
+  '/sign-out': typeof AuthSignOutRoute
   '/verify': typeof AuthVerifyRoute
   '/api-keys/$key': typeof AppApiKeysKeyRoute
+  '/account/settings': typeof AuthAccountSettingsRoute
   '/organizations/create': typeof AuthOrganizationsCreateRoute
   '/organizations/select': typeof AuthOrganizationsSelectRoute
   '/api-keys': typeof AppApiKeysIndexRoute
+  '/account': typeof AuthAccountIndexRoute
   '/api/auth/$': typeof ApiApiAuthSplatRoute
+  '/organizations/members': typeof AuthOrganizationsActiveMembersRoute
+  '/organizations/settings': typeof AuthOrganizationsActiveSettingsRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/dashboard': typeof AppDashboardRoute
   '/sign-in': typeof AuthSignInRoute
+  '/sign-out': typeof AuthSignOutRoute
   '/verify': typeof AuthVerifyRoute
   '/api-keys/$key': typeof AppApiKeysKeyRoute
+  '/account/settings': typeof AuthAccountSettingsRoute
   '/organizations/create': typeof AuthOrganizationsCreateRoute
   '/organizations/select': typeof AuthOrganizationsSelectRoute
   '/api-keys': typeof AppApiKeysIndexRoute
+  '/account': typeof AuthAccountIndexRoute
   '/api/auth/$': typeof ApiApiAuthSplatRoute
+  '/organizations/members': typeof AuthOrganizationsActiveMembersRoute
+  '/organizations/settings': typeof AuthOrganizationsActiveSettingsRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -104,12 +146,17 @@ export interface FileRoutesById {
   '/_auth': typeof AuthRouteWithChildren
   '/_app/dashboard': typeof AppDashboardRoute
   '/_auth/sign-in': typeof AuthSignInRoute
+  '/_auth/sign-out': typeof AuthSignOutRoute
   '/_auth/verify': typeof AuthVerifyRoute
   '/_app/api-keys/$key': typeof AppApiKeysKeyRoute
+  '/_auth/account/settings': typeof AuthAccountSettingsRoute
   '/_auth/organizations/create': typeof AuthOrganizationsCreateRoute
   '/_auth/organizations/select': typeof AuthOrganizationsSelectRoute
   '/_app/api-keys/': typeof AppApiKeysIndexRoute
+  '/_auth/account/': typeof AuthAccountIndexRoute
   '/_api/api/auth/$': typeof ApiApiAuthSplatRoute
+  '/_auth/organizations/_active/members': typeof AuthOrganizationsActiveMembersRoute
+  '/_auth/organizations/_active/settings': typeof AuthOrganizationsActiveSettingsRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -117,23 +164,33 @@ export interface FileRouteTypes {
     | '/'
     | '/dashboard'
     | '/sign-in'
+    | '/sign-out'
     | '/verify'
     | '/api-keys/$key'
+    | '/account/settings'
     | '/organizations/create'
     | '/organizations/select'
     | '/api-keys'
+    | '/account'
     | '/api/auth/$'
+    | '/organizations/members'
+    | '/organizations/settings'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
     | '/dashboard'
     | '/sign-in'
+    | '/sign-out'
     | '/verify'
     | '/api-keys/$key'
+    | '/account/settings'
     | '/organizations/create'
     | '/organizations/select'
     | '/api-keys'
+    | '/account'
     | '/api/auth/$'
+    | '/organizations/members'
+    | '/organizations/settings'
   id:
     | '__root__'
     | '/'
@@ -141,12 +198,17 @@ export interface FileRouteTypes {
     | '/_auth'
     | '/_app/dashboard'
     | '/_auth/sign-in'
+    | '/_auth/sign-out'
     | '/_auth/verify'
     | '/_app/api-keys/$key'
+    | '/_auth/account/settings'
     | '/_auth/organizations/create'
     | '/_auth/organizations/select'
     | '/_app/api-keys/'
+    | '/_auth/account/'
     | '/_api/api/auth/$'
+    | '/_auth/organizations/_active/members'
+    | '/_auth/organizations/_active/settings'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -186,6 +248,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthVerifyRouteImport
       parentRoute: typeof AuthRoute
     }
+    '/_auth/sign-out': {
+      id: '/_auth/sign-out'
+      path: '/sign-out'
+      fullPath: '/sign-out'
+      preLoaderRoute: typeof AuthSignOutRouteImport
+      parentRoute: typeof AuthRoute
+    }
     '/_auth/sign-in': {
       id: '/_auth/sign-in'
       path: '/sign-in'
@@ -199,6 +268,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/dashboard'
       preLoaderRoute: typeof AppDashboardRouteImport
       parentRoute: typeof AppRoute
+    }
+    '/_auth/account/': {
+      id: '/_auth/account/'
+      path: '/account'
+      fullPath: '/account'
+      preLoaderRoute: typeof AuthAccountIndexRouteImport
+      parentRoute: typeof AuthRoute
     }
     '/_app/api-keys/': {
       id: '/_app/api-keys/'
@@ -221,12 +297,33 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthOrganizationsCreateRouteImport
       parentRoute: typeof AuthRoute
     }
+    '/_auth/account/settings': {
+      id: '/_auth/account/settings'
+      path: '/account/settings'
+      fullPath: '/account/settings'
+      preLoaderRoute: typeof AuthAccountSettingsRouteImport
+      parentRoute: typeof AuthRoute
+    }
     '/_app/api-keys/$key': {
       id: '/_app/api-keys/$key'
       path: '/api-keys/$key'
       fullPath: '/api-keys/$key'
       preLoaderRoute: typeof AppApiKeysKeyRouteImport
       parentRoute: typeof AppRoute
+    }
+    '/_auth/organizations/_active/settings': {
+      id: '/_auth/organizations/_active/settings'
+      path: '/organizations/settings'
+      fullPath: '/organizations/settings'
+      preLoaderRoute: typeof AuthOrganizationsActiveSettingsRouteImport
+      parentRoute: typeof AuthRoute
+    }
+    '/_auth/organizations/_active/members': {
+      id: '/_auth/organizations/_active/members'
+      path: '/organizations/members'
+      fullPath: '/organizations/members'
+      preLoaderRoute: typeof AuthOrganizationsActiveMembersRouteImport
+      parentRoute: typeof AuthRoute
     }
     '/_api/api/auth/$': {
       id: '/_api/api/auth/$'
@@ -254,16 +351,26 @@ const AppRouteWithChildren = AppRoute._addFileChildren(AppRouteChildren)
 
 interface AuthRouteChildren {
   AuthSignInRoute: typeof AuthSignInRoute
+  AuthSignOutRoute: typeof AuthSignOutRoute
   AuthVerifyRoute: typeof AuthVerifyRoute
+  AuthAccountSettingsRoute: typeof AuthAccountSettingsRoute
   AuthOrganizationsCreateRoute: typeof AuthOrganizationsCreateRoute
   AuthOrganizationsSelectRoute: typeof AuthOrganizationsSelectRoute
+  AuthAccountIndexRoute: typeof AuthAccountIndexRoute
+  AuthOrganizationsActiveMembersRoute: typeof AuthOrganizationsActiveMembersRoute
+  AuthOrganizationsActiveSettingsRoute: typeof AuthOrganizationsActiveSettingsRoute
 }
 
 const AuthRouteChildren: AuthRouteChildren = {
   AuthSignInRoute: AuthSignInRoute,
+  AuthSignOutRoute: AuthSignOutRoute,
   AuthVerifyRoute: AuthVerifyRoute,
+  AuthAccountSettingsRoute: AuthAccountSettingsRoute,
   AuthOrganizationsCreateRoute: AuthOrganizationsCreateRoute,
   AuthOrganizationsSelectRoute: AuthOrganizationsSelectRoute,
+  AuthAccountIndexRoute: AuthAccountIndexRoute,
+  AuthOrganizationsActiveMembersRoute: AuthOrganizationsActiveMembersRoute,
+  AuthOrganizationsActiveSettingsRoute: AuthOrganizationsActiveSettingsRoute,
 }
 
 const AuthRouteWithChildren = AuthRoute._addFileChildren(AuthRouteChildren)

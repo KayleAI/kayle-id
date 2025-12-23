@@ -150,12 +150,12 @@ export const auth = betterAuth({
         return {
           user: {
             ...user,
-            organizations,
           },
+          organizations,
           session: {
             ...session,
-            activeOrganization,
           },
+          activeOrganization,
         };
       },
       {

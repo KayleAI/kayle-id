@@ -10,7 +10,18 @@ export function NotFound() {
   return (
     <Layout>
       <InfoCard
+        buttons={{
+          primary: {
+            label: "Go back to the previous page",
+            onClick: () => window.history.back(),
+          },
+          secondary: {
+            label: "Go to the home page",
+            href: "/",
+          },
+        }}
         colour="red"
+        footer={false}
         header={{
           title: "Page Not Found",
           description: "The page you are looking for does not exist.",
