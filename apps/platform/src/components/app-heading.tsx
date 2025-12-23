@@ -14,7 +14,7 @@ export function AppHeading({
   return (
     <div className="flex flex-col justify-between sm:flex-row sm:items-center">
       <div className={cn("flex flex-col", className)}>
-        <h1 className="mb-2 font-light text-3xl text-foreground tracking-tight">
+        <h1 className="mb-1 font-light text-3xl text-foreground tracking-tight">
           {title}
         </h1>
         {description ? (

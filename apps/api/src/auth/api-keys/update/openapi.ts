@@ -14,7 +14,7 @@ export const internalUpdateApiKey = createRoute({
       content: {
         "application/json": {
           schema: z.object({
-            name: z.string().min(1),
+            name: z.string().min(1).optional(),
             enabled: z.boolean().optional(),
             permissions: z.array(z.string()).optional(),
             metadata: z.record(z.string(), z.any()).optional(),

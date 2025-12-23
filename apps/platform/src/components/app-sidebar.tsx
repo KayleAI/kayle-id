@@ -32,6 +32,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@kayleai/ui/tooltip";
+import { useQueryClient } from "@tanstack/react-query";
 import { Link, useRouterState } from "@tanstack/react-router";
 import {
   ChevronsUpDownIcon,
@@ -64,16 +65,22 @@ const navItems = [
 export function AppSidebar() {
   const { user, activeOrganization, organizations } = useAuth();
   const routerState = useRouterState();
+  const queryClient = useQueryClient();
   const currentPath = routerState.location.pathname;
 
   const handleSelectOrganization = async (
     organizationId: string,
     organizationSlug: string
   ) => {
-    await client.organization.setActive({
-      organizationId,
-      organizationSlug,
-    });
+    try {
+      await client.organization.setActive({
+        organizationId,
+        organizationSlug,
+      });
+    } finally {
+      // Invalidate any queries that depend on the organization
+      queryClient.invalidateQueries({ queryKey: ["api-keys"] });
+    }
   };
 
   return (

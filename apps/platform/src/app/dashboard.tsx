@@ -1,20 +1,13 @@
-import { useAuth } from "@kayle-id/auth/client/provider";
-import { Link } from "@tanstack/react-router";
+import { AppHeading } from "@/components/app-heading";
 
 export function Dashboard() {
-  const { user, session, activeOrganization, organizations } = useAuth();
-
   return (
-    <div className="">
-      <h1>Dashboard</h1>
-      <Link to="/api-keys">— API Keys</Link>
-      <pre>
-        {JSON.stringify(
-          { user, session, activeOrganization, organizations },
-          null,
-          2
-        )}
-      </pre>
+    <div className="mx-auto flex h-full max-w-7xl flex-1 grow flex-col">
+      <AppHeading
+        description="Primitives for Identity Infrastructure"
+        title="Kayle ID"
+      />
+      <hr className="my-8" />
     </div>
   );
 }
