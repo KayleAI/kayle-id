@@ -67,9 +67,11 @@ export class VerifySession extends RpcTarget {
    *
    * @note The desktop client should ask the user to use a mobile device instead.
    */
-  notifyNoHardware() {
+  notifyUnsupportedDevice() {
     // TODO: When this function is called, we need to start polling the database for the session status.
     // Once it changes to `in_progress`, we can close the websocket connection by sending a message
     // to the client saying that the handoff to mobile has completed.
+    console.warn("notifyUnsupportedDevice called");
+    return "ok";
   }
 }

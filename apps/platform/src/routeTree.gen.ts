@@ -17,6 +17,7 @@ import { Route as AuthSignOutRouteImport } from './routes/_auth/sign-out'
 import { Route as AuthSignInRouteImport } from './routes/_auth/sign-in'
 import { Route as AppDashboardRouteImport } from './routes/_app/dashboard'
 import { Route as AuthAccountIndexRouteImport } from './routes/_auth/account/index'
+import { Route as AppSandboxIndexRouteImport } from './routes/_app/sandbox/index'
 import { Route as AppApiKeysIndexRouteImport } from './routes/_app/api-keys/index'
 import { Route as AuthOrganizationsSelectRouteImport } from './routes/_auth/organizations/select'
 import { Route as AuthOrganizationsCreateRouteImport } from './routes/_auth/organizations/create'
@@ -63,6 +64,11 @@ const AuthAccountIndexRoute = AuthAccountIndexRouteImport.update({
   id: '/account/',
   path: '/account/',
   getParentRoute: () => AuthRoute,
+} as any)
+const AppSandboxIndexRoute = AppSandboxIndexRouteImport.update({
+  id: '/sandbox/',
+  path: '/sandbox/',
+  getParentRoute: () => AppRoute,
 } as any)
 const AppApiKeysIndexRoute = AppApiKeysIndexRouteImport.update({
   id: '/api-keys/',
@@ -118,6 +124,7 @@ export interface FileRoutesByFullPath {
   '/organizations/create': typeof AuthOrganizationsCreateRoute
   '/organizations/select': typeof AuthOrganizationsSelectRoute
   '/api-keys': typeof AppApiKeysIndexRoute
+  '/sandbox': typeof AppSandboxIndexRoute
   '/account': typeof AuthAccountIndexRoute
   '/api/auth/$': typeof ApiApiAuthSplatRoute
   '/organizations/members': typeof AuthOrganizationsActiveMembersRoute
@@ -134,6 +141,7 @@ export interface FileRoutesByTo {
   '/organizations/create': typeof AuthOrganizationsCreateRoute
   '/organizations/select': typeof AuthOrganizationsSelectRoute
   '/api-keys': typeof AppApiKeysIndexRoute
+  '/sandbox': typeof AppSandboxIndexRoute
   '/account': typeof AuthAccountIndexRoute
   '/api/auth/$': typeof ApiApiAuthSplatRoute
   '/organizations/members': typeof AuthOrganizationsActiveMembersRoute
@@ -153,6 +161,7 @@ export interface FileRoutesById {
   '/_auth/organizations/create': typeof AuthOrganizationsCreateRoute
   '/_auth/organizations/select': typeof AuthOrganizationsSelectRoute
   '/_app/api-keys/': typeof AppApiKeysIndexRoute
+  '/_app/sandbox/': typeof AppSandboxIndexRoute
   '/_auth/account/': typeof AuthAccountIndexRoute
   '/_api/api/auth/$': typeof ApiApiAuthSplatRoute
   '/_auth/organizations/_active/members': typeof AuthOrganizationsActiveMembersRoute
@@ -171,6 +180,7 @@ export interface FileRouteTypes {
     | '/organizations/create'
     | '/organizations/select'
     | '/api-keys'
+    | '/sandbox'
     | '/account'
     | '/api/auth/$'
     | '/organizations/members'
@@ -187,6 +197,7 @@ export interface FileRouteTypes {
     | '/organizations/create'
     | '/organizations/select'
     | '/api-keys'
+    | '/sandbox'
     | '/account'
     | '/api/auth/$'
     | '/organizations/members'
@@ -205,6 +216,7 @@ export interface FileRouteTypes {
     | '/_auth/organizations/create'
     | '/_auth/organizations/select'
     | '/_app/api-keys/'
+    | '/_app/sandbox/'
     | '/_auth/account/'
     | '/_api/api/auth/$'
     | '/_auth/organizations/_active/members'
@@ -276,6 +288,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthAccountIndexRouteImport
       parentRoute: typeof AuthRoute
     }
+    '/_app/sandbox/': {
+      id: '/_app/sandbox/'
+      path: '/sandbox'
+      fullPath: '/sandbox'
+      preLoaderRoute: typeof AppSandboxIndexRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/api-keys/': {
       id: '/_app/api-keys/'
       path: '/api-keys'
@@ -339,12 +358,14 @@ interface AppRouteChildren {
   AppDashboardRoute: typeof AppDashboardRoute
   AppApiKeysKeyRoute: typeof AppApiKeysKeyRoute
   AppApiKeysIndexRoute: typeof AppApiKeysIndexRoute
+  AppSandboxIndexRoute: typeof AppSandboxIndexRoute
 }
 
 const AppRouteChildren: AppRouteChildren = {
   AppDashboardRoute: AppDashboardRoute,
   AppApiKeysKeyRoute: AppApiKeysKeyRoute,
   AppApiKeysIndexRoute: AppApiKeysIndexRoute,
+  AppSandboxIndexRoute: AppSandboxIndexRoute,
 }
 
 const AppRouteWithChildren = AppRoute._addFileChildren(AppRouteChildren)

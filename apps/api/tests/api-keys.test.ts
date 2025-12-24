@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import apiKeys from "@/auth/api-keys";
-import { setup, TEST_DATA, teardown } from "./setup.test";
+import { setup, TEST_DATA, teardown } from "./setup";
 
 beforeAll(async () => {
   await setup();

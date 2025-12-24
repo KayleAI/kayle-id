@@ -1,7 +1,7 @@
 import { Button } from "@kayleai/ui/button";
 import { Logo } from "@kayleai/ui/logo";
+import { cn } from "@kayleai/ui/utils/cn";
 import { Link } from "@tanstack/react-router";
-import clsx from "clsx";
 import OctagonCheck from "@/icons/octagon-check";
 import OctagonInfo from "@/icons/octagon-info";
 import OctagonAlert from "@/icons/octagon-warning";
@@ -27,6 +27,7 @@ export default function InfoCard({
       onClick: () => window.history.back(),
     },
   },
+  footer = true,
 }: {
   colour: "red" | "blue" | "emerald";
   header: {
@@ -54,6 +55,7 @@ export default function InfoCard({
     ) &
       ({ disabled?: never } | { disabled: boolean });
   };
+  footer?: boolean;
 }) {
   const icon = {
     red: <OctagonAlert className="size-5 text-red-400" />,
@@ -94,16 +96,14 @@ export default function InfoCard({
         </div>
 
         {/* Message */}
-        <div className={clsx("rounded-lg p-4", classes[colour].container)}>
+        <div className={cn("rounded-lg p-4", classes[colour].container)}>
           <div className="flex items-start">
             <div className="mt-0.5 shrink-0">{icon[colour]}</div>
             <div className="ml-3">
-              <h3
-                className={clsx("font-medium text-sm", classes[colour].title)}
-              >
+              <h3 className={cn("font-medium text-sm", classes[colour].title)}>
                 {message.title}
               </h3>
-              <div className={clsx("text-sm", classes[colour].description)}>
+              <div className={cn("text-sm", classes[colour].description)}>
                 <p>{message.description}</p>
                 {message.list && (
                   <ul className="mt-1 list-outside list-none space-y-1">
@@ -124,32 +124,36 @@ export default function InfoCard({
         </div>
 
         {/* Footer Links */}
-        <p className="inline-block text-center text-muted-foreground text-xs">
-          By using Kayle ID, you agree to our{" "}
-          <Button
-            className="inline-block px-0 text-foreground text-xs!"
-            render={
-              <a href="/terms" rel="noopener noreferrer" target="_blank">
-                Terms of Service
-              </a>
-            }
-            variant="link"
-          >
-            Terms of Service
-          </Button>{" "}
-          and{" "}
-          <Button
-            className="inline-block px-0 text-foreground text-xs!"
-            render={
-              <a href="/privacy" rel="noopener noreferrer" target="_blank">
-                Privacy Policy
-              </a>
-            }
-            variant="link"
-          >
-            Privacy Policy
-          </Button>
-        </p>
+        {footer ? (
+          <p className="inline-block text-center text-muted-foreground text-xs">
+            By using Kayle ID, you agree to our{" "}
+            <Button
+              className="inline-block h-fit! p-0 text-foreground text-xs!"
+              nativeButton={false}
+              render={
+                <a href="/terms" rel="noopener noreferrer" target="_blank">
+                  Terms of Service
+                </a>
+              }
+              variant="link"
+            >
+              Terms of Service
+            </Button>{" "}
+            and{" "}
+            <Button
+              className="inline-block h-fit! p-0 text-foreground text-xs!"
+              nativeButton={false}
+              render={
+                <a href="/privacy" rel="noopener noreferrer" target="_blank">
+                  Privacy Policy
+                </a>
+              }
+              variant="link"
+            >
+              Privacy Policy
+            </Button>
+          </p>
+        ) : null}
       </div>
     </div>
   );
@@ -175,6 +179,7 @@ function PrimaryButton({
     </Button>
   ) : (
     <Button
+      nativeButton={false}
       render={
         <Link to={button.href ?? "/sign-in"}>{button.label ?? "Sign In"}</Link>
       }
@@ -208,6 +213,7 @@ function SecondaryButton({
     </Button>
   ) : (
     <Button
+      nativeButton={false}
       render={
         <Link to={button.href ?? "/home"}>{button.label ?? "Go Home"}</Link>
       }

@@ -6,6 +6,7 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useMemo,
   useRef,
   useState,
 } from "react";
@@ -30,12 +31,12 @@ type SessionError = {
 };
 
 export function SessionProvider({ sessionId, children }: SessionProviderProps) {
-  const [session, setSession] = useState<RpcStub<VerifySession> | null>(null);
+  const [isSessionReady, setIsSessionReady] = useState(false);
   const [error, setError] = useState<SessionError | null>(null);
   const errorCallbacksRef = useRef<Set<(sessionError: SessionError) => void>>(
     new Set()
   );
-  const currentStubRef = useRef<RpcStub<VerifySession> | null>(null);
+  const sessionStubRef = useRef<RpcStub<VerifySession> | null>(null);
 
   const notifyErrorCallbacks = useCallback((sessionError: SessionError) => {
     for (const callback of errorCallbacksRef.current) {
@@ -64,12 +65,12 @@ export function SessionProvider({ sessionId, children }: SessionProviderProps) {
           rpcError.message.split("bad RPC message:")[1]?.trim()
         )?.error;
 
-        setSession(null);
+        setIsSessionReady(false);
         setError(parsedError);
         notifyErrorCallbacks(parsedError);
       } catch (parseError) {
         console.error("Error parsing RPC error:", parseError);
-        setSession(null);
+        setIsSessionReady(false);
         setError({ code: "UNKNOWN", message: rpcError.message });
         notifyErrorCallbacks({ code: "UNKNOWN", message: rpcError.message });
       }
@@ -79,28 +80,30 @@ export function SessionProvider({ sessionId, children }: SessionProviderProps) {
 
   useEffect(() => {
     // Reset state when sessionId changes
-    setSession(null);
+    setIsSessionReady(false);
     setError(null);
 
     // Dispose previous stub if it exists
-    if (currentStubRef.current) {
-      currentStubRef.current[Symbol.dispose]?.();
-      currentStubRef.current = null;
+    if (sessionStubRef.current) {
+      sessionStubRef.current[Symbol.dispose]?.();
+      sessionStubRef.current = null;
     }
 
     // Create new stub with error handling
     const stub = initialiseSession(sessionId, handleRpcError);
-    currentStubRef.current = stub;
+    sessionStubRef.current = stub;
 
     // Attempt to connect and ping
     (async () => {
       try {
         const pingResult = await stub.ping();
 
-        console.warn(pingResult);
+        if (pingResult !== "pong") {
+          throw new Error("Invalid ping response");
+        }
 
-        // If ping succeeds, set the session
-        setSession(stub);
+        // If ping succeeds, mark session as ready (don't store stub in state!)
+        setIsSessionReady(true);
         setError(null);
       } catch (pingError: unknown) {
         if (pingError instanceof Error) {
@@ -113,18 +116,22 @@ export function SessionProvider({ sessionId, children }: SessionProviderProps) {
 
     // Cleanup function
     return () => {
-      if (currentStubRef.current) {
-        currentStubRef.current[Symbol.dispose]?.();
-        currentStubRef.current = null;
+      if (sessionStubRef.current) {
+        sessionStubRef.current[Symbol.dispose]?.();
+        sessionStubRef.current = null;
       }
     };
   }, [sessionId, handleRpcError]);
 
-  const value: SessionContextType = {
-    session,
-    error,
-    onError,
-  };
+  // Memoize the context value, providing session from ref only when ready
+  const value: SessionContextType = useMemo(
+    () => ({
+      session: isSessionReady ? sessionStubRef.current : null,
+      error,
+      onError,
+    }),
+    [isSessionReady, error, onError]
+  );
 
   return (
     <SessionContext.Provider value={value}>{children}</SessionContext.Provider>

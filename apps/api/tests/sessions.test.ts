@@ -2,7 +2,7 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import type z from "zod";
 import type { Session } from "@/openapi/models/sessions";
 import v1 from "@/v1";
-import { setup, TEST_DATA, teardown } from "./setup.test";
+import { setup, TEST_DATA, teardown } from "./setup";
 
 beforeAll(async () => {
   await setup();
@@ -34,6 +34,8 @@ describe("/v1/sessions", () => {
     expect(data).toBeDefined();
     expect(data?.id).toBeDefined();
     expect(data?.status).toBe("created");
+    // The environment should be the same as the API key
+    expect(data?.environment).toBe("test");
     // we expect redirect_url to be null because we didn't provide it
     // by not providing it, when the session is completed, it will
     //  default to the Kayle ID's success page
@@ -67,6 +69,9 @@ describe("/v1/sessions", () => {
     expect(data?.length).toBeGreaterThan(0);
     expect(data?.[0]?.id).toBeDefined();
     expect(data?.[0]?.status).toBe("created");
+
+    // The environment should be the same as the API key, for all sessions
+    expect(data?.every((session) => session.environment === "test")).toBe(true);
 
     // Assert that the created session is in the list
     expect(data?.some((session) => session.id === createdSessionId)).toBe(true);

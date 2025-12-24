@@ -1,11 +1,25 @@
 import { OpenAPIHono } from "@hono/zod-openapi";
 import { Scalar } from "@scalar/hono-api-reference";
+import { cors } from "hono/cors";
 import { config } from "@/config";
 import v1 from "@/v1";
 import verify from "@/v1/verify";
 import auth from "./auth";
 
 const app = new OpenAPIHono<{ Bindings: CloudflareBindings }>();
+
+app.use(
+  cors({
+    origin: [
+      process.env.NODE_ENV === "production"
+        ? "https://kayle.id"
+        : "https://localhost:3000",
+    ],
+    allowHeaders: ["Authorization", "Content-Type"],
+    allowMethods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    credentials: true,
+  })
+);
 
 app.get("/", (c) => {
   const status: "healthy" | "unhealthy" = "healthy";

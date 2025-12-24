@@ -39,6 +39,8 @@ export const env = createEnv({
 
   shared: {
     PUBLIC_AUTH_URL: z.string().min(1),
+
+    PUBLIC_DEVELOPMENT_API_BASE_URL: z.string().url().optional(),
   },
 
   runtimeEnv: {

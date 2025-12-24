@@ -25,8 +25,8 @@ function buildVerificationUrl(id: string) {
   const base =
     process.env.NODE_ENV === "production"
       ? "https://verify.kayle.id"
-      : "https://localhost:2999";
-  const url = new URL(`/verify/session/${id}`, base);
+      : "http://localhost:2999";
+  const url = new URL(`/${id}`, base);
 
   return url.toString();
 }

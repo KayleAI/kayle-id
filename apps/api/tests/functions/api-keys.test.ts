@@ -3,7 +3,7 @@ import { createApiKey } from "@/functions/auth/create-api-key";
 import { deleteApiKey } from "@/functions/auth/delete-api-key";
 import { updateApiKey } from "@/functions/auth/update-api-key";
 import { verifyApiKey } from "@/functions/auth/verify-api-key";
-import { setup, TEST_DATA, teardown } from "../setup.test";
+import { setup, TEST_DATA, teardown } from "../setup";
 
 beforeAll(async () => {
   await setup();

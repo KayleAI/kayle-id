@@ -22,7 +22,12 @@ export function initialiseSession(
     env.PUBLIC_API_PROTOCOL ||
     (process.env.NODE_ENV === "development" ? "ws" : "wss");
   const host = env.PUBLIC_API_HOST;
-  const url = `${protocol}://${host}/v1/verify/session/${sessionId}`;
+
+  let url = `${protocol}://${host}/v1/verify/session/${sessionId}`;
+
+  if (process.env.NODE_ENV === "development") {
+    url = `${protocol}://${window.location.hostname}:8787/v1/verify/session/${sessionId}`;
+  }
 
   const stub = newWebSocketRpcSession<VerifySession>(url);
 

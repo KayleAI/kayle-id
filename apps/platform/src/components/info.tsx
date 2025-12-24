@@ -128,7 +128,8 @@ export default function InfoCard({
           <p className="inline-block text-center text-muted-foreground text-xs">
             By using Kayle ID, you agree to our{" "}
             <Button
-              className="inline-block px-0 text-foreground text-xs!"
+              className="inline-block h-fit! p-0 text-foreground text-xs!"
+              nativeButton={false}
               render={
                 <a href="/terms" rel="noopener noreferrer" target="_blank">
                   Terms of Service
@@ -140,7 +141,8 @@ export default function InfoCard({
             </Button>{" "}
             and{" "}
             <Button
-              className="inline-block px-0 text-foreground text-xs!"
+              className="inline-block h-fit! p-0 text-foreground text-xs!"
+              nativeButton={false}
               render={
                 <a href="/privacy" rel="noopener noreferrer" target="_blank">
                   Privacy Policy
@@ -177,6 +179,7 @@ function PrimaryButton({
     </Button>
   ) : (
     <Button
+      nativeButton={false}
       render={
         <Link to={button.href ?? "/sign-in"}>{button.label ?? "Sign In"}</Link>
       }
@@ -210,6 +213,7 @@ function SecondaryButton({
     </Button>
   ) : (
     <Button
+      nativeButton={false}
       render={
         <Link to={button.href ?? "/home"}>{button.label ?? "Go Home"}</Link>
       }

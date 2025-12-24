@@ -3,7 +3,7 @@
   "version": "0.0.1",
   "type": "module",
   "scripts": {
-    "dev": "bunx wrangler dev --env-file ../../.env",
+    "dev": "bunx wrangler dev --env-file ../../.env --ip 0.0.0.0",
     "test:setup": "cp ../../.env.test.example ./.env.test",
     "test:dev": "bunx wrangler dev --env-file ./.env.test --local --ip 127.0.0.1 --port 8787",
     "deploy": "bunx wrangler deploy --minify",
@@ -16,7 +16,7 @@
     "@kayle-id/config": "*",
     "@kayle-id/database": "*",
     "@scalar/hono-api-reference": "0.9.25",
-    "capnweb": "0.2.0",
+    "capnweb": "0.4.0",
     "drizzle-orm": "0.44.7",
     "hono": "4.10.6",
     "hono-openapi": "1.1.1",
