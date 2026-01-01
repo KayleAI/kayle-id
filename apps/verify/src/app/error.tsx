@@ -9,6 +9,17 @@ export function SessionError() {
     return null;
   }
 
+  return <ErrorCard error={error} />;
+}
+
+export function ErrorCard({
+  error,
+}: {
+  error: {
+    code: string;
+    message: string;
+  };
+}) {
   const errorMessage =
     ERROR_MESSAGES[error.code as keyof typeof ERROR_MESSAGES] ??
     ERROR_MESSAGES.UNKNOWN;

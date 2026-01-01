@@ -4,6 +4,7 @@ import { Button } from "@kayleai/ui/button";
 import { Input } from "@kayleai/ui/input";
 import { Label } from "@kayleai/ui/label";
 import { cn } from "@kayleai/ui/utils/cn";
+import { useLocalStorage } from "@mantine/hooks";
 import {
   CheckCircle2Icon,
   CopyIcon,
@@ -36,7 +37,6 @@ type SessionResponse = {
 
 type FormState = {
   formStatus: "idle" | "loading" | "error";
-  apiKey: string;
   errorMessage: string;
   session: SessionResponse | null;
   isPolling: boolean;
@@ -44,7 +44,6 @@ type FormState = {
 };
 
 type FormAction =
-  | { type: "SET_API_KEY"; apiKey: string }
   | { type: "SUBMIT" }
   | { type: "SUCCESS"; session: SessionResponse }
   | { type: "ERROR"; message: string }
@@ -54,7 +53,6 @@ type FormAction =
 
 const initialFormState: FormState = {
   formStatus: "idle",
-  apiKey: "",
   errorMessage: "",
   session: null,
   isPolling: false,
@@ -63,13 +61,6 @@ const initialFormState: FormState = {
 
 function formReducer(state: FormState, action: FormAction): FormState {
   switch (action.type) {
-    case "SET_API_KEY":
-      return {
-        ...state,
-        apiKey: action.apiKey,
-        formStatus: state.formStatus === "error" ? "idle" : state.formStatus,
-        errorMessage: state.formStatus === "error" ? "" : state.errorMessage,
-      };
     case "SUBMIT":
       return {
         ...state,
@@ -94,7 +85,7 @@ function formReducer(state: FormState, action: FormAction): FormState {
         isPolling: false,
       };
     case "RESET":
-      return { ...initialFormState, apiKey: state.apiKey };
+      return { ...initialFormState };
     case "POLL_UPDATE":
       return {
         ...state,
@@ -196,11 +187,15 @@ function DetailRow({
 }
 
 export default function Sandbox() {
+  const [apiKey, setApiKey] = useLocalStorage({
+    key: "sandbox-api-key",
+    defaultValue: "",
+  });
   const [state, dispatch] = useReducer(formReducer, initialFormState);
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const fetchSession = useCallback(async () => {
-    if (!(state.session && state.apiKey)) {
+    if (!(state.session && apiKey)) {
       return;
     }
 
@@ -210,7 +205,7 @@ export default function Sandbox() {
         {
           method: "GET",
           headers: {
-            Authorization: `Bearer ${state.apiKey.trim()}`,
+            Authorization: `Bearer ${apiKey.trim()}`,
           },
         }
       );
@@ -230,7 +225,7 @@ export default function Sandbox() {
     } catch {
       // Silently fail
     }
-  }, [state.session, state.apiKey]);
+  }, [state.session, apiKey]);
 
   useEffect(() => {
     if (state.isPolling && state.session) {
@@ -246,7 +241,7 @@ export default function Sandbox() {
   }, [state.isPolling, state.session, fetchSession]);
 
   const handleSubmit = async () => {
-    const validation = validateApiKey(state.apiKey);
+    const validation = validateApiKey(apiKey);
 
     if (!validation.valid) {
       dispatch({
@@ -262,7 +257,7 @@ export default function Sandbox() {
       const response = await fetch(`${API_BASE_URL}/v1/sessions`, {
         method: "POST",
         headers: {
-          Authorization: `Bearer ${state.apiKey.trim()}`,
+          Authorization: `Bearer ${apiKey.trim()}`,
           "Content-Type": "application/json",
         },
         body: JSON.stringify({}),
@@ -334,17 +329,20 @@ export default function Sandbox() {
                   className="bg-background pr-10"
                   disabled={isLoading}
                   id="api-key"
-                  onChange={(e) =>
-                    dispatch({ type: "SET_API_KEY", apiKey: e.target.value })
-                  }
+                  onChange={(e) => {
+                    setApiKey(e.target.value);
+                    if (state.formStatus === "error") {
+                      dispatch({ type: "RESET" });
+                    }
+                  }}
                   onKeyDown={(e) => {
-                    if (e.key === "Enter" && state.apiKey.trim()) {
+                    if (e.key === "Enter" && apiKey.trim()) {
                       handleSubmit();
                     }
                   }}
                   placeholder="kk_test_..."
                   type="password"
-                  value={state.apiKey}
+                  value={apiKey}
                 />
                 <KeyIcon className="-translate-y-1/2 absolute top-1/2 right-3 size-4 text-muted-foreground/50" />
               </div>
@@ -356,7 +354,7 @@ export default function Sandbox() {
 
             <Button
               className="w-full shadow-sm active:scale-[0.98]"
-              disabled={isLoading || !state.apiKey.trim()}
+              disabled={isLoading || !apiKey.trim()}
               onClick={handleSubmit}
             >
               {isLoading ? (

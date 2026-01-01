@@ -8,9 +8,12 @@ const IPAD_MATCH = /iPad/;
  * - iOS >= 16 supported
  * - Android >= 8 supported
  */
-export function isSupportedDevice(): boolean {
+export function useDevice(): {
+  supported: boolean;
+  os: "ios" | "android" | "unknown";
+} {
   if (typeof window === "undefined") {
-    return false;
+    return { supported: false, os: "unknown" };
   }
 
   const nav = window.navigator;
@@ -22,7 +25,7 @@ export function isSupportedDevice(): boolean {
 
   if (iosVersionMatch && isIPhone) {
     const major = Number(iosVersionMatch[1]);
-    return major >= 16;
+    return { supported: major >= 16, os: "ios" };
   }
 
   // Explicitly reject iPads (desktop or mobile UA)
@@ -31,15 +34,15 @@ export function isSupportedDevice(): boolean {
     (nav?.platform === "MacIntel" && nav?.maxTouchPoints > 1);
 
   if (isIPad) {
-    return false;
+    return { supported: false, os: "unknown" };
   }
 
   // Android phones
   const androidMatch = ua?.match(ANDROID_VERSION_MATCH);
   if (androidMatch) {
     const major = Number(androidMatch[1]);
-    return major >= 8;
+    return { supported: major >= 8, os: "android" };
   }
 
-  return false;
+  return { supported: false, os: "unknown" };
 }
