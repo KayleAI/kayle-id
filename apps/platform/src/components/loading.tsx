@@ -7,7 +7,7 @@ export function Loading({ layout = false }: { layout?: boolean }) {
   return (
     <Component>
       <div className="flex h-full flex-col items-center justify-center gap-6">
-        <Logo className="text-foreground" variant="default" />
+        <Logo className="text-foreground" title="Kayle ID" variant="default" />
 
         <div className="relative">
           <div className="size-12 rounded-full border-2 border-border" />

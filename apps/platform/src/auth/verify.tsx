@@ -69,7 +69,7 @@ export function Verify() {
         {/* Logo and Header */}
         <div>
           <div className="mb-8">
-            <Logo className="" />
+            <Logo className="" title="Kayle ID" />
           </div>
           <h1 className="mb-4 font-light text-3xl text-neutral-900 tracking-tight">
             Check your email
@@ -105,24 +105,24 @@ export function Verify() {
             >
               <InputOTPGroup className="flex-1 gap-0">
                 <InputOTPSlot
-                  className="h-12! flex-1 rounded-l-4xl"
+                  className="h-12! flex-1 rounded-l-4xl text-lg"
                   index={0}
                 />
-                <InputOTPSlot className="h-12! flex-1" index={1} />
+                <InputOTPSlot className="h-12! flex-1 text-lg" index={1} />
                 <InputOTPSlot
-                  className="h-12! flex-1 rounded-r-4xl"
+                  className="h-12! flex-1 rounded-r-4xl text-lg"
                   index={2}
                 />
               </InputOTPGroup>
               <InputOTPSeparator className="mx-2" />
               <InputOTPGroup className="flex-1 gap-0">
                 <InputOTPSlot
-                  className="h-12! flex-1 rounded-l-4xl"
+                  className="h-12! flex-1 rounded-l-4xl text-lg"
                   index={3}
                 />
-                <InputOTPSlot className="h-12! flex-1" index={4} />
+                <InputOTPSlot className="h-12! flex-1 text-lg" index={4} />
                 <InputOTPSlot
-                  className="h-12! flex-1 rounded-r-4xl"
+                  className="h-12! flex-1 rounded-r-4xl text-lg"
                   index={5}
                 />
               </InputOTPGroup>

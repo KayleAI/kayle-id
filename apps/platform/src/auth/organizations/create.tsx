@@ -173,7 +173,7 @@ export function CreateOrganization() {
         {/* Logo and Header */}
         <div>
           <div className="mb-8">
-            <Logo className="" />
+            <Logo className="" title="Kayle ID" />
           </div>
           <h1 className="mb-4 font-light text-3xl text-foreground tracking-tight">
             Create Organization

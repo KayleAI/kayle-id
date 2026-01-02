@@ -1,11 +1,10 @@
-import configCss from "@kayleai/ui/config.css?url";
-import uiCss from "@kayleai/ui/styles.css?url";
 import {
   createRootRoute,
   HeadContent,
   Outlet,
   Scripts,
 } from "@tanstack/react-router";
+import appCss from "@/routes/styles.css?url";
 
 export const Route = createRootRoute({
   head: () => ({
@@ -45,11 +44,7 @@ export const Route = createRootRoute({
     links: [
       {
         rel: "stylesheet",
-        href: configCss,
-      },
-      {
-        rel: "stylesheet",
-        href: uiCss,
+        href: appCss,
       },
     ],
   }),

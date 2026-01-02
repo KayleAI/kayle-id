@@ -1,6 +1,4 @@
 import { AuthProvider } from "@kayle-id/auth/client/provider";
-import configCss from "@kayleai/ui/config.css?url";
-import uiCss from "@kayleai/ui/styles.css?url";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
   createRootRoute,
@@ -8,6 +6,7 @@ import {
   Outlet,
   Scripts,
 } from "@tanstack/react-router";
+import appCss from "@/routes/styles.css?url";
 
 export const Route = createRootRoute({
   head: () => ({
@@ -47,11 +46,7 @@ export const Route = createRootRoute({
     links: [
       {
         rel: "stylesheet",
-        href: configCss,
-      },
-      {
-        rel: "stylesheet",
-        href: uiCss,
+        href: appCss,
       },
     ],
   }),

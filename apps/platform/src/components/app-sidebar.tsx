@@ -338,7 +338,7 @@ function SidebarLogo() {
               {isCollapsed ? (
                 <Logomark className="group-hover/logo:hidden" />
               ) : (
-                <Logo className="group-hover/logo:hidden" />
+                <Logo className="group-hover/logo:hidden" title="Kayle ID" />
               )}
               <span className="hidden flex-row items-center justify-center gap-2 font-medium text-sm group-hover/logo:flex">
                 <PanelLeftIcon className="size-4" />
