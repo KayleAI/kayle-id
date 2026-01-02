@@ -16,3 +16,27 @@ logs
 drizzle-gateway-volume
 
 temp/
+
+## iOS
+
+# Xcode
+DerivedData/
+build/
+*.xcuserstate
+**/xcuserdata/
+**/*.xccheckout
+*.moved-aside
+*.xcscmblueprint
+
+# SwiftPM (keep Package.resolved if you want reproducible builds)
+.swiftpm/
+# CocoaPods / Carthage (team choice)
+Pods/
+Carthage/Build/
+
+# Secrets / signing
+*.p12
+*.cer
+*.mobileprovision
+*.key
+*.env
