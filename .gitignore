@@ -40,3 +40,4 @@ Carthage/Build/
 *.mobileprovision
 *.key
 *.env
+.DS_Store
