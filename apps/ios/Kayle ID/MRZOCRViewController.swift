@@ -9,6 +9,7 @@ import Vision
 final class MRZOCRViewController: UIViewController, AVCaptureVideoDataOutputSampleBufferDelegate {
   private let session = AVCaptureSession()
   private let videoOutput = AVCaptureVideoDataOutput()
+  private let sessionQueue = DispatchQueue(label: "mrz.capture.session")
 
   private var isProcessing = false
   private var lastMRZ: String?
@@ -57,12 +58,18 @@ final class MRZOCRViewController: UIViewController, AVCaptureVideoDataOutputSamp
 
   override func viewDidAppear(_ animated: Bool) {
     super.viewDidAppear(animated)
-    session.startRunning()
+    sessionQueue.async { [session] in
+      guard !session.isRunning else { return }
+      session.startRunning()
+    }
   }
 
   override func viewWillDisappear(_ animated: Bool) {
     super.viewWillDisappear(animated)
-    session.stopRunning()
+    sessionQueue.async { [session] in
+      guard session.isRunning else { return }
+      session.stopRunning()
+    }
   }
 
   private func setupCamera() {

@@ -140,7 +140,6 @@ enum MRZTD3 {
 
   static func parseNames(_ field: String) -> (String, String) {
     // Surname<<Given<Names
-    let parts = field.split(separator: "<", omittingEmptySubsequences: false)
     let raw = field.replacingOccurrences(of: "<<", with: "|")
     let pieces = raw.split(separator: "|", omittingEmptySubsequences: false)
     let surname = pieces.first.map(String.init) ?? ""
