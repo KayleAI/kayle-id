@@ -6,13 +6,31 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		B80099F22F12FEA9006C9C15 /* NFCPassportReader in Frameworks */ = {isa = PBXBuildFile; productRef = B80099F12F12FEA9006C9C15 /* NFCPassportReader */; };
+		B8F0012F2000010000000004 /* OpenSSL in Frameworks */ = {isa = PBXBuildFile; productRef = B8F0012F2000010000000005 /* OpenSSL */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXFileReference section */
 		B8ED7CF52F081CC700CD508D /* Kayle ID.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Kayle ID.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		B80099042F126F65006C9C15 /* Exceptions for "Kayle ID" folder in "Kayle ID" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = B8ED7CF42F081CC600CD508D /* Kayle ID */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		B8ED7CF72F081CC700CD508D /* Kayle ID */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				B80099042F126F65006C9C15 /* Exceptions for "Kayle ID" folder in "Kayle ID" target */,
+			);
 			path = "Kayle ID";
 			sourceTree = "<group>";
 		};
@@ -23,6 +41,8 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				B8F0012F2000010000000004 /* OpenSSL in Frameworks */,
+				B80099F22F12FEA9006C9C15 /* NFCPassportReader in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -65,6 +85,8 @@
 			);
 			name = "Kayle ID";
 			packageProductDependencies = (
+				B8F0012F2000010000000005 /* OpenSSL */,
+				B80099F12F12FEA9006C9C15 /* NFCPassportReader */,
 			);
 			productName = "Kayle ID";
 			productReference = B8ED7CF52F081CC700CD508D /* Kayle ID.app */;
@@ -94,6 +116,10 @@
 			);
 			mainGroup = B8ED7CEC2F081CC600CD508D;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				B8F0012F2000010000000006 /* XCRemoteSwiftPackageReference "OpenSSL-Package" */,
+				B80099F02F12FEA9006C9C15 /* XCLocalSwiftPackageReference "../../../../Work/NFCPassportReader" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = B8ED7CF62F081CC700CD508D /* Products */;
 			projectDirPath = "";
@@ -254,9 +280,10 @@
 				CODE_SIGN_ENTITLEMENTS = "Kayle ID/Kayle ID.entitlements";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = LM5NZ3CK58;
+				DEVELOPMENT_TEAM = K667TL7H29;
 				ENABLE_PREVIEWS = YES;
-				GENERATE_INFOPLIST_FILE = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = "Kayle ID/Info.plist";
 				INFOPLIST_KEY_NFCReaderUsageDescription = "Used to read ePassport NFC data.";
 				INFOPLIST_KEY_NSCameraUsageDescription = "Used to scan the MRZ on your passport.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
@@ -269,7 +296,7 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = "kayle.Kayle-ID";
+				PRODUCT_BUNDLE_IDENTIFIER = kayle.id;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
@@ -289,9 +316,10 @@
 				CODE_SIGN_ENTITLEMENTS = "Kayle ID/Kayle ID.entitlements";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = LM5NZ3CK58;
+				DEVELOPMENT_TEAM = K667TL7H29;
 				ENABLE_PREVIEWS = YES;
-				GENERATE_INFOPLIST_FILE = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = "Kayle ID/Info.plist";
 				INFOPLIST_KEY_NFCReaderUsageDescription = "Used to read ePassport NFC data.";
 				INFOPLIST_KEY_NSCameraUsageDescription = "Used to scan the MRZ on your passport.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
@@ -304,7 +332,7 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = "kayle.Kayle-ID";
+				PRODUCT_BUNDLE_IDENTIFIER = kayle.id;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
@@ -338,6 +366,36 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCLocalSwiftPackageReference section */
+		B80099F02F12FEA9006C9C15 /* XCLocalSwiftPackageReference "../../../../Work/NFCPassportReader" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = ../../../../Work/NFCPassportReader;
+		};
+/* End XCLocalSwiftPackageReference section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		B8F0012F2000010000000006 /* XCRemoteSwiftPackageReference "OpenSSL-Package" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/krzyzanowskim/OpenSSL-Package.git";
+			requirement = {
+				kind = upToNextMinorVersion;
+				minimumVersion = 3.3.1000;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		B80099F12F12FEA9006C9C15 /* NFCPassportReader */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = NFCPassportReader;
+		};
+		B8F0012F2000010000000005 /* OpenSSL */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = B8F0012F2000010000000006 /* XCRemoteSwiftPackageReference "OpenSSL-Package" */;
+			productName = OpenSSL;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = B8ED7CED2F081CC600CD508D /* Project object */;
 }

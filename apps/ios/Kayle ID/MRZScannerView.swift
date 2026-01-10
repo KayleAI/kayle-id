@@ -1,8 +1,5 @@
 //
 //  MRZScannerView.swift
-//  Kayle ID
-//
-//  Created by Arsen on 03/01/2026.
 //
 
 import SwiftUI

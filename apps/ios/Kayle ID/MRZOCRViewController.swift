@@ -4,8 +4,6 @@ import Vision
 
 // MARK: - Minimal MRZ OCR (Apple Vision) from live camera frames
 
-// Drop this into an App Clip / app target. Add NSCameraUsageDescription in Info.plist.
-
 final class MRZOCRViewController: UIViewController, AVCaptureVideoDataOutputSampleBufferDelegate {
   private let session = AVCaptureSession()
   private let videoOutput = AVCaptureVideoDataOutput()

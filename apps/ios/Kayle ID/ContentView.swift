@@ -1,138 +1,232 @@
 //
 //  ContentView.swift
-//  Kayle ID
-//
-//  Created by Arsen on 02/01/2026.
 //
 
 import SwiftUI
 
 struct ContentView: View {
-  @State private var isScanning = false
+  private enum ScanStep: Int {
+    case welcome
+    case mrz
+    case nfc
+    case result
+  }
+
+  @State private var step: ScanStep = .welcome
   @State private var mrz: String = ""
   @StateObject private var nfcReader = PassportNFCReader()
+  @State private var hasStartedNFC = false
+  @State private var isNFCActive = false
+  private var hasResult: Bool { nfcReader.result != nil }
 
   var body: some View {
     NavigationStack {
-      VStack(alignment: .leading, spacing: 16) {
-        Text("Kayle ID — MRZ Test")
-          .font(.title2).bold()
+      ZStack {
+        Color.white.ignoresSafeArea()
 
-        Button("Scan MRZ") {
-          mrz = ""
-          isScanning = true
-        }
-        .buttonStyle(.borderedProminent)
+        VStack(alignment: .leading, spacing: 16) {
+          switch step {
+          case .welcome:
+            Spacer()
 
-        Group {
-          Text("Latest MRZ:")
+          VStack(alignment: .center, spacing: 12) {
+            Image("Logo")
+              .resizable()
+              .scaledToFit()
+              .frame(width: 96, height: 96)
+              .clipShape(RoundedRectangle(cornerRadius: 20))
+              .overlay(
+                RoundedRectangle(cornerRadius: 20)
+                  .stroke(Color.black.opacity(0.1), lineWidth: 1)
+              )
+
+            Text("Let’s verify your passport")
+              .font(.title3).bold()
+              .foregroundStyle(.black)
+
+            Text("You’ll scan the photo page and then tap your passport to read the chip. This takes about a minute.")
+              .font(.subheadline)
+              .foregroundStyle(.black.opacity(0.6))
+              .multilineTextAlignment(.center)
+          }
+            .frame(maxWidth: .infinity)
+
+            Spacer()
+
+            PrimaryActionButton(title: "Continue") {
+              step = .mrz
+            }
+
+        case .mrz:
+          Text("Scan your photo page")
             .font(.headline)
+            .foregroundStyle(.black)
 
-          Text(mrz.isEmpty ? "—" : mrz)
-            .font(.system(.body, design: .monospaced))
-            .textSelection(.enabled)
-            .padding(12)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(.thinMaterial)
-            .clipShape(RoundedRectangle(cornerRadius: 12))
-        }
+          MRZScannerView { validMRZ in
+            mrz = validMRZ
+            step = .nfc
+          }
+          .clipShape(RoundedRectangle(cornerRadius: 16))
+          .frame(maxWidth: .infinity)
+          .aspectRatio(4.0 / 3.0, contentMode: .fit)
 
-        if !mrz.isEmpty {
-          Divider()
+          Text("Scan your passport photo page.")
+            .font(.subheadline)
+            .foregroundStyle(.black.opacity(0.6))
 
-          VStack(alignment: .leading, spacing: 12) {
-            Text("ePassport NFC")
+        case .nfc:
+          Spacer()
+
+          VStack(alignment: .center, spacing: 10) {
+            Text("Keep your iPhone close to the passport.")
               .font(.headline)
+              .foregroundStyle(.black)
+              .multilineTextAlignment(.center)
 
-            Button("Scan NFC") {
-              nfcReader.start(mrz: mrz)
-            }
-            .buttonStyle(.borderedProminent)
-
-            Text("Progress: \(progressDots(nfcReader.progress))")
-              .font(.system(.body, design: .monospaced))
-
-            if !nfcReader.status.isEmpty {
-              Text(nfcReader.status)
-                .font(.subheadline)
-            }
+            Text("This can take up to a minute.")
+              .font(.subheadline)
+              .foregroundStyle(.black.opacity(0.6))
+              .multilineTextAlignment(.center)
 
             if let error = nfcReader.errorMessage {
               Text(error)
-                .foregroundStyle(.red)
+                .foregroundStyle(.black)
+                .multilineTextAlignment(.center)
+            } else if !nfcReader.status.isEmpty {
+              Text(nfcReader.status)
+                .font(.subheadline)
+                .foregroundStyle(.black.opacity(0.6))
+                .multilineTextAlignment(.center)
             }
+          }
+          .frame(maxWidth: .infinity)
 
+          Spacer()
+
+          PrimaryActionButton(title: "Try Again") {
+            guard !isNFCActive else { return }
+            isNFCActive = true
+            nfcReader.start(mrz: mrz)
+          }
+          .disabled(isNFCActive)
+          .opacity(isNFCActive ? 0.5 : 1.0)
+
+          case .result:
             if let result = nfcReader.result {
               passportResultView(result)
             }
-          }
-        }
 
-        Spacer()
-      }
-      .padding()
-      .sheet(isPresented: $isScanning) {
-        MRZScannerView { validMRZ in
-          mrz = validMRZ
-          isScanning = false
+            Spacer()
+
+            PrimaryActionButton(title: "Scan Another Passport") {
+              resetToMRZ()
+            }
+          }
+
         }
+        .padding()
+      .onChange(of: step) { newStep in
+        guard newStep == .nfc, !hasStartedNFC else { return }
+        hasStartedNFC = true
+        isNFCActive = true
+        nfcReader.start(mrz: mrz)
+      }
+      .onChange(of: hasResult) { newValue in
+        if newValue {
+          isNFCActive = false
+          step = .result
+        }
+      }
+      .onChange(of: nfcReader.errorMessage) { newValue in
+        if newValue != nil {
+          isNFCActive = false
+        }
+      }
       }
     }
+    .tint(.black)
   }
 
-  private func progressDots(_ value: Int) -> String {
-    let total = 4
-    let clamped = max(0, min(total, value))
-    return String(repeating: "🟢", count: clamped) + String(repeating: "⚪️", count: total - clamped)
+  private func resetToMRZ() {
+    mrz = ""
+    hasStartedNFC = false
+    isNFCActive = false
+    step = .mrz
   }
 
   @ViewBuilder
   private func passportResultView(_ result: PassportReadResult) -> some View {
     VStack(alignment: .leading, spacing: 12) {
-      if let dg1MRZ = result.dg1MRZ {
-        Text("DG1 (MRZ):")
-          .font(.subheadline).bold()
-        Text(dg1MRZ)
-          .font(.system(.body, design: .monospaced))
-          .textSelection(.enabled)
+      Text("Passport Details")
+        .font(.headline)
+        .foregroundStyle(.black)
+
+      if let image = result.passportImage {
+        Image(uiImage: image)
+          .resizable()
+          .scaledToFit()
+          .clipShape(RoundedRectangle(cornerRadius: 12))
+          .overlay(
+            RoundedRectangle(cornerRadius: 12)
+              .stroke(Color.black.opacity(0.1), lineWidth: 1)
+          )
       }
 
       if let parsed = result.dg1Parsed {
-        Text("Parsed Passport Data:")
-          .font(.subheadline).bold()
-        Text(
-          [
-            "Document Type: \(parsed.documentType)",
-            "Issuing Country: \(parsed.issuingCountry)",
-            "Surnames: \(parsed.surnames)",
-            "Given Names: \(parsed.givenNames)",
-            "Passport Number: \(parsed.passportNumber)",
-            "Nationality: \(parsed.nationality)",
-            "Birth Date: \(parsed.birthDateYYMMDD)",
-            "Sex: \(parsed.sex)",
-            "Expiry Date: \(parsed.expiryDateYYMMDD)",
-            "Optional Data: \(parsed.optionalData)",
-          ].joined(separator: "\n")
-        )
-        .font(.system(.body, design: .monospaced))
-        .textSelection(.enabled)
-      }
-
-      Text("Raw Data Groups:")
-        .font(.subheadline).bold()
-
-      ForEach(result.dataGroups) { group in
-        VStack(alignment: .leading, spacing: 6) {
-          Text("\(group.name) — \(group.data.count) bytes")
-            .font(.subheadline).bold()
-          Text(group.data.base64Lines)
-            .font(.system(.footnote, design: .monospaced))
-            .textSelection(.enabled)
+        VStack(alignment: .leading, spacing: 10) {
+          dataRow("Name", "\(parsed.givenNames) \(parsed.surnames)")
+          dataRow("Passport Number", parsed.passportNumber)
+          dataRow("Nationality", parsed.nationality)
+          dataRow("Date of Birth", parsed.birthDateYYMMDD)
+          dataRow("Sex", parsed.sex)
+          dataRow("Expiry Date", parsed.expiryDateYYMMDD)
+          dataRow("Issuing Country", parsed.issuingCountry)
+          dataRow("Document Type", parsed.documentType)
         }
-        .padding(8)
-        .background(.thinMaterial)
-        .clipShape(RoundedRectangle(cornerRadius: 10))
+        .padding(12)
+        .overlay(
+          RoundedRectangle(cornerRadius: 12)
+            .stroke(Color.black.opacity(0.1), lineWidth: 1)
+        )
+      } else if let dg1MRZ = result.dg1MRZ {
+        Text(dg1MRZ)
+          .font(.system(.body, design: .monospaced))
+          .textSelection(.enabled)
+          .foregroundStyle(.black)
       }
     }
+  }
+
+  private func dataRow(_ label: String, _ value: String) -> some View {
+    HStack(alignment: .top) {
+      Text(label)
+        .font(.subheadline)
+        .foregroundStyle(.black.opacity(0.6))
+        .frame(width: 140, alignment: .leading)
+
+      Text(value)
+        .font(.subheadline)
+        .foregroundStyle(.black)
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+  }
+}
+
+private struct PrimaryActionButton: View {
+  let title: String
+  let action: () -> Void
+
+  var body: some View {
+    Button(action: action) {
+      Text(title)
+        .font(.system(.body, weight: .medium))
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 14)
+        .foregroundStyle(.white)
+        .background(Color.black)
+        .clipShape(Capsule())
+        .contentShape(Rectangle())
+    }
+    .buttonStyle(.plain)
   }
 }
