@@ -1,6 +1,15 @@
 {
-  "originHash" : "351aaff92dec93f04a2fdd631010a46ac6509f5952cc8e4c25eac9b085626d17",
+  "originHash" : "5388aa3cc6c3173238b3505ee4b4d37f6712d350c12ae24e62bb03507c9abeea",
   "pins" : [
+    {
+      "identity" : "nfcpassportreader",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/arsenstorm/NFCPassportReader",
+      "state" : {
+        "revision" : "f20ce4becc34e95d698882a1e2bcca7f4e8c895b",
+        "version" : "3.0.0"
+      }
+    },
     {
       "identity" : "openssl-package",
       "kind" : "remoteSourceControl",
