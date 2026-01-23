@@ -4,6 +4,7 @@ import SwiftUI
 
 /// The current step in the verification flow.
 enum VerificationStep: Int, CaseIterable {
+  case welcome        // Landing screen
   case scanning       // Scanning QR code
   case rfidCheck      // Asking if document has RFID (required, no skip)
   case mrz            // Scanning passport MRZ
@@ -14,6 +15,7 @@ enum VerificationStep: Int, CaseIterable {
 
   var title: String {
     switch self {
+    case .welcome: return "Welcome"
     case .scanning: return "Scan QR Code"
     case .rfidCheck: return "RFID Check"
     case .mrz: return "Scan Document"
@@ -44,7 +46,7 @@ enum AttemptPhase: String, Codable {
 /// Observable session state for the verification flow.
 @MainActor
 final class VerificationSession: ObservableObject {
-  @Published var step: VerificationStep = .scanning
+  @Published var step: VerificationStep = .welcome
   @Published var payload: QRCodePayload?
   @Published var errorMessage: String?
 
@@ -157,7 +159,7 @@ final class VerificationSession: ObservableObject {
 
   /// Reset the session for a new verification attempt.
   func reset() {
-    step = .scanning
+    step = .welcome
     payload = nil
     errorMessage = nil
     mrzResult = nil

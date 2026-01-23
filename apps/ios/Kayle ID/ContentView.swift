@@ -1,8 +1,18 @@
 import SwiftUI
 
 struct ContentView: View {
+  private enum NavigationDirection {
+    case forward
+    case backward
+  }
+
   @StateObject private var session = VerificationSession()
   @StateObject private var nfcReader = PassportNFCReader()
+
+  @State private var previousStep: VerificationStep?
+  @State private var lastStep: VerificationStep = .welcome
+  @State private var navDirection: NavigationDirection = .forward
+  @State private var transitionProgress: CGFloat = 1
 
   // MRZ scanning state
   @State private var isMRZSheetPresented = false
@@ -17,91 +27,45 @@ struct ContentView: View {
       ZStack {
         Color.white.ignoresSafeArea()
 
-        switch session.step {
-        case .scanning:
-          scanningView
+        GeometryReader { geo in
+          let width = geo.size.width
+          let directionSign: CGFloat = navDirection == .forward ? 1 : -1
 
-        case .rfidCheck:
-          RFIDCheckView(
-            onHasRFID: {
-              session.hasRFIDSymbol = true
-              session.moveToStep(.mrz)
+          ZStack {
+            if let previousStep {
+              stepView(for: previousStep)
+                .offset(x: -directionSign * width * transitionProgress)
             }
-          )
 
-        case .mrz:
-          mrzStepView
-
-        case .nfc:
-          NFCReadingView(
-            nfcReader: nfcReader,
-            mrzKey: session.mrzResult?.mrzKey ?? "",
-            cardAccessNumber: cardAccessNumber,
-            onComplete: { result in
-              session.nfcResult = result
-              // Upload NFC data immediately
-              Task {
-                do {
-                  await session.updatePhase(.nfcComplete)
-                  try await session.uploadNFCData()
-                  session.moveToStep(.selfie)
-                  await session.updatePhase(.selfieCapturing)
-                } catch {
-                  session.handleError(error)
-                }
-              }
-            }
-          )
-
-        case .selfie:
-          CameraPermissionGate(onCancel: {
-            session.moveToStep(.error)
-            session.errorMessage = "Camera permission is required for selfie capture."
-          }) {
-            SelfieCaptureView(
-              onCapture: { images in
-                session.selfieImages = images
-                // Upload selfie data immediately
-                Task {
-                  do {
-                    await session.updatePhase(.selfieComplete)
-                    try await session.uploadSelfieData()
-                    // All data uploaded, mark as complete
-                    await session.updatePhase(.complete)
-                    session.moveToStep(.complete)
-                  } catch {
-                    session.handleError(error)
-                  }
-                }
-              },
-              onCancel: {
-                session.moveToStep(.nfc)
-              }
-            )
+            stepView(for: session.step)
+              .offset(x: directionSign * width * (1 - transitionProgress))
           }
-
-
-        case .complete:
-          CompletionView(
-            isSuccess: true,
-            message: "Your identity verification data has been securely transmitted. You can now close this app and return to your browser.",
-            onDone: {
-              session.reset()
-            }
-          )
-
-        case .error:
-          CompletionView(
-            isSuccess: false,
-            message: session.errorMessage ?? "An unexpected error occurred.",
-            onDone: {
-              session.reset()
-            }
-          )
+          .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
       }
     }
     .tint(.black)
+    .onAppear {
+      lastStep = session.step
+    }
+    .onChange(of: session.step) { newStep in
+      guard newStep != lastStep else { return }
+      navDirection = newStep.rawValue >= lastStep.rawValue ? .forward : .backward
+      previousStep = lastStep
+      lastStep = newStep
+      transitionProgress = 0
+
+      withAnimation(.easeInOut(duration: 0.35)) {
+        transitionProgress = 1
+      }
+
+      let outgoingStep = previousStep
+      DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+        if previousStep == outgoingStep {
+          previousStep = nil
+        }
+      }
+    }
     .sheet(isPresented: $isMRZSheetPresented, onDismiss: handleMRZSheetDismiss) {
       CameraPermissionGate(onCancel: {
         isMRZSheetPresented = false
@@ -126,6 +90,124 @@ struct ContentView: View {
         handleQRCode(code)
       }
     }
+  }
+
+  @ViewBuilder
+  private func stepView(for step: VerificationStep) -> some View {
+    switch step {
+    case .welcome:
+      welcomeView
+    case .scanning:
+      scanningView
+    case .rfidCheck:
+      RFIDCheckView(
+        onHasRFID: {
+          session.hasRFIDSymbol = true
+          session.moveToStep(.mrz)
+        }
+      )
+    case .mrz:
+      mrzStepView
+    case .nfc:
+      NFCReadingView(
+        nfcReader: nfcReader,
+        mrzKey: session.mrzResult?.mrzKey ?? "",
+        cardAccessNumber: cardAccessNumber,
+        onComplete: { result in
+          session.nfcResult = result
+          // Upload NFC data immediately
+          Task {
+            do {
+              await session.updatePhase(.nfcComplete)
+              try await session.uploadNFCData()
+              session.moveToStep(.selfie)
+              await session.updatePhase(.selfieCapturing)
+            } catch {
+              session.handleError(error)
+            }
+          }
+        }
+      )
+    case .selfie:
+      CameraPermissionGate(onCancel: {
+        session.moveToStep(.error)
+        session.errorMessage = "Camera permission is required for selfie capture."
+      }) {
+        SelfieCaptureView(
+          onCapture: { images in
+            session.selfieImages = images
+            // Upload selfie data immediately
+            Task {
+              do {
+                await session.updatePhase(.selfieComplete)
+                try await session.uploadSelfieData()
+                // All data uploaded, mark as complete
+                await session.updatePhase(.complete)
+                session.moveToStep(.complete)
+              } catch {
+                session.handleError(error)
+              }
+            }
+          },
+          onCancel: {
+            session.moveToStep(.nfc)
+          }
+        )
+      }
+    case .complete:
+      CompletionView(
+        isSuccess: true,
+        message: "Your identity verification data has been securely transmitted. You can now close this app and return to your browser.",
+        onDone: {
+          session.reset()
+        }
+      )
+    case .error:
+      CompletionView(
+        isSuccess: false,
+        message: session.errorMessage ?? "An unexpected error occurred.",
+        onDone: {
+          session.reset()
+        }
+      )
+    }
+  }
+
+  // MARK: - Welcome View
+
+  private var welcomeView: some View {
+    VStack(alignment: .leading, spacing: 16) {
+      Spacer()
+
+      VStack(alignment: .center, spacing: 12) {
+        Image("Logo")
+          .resizable()
+          .scaledToFit()
+          .frame(width: 96, height: 96)
+          .clipShape(RoundedRectangle(cornerRadius: 20))
+          .overlay(
+            RoundedRectangle(cornerRadius: 20)
+              .stroke(Color.black.opacity(0.1), lineWidth: 1)
+          )
+
+        Text("Kayle ID")
+          .font(.title2).bold()
+          .foregroundStyle(.black)
+
+        Text("Let’s verify your identity in a few quick steps.")
+          .font(.subheadline)
+          .foregroundStyle(.black.opacity(0.6))
+          .multilineTextAlignment(.center)
+      }
+      .frame(maxWidth: .infinity)
+
+      Spacer()
+
+      PrimaryActionButton(title: "Get Started") {
+        session.moveToStep(.scanning)
+      }
+    }
+    .padding(16)
   }
 
   // MARK: - MRZ Step View

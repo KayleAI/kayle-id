@@ -181,7 +181,8 @@ protocol SelfieCameraDelegate: AnyObject {
   func didCompleteCapture()
 }
 
-private actor SelfieCaptureState {
+private final class SelfieCaptureState {
+  private let queue = DispatchQueue(label: "selfie.capture.state")
   private var isAutoCapturing = false
   private var hasCompletedCapture = false
   private var faceInBoxStartTime: Date?
@@ -194,67 +195,75 @@ private actor SelfieCaptureState {
   }
 
   func updateLayout(viewSize: CGSize, targetRect: CGRect) {
-    self.viewSize = viewSize
-    self.targetRect = targetRect
+    queue.sync {
+      self.viewSize = viewSize
+      self.targetRect = targetRect
+    }
   }
 
   func beginCaptureIfPossible() -> Bool {
-    guard !isAutoCapturing && !hasCompletedCapture else { return false }
-    isAutoCapturing = true
-    faceInBoxStartTime = nil
-    return true
+    queue.sync {
+      guard !isAutoCapturing && !hasCompletedCapture else { return false }
+      isAutoCapturing = true
+      faceInBoxStartTime = nil
+      return true
+    }
   }
 
   func finishCapture(markComplete: Bool) {
-    isAutoCapturing = false
-    if markComplete {
-      hasCompletedCapture = true
+    queue.sync {
+      isAutoCapturing = false
+      if markComplete {
+        hasCompletedCapture = true
+      }
     }
   }
 
   func evaluateFace(_ face: VNFaceObservation?) -> (faceInBox: Bool, shouldStartCapture: Bool) {
-    guard !isAutoCapturing && !hasCompletedCapture else {
-      faceInBoxStartTime = nil
-      return (false, false)
-    }
+    queue.sync {
+      guard !isAutoCapturing && !hasCompletedCapture else {
+        faceInBoxStartTime = nil
+        return (false, false)
+      }
 
-    guard viewSize.width > 0, viewSize.height > 0 else {
-      faceInBoxStartTime = nil
-      return (false, false)
-    }
+      guard viewSize.width > 0, viewSize.height > 0 else {
+        faceInBoxStartTime = nil
+        return (false, false)
+      }
 
-    guard let face else {
-      faceInBoxStartTime = nil
-      return (false, false)
-    }
+      guard let face else {
+        faceInBoxStartTime = nil
+        return (false, false)
+      }
 
-    let faceRect = CGRect(
-      x: (1 - face.boundingBox.origin.x - face.boundingBox.width) * viewSize.width,
-      y: (1 - face.boundingBox.origin.y - face.boundingBox.height) * viewSize.height,
-      width: face.boundingBox.width * viewSize.width,
-      height: face.boundingBox.height * viewSize.height
-    )
+      let faceRect = CGRect(
+        x: (1 - face.boundingBox.origin.x - face.boundingBox.width) * viewSize.width,
+        y: (1 - face.boundingBox.origin.y - face.boundingBox.height) * viewSize.height,
+        width: face.boundingBox.width * viewSize.width,
+        height: face.boundingBox.height * viewSize.height
+      )
 
-    let faceCenterX = faceRect.midX
-    let faceCenterY = faceRect.midY
-    let tolerance: CGFloat = 40
-    let expandedTargetRect = targetRect.insetBy(dx: -tolerance, dy: -tolerance)
-    let faceInBox = expandedTargetRect.contains(CGPoint(x: faceCenterX, y: faceCenterY))
+      let faceCenterX = faceRect.midX
+      let faceCenterY = faceRect.midY
+      let tolerance: CGFloat = 40
+      let expandedTargetRect = targetRect.insetBy(dx: -tolerance, dy: -tolerance)
+      let faceInBox = expandedTargetRect.contains(CGPoint(x: faceCenterX, y: faceCenterY))
 
-    var shouldStartCapture = false
-    if faceInBox {
-      if faceInBoxStartTime == nil {
-        faceInBoxStartTime = Date()
-      } else if let startTime = faceInBoxStartTime,
-                Date().timeIntervalSince(startTime) >= stabilityDuration {
-        shouldStartCapture = true
+      var shouldStartCapture = false
+      if faceInBox {
+        if faceInBoxStartTime == nil {
+          faceInBoxStartTime = Date()
+        } else if let startTime = faceInBoxStartTime,
+                  Date().timeIntervalSince(startTime) >= stabilityDuration {
+          shouldStartCapture = true
+          faceInBoxStartTime = nil
+        }
+      } else {
         faceInBoxStartTime = nil
       }
-    } else {
-      faceInBoxStartTime = nil
-    }
 
-    return (faceInBox, shouldStartCapture)
+      return (faceInBox, shouldStartCapture)
+    }
   }
 }
 
@@ -266,7 +275,7 @@ final class SelfieCameraViewController: UIViewController {
   private let videoOutput = AVCaptureVideoDataOutput()
   private let sessionQueue = DispatchQueue(label: "selfie.capture.session")
   private var previewLayer: AVCaptureVideoPreviewLayer?
-  private nonisolated let captureState = SelfieCaptureState(
+  private let captureState = SelfieCaptureState(
     stabilityDuration: SelfieCaptureConstants.stabilityDuration
   )
   
@@ -309,9 +318,7 @@ final class SelfieCameraViewController: UIViewController {
       width: SelfieCaptureConstants.boxWidth,
       height: SelfieCaptureConstants.boxHeight
     )
-    Task {
-      await captureState.updateLayout(viewSize: size, targetRect: targetRect)
-    }
+    captureState.updateLayout(viewSize: size, targetRect: targetRect)
   }
 
   private func setupCamera() {
@@ -366,8 +373,8 @@ final class SelfieCameraViewController: UIViewController {
     updateTargetRect(for: view.bounds.size)
   }
 
-  private func startAutoCaptureSequence() async {
-    guard await captureState.beginCaptureIfPossible() else { return }
+  private func startAutoCaptureSequence() {
+    guard captureState.beginCaptureIfPossible() else { return }
     capturedPhotos = []
     pendingCaptureCount = 0
 
@@ -378,9 +385,7 @@ final class SelfieCameraViewController: UIViewController {
   private func captureNextPhoto() {
     guard pendingCaptureCount < SelfieCaptureConstants.captureCount else {
       // All photos captured
-      Task {
-        await captureState.finishCapture(markComplete: true)
-      }
+      captureState.finishCapture(markComplete: true)
       delegate?.didCompleteCapture()
       return
     }
@@ -402,14 +407,12 @@ extension SelfieCameraViewController: AVCaptureVideoDataOutputSampleBufferDelega
     try? handler.perform([faceRequest])
 
     let faces = faceRequest.results
-    Task { [weak self] in
+    Task { @MainActor [weak self] in
       guard let self else { return }
-      let evaluation = await self.captureState.evaluateFace(faces?.first)
-      await MainActor.run {
-        self.delegate?.didUpdateFaceInBox(evaluation.faceInBox)
-      }
+      let evaluation = self.captureState.evaluateFace(faces?.first)
+      self.delegate?.didUpdateFaceInBox(evaluation.faceInBox)
       if evaluation.shouldStartCapture {
-        await self.startAutoCaptureSequence()
+        self.startAutoCaptureSequence()
       }
     }
   }
@@ -443,9 +446,7 @@ extension SelfieCameraViewController: AVCapturePhotoCaptureDelegate {
           self.captureNextPhoto()
         }
       } else {
-        Task {
-          await self.captureState.finishCapture(markComplete: true)
-        }
+        self.captureState.finishCapture(markComplete: true)
         self.delegate?.didCompleteCapture()
       }
     }

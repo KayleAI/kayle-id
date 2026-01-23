@@ -113,12 +113,11 @@ final class MRZOCRViewController: UIViewController, AVCaptureVideoDataOutputSamp
       .filter { $0.confidence >= 0.4 }
       .map(\.string)
 
-    let candidate = Self.extractMRZ(from: lines)
-    guard let mrz = candidate else { return }
-    let can = Self.extractCAN(from: lines)
-
     Task { @MainActor [weak self] in
       guard let self else { return }
+      let candidate = extractMRZ(from: lines)
+      guard let mrz = candidate else { return }
+      let can = extractCAN(from: lines)
       if mrz != self.lastMRZ || can != self.lastCAN {
         self.lastMRZ = mrz
         self.lastCAN = can
@@ -129,93 +128,93 @@ final class MRZOCRViewController: UIViewController, AVCaptureVideoDataOutputSamp
       }
     }
   }
+}
 
-  // MARK: - MRZ extraction helpers
+// MARK: - MRZ extraction helpers
 
-  nonisolated private static func extractMRZ(from lines: [String]) -> String? {
-    let normalised = lines.map { normaliseMRZish($0) }.filter { !$0.isEmpty }
+private func extractMRZ(from lines: [String]) -> String? {
+  let normalised = lines.map { normaliseMRZish($0) }.filter { !$0.isEmpty }
 
-    let mrzLike = normalised
-      .filter { $0.count >= 25 && $0.contains("<<") }
+  let mrzLike = normalised
+    .filter { $0.count >= 25 && $0.contains("<<") }
 
-    // Try TD1 (3 lines, ~30 chars each)
-    let td1Candidates = mrzLike.filter { $0.count >= 25 && $0.count <= 35 }
-    if td1Candidates.count >= 3 {
-      let ranked = td1Candidates.sorted { scoreMRZLine($0) > scoreMRZLine($1) }
-      let l1 = ranked[0]
-      let l2 = ranked[1]
-      let l3 = ranked[2]
-      if l1.count >= 25, l2.count >= 25, l3.count >= 25 {
-        return "\(l1)\n\(l2)\n\(l3)"
-      }
+  // Try TD1 (3 lines, ~30 chars each)
+  let td1Candidates = mrzLike.filter { $0.count >= 25 && $0.count <= 35 }
+  if td1Candidates.count >= 3 {
+    let ranked = td1Candidates.sorted { scoreMRZLine($0) > scoreMRZLine($1) }
+    let l1 = ranked[0]
+    let l2 = ranked[1]
+    let l3 = ranked[2]
+    if l1.count >= 25, l2.count >= 25, l3.count >= 25 {
+      return "\(l1)\n\(l2)\n\(l3)"
     }
-
-    // Try TD2/TD3 (2 lines, >=36 or 44 chars)
-    if mrzLike.count >= 2 {
-      let ranked = mrzLike.sorted { scoreMRZLine($0) > scoreMRZLine($1) }
-      let l1 = ranked[0]
-      let l2 = ranked[1]
-
-      if l1.count >= 30, l2.count >= 30 {
-        return "\(l1)\n\(l2)"
-      }
-    }
-
-    return nil
   }
 
-  nonisolated private static func normaliseMRZish(_ s: String) -> String {
-    let up = s.uppercased().replacingOccurrences(of: " ", with: "")
-    let allowed = up.filter { ch in
-      (ch >= "A" && ch <= "Z") || (ch >= "0" && ch <= "9") || ch == "<"
+  // Try TD2/TD3 (2 lines, >=36 or 44 chars)
+  if mrzLike.count >= 2 {
+    let ranked = mrzLike.sorted { scoreMRZLine($0) > scoreMRZLine($1) }
+    let l1 = ranked[0]
+    let l2 = ranked[1]
+
+    if l1.count >= 30, l2.count >= 30 {
+      return "\(l1)\n\(l2)"
     }
-    return String(allowed)
   }
 
-  nonisolated private static func scoreMRZLine(_ s: String) -> Int {
-    let lt = s.count(where: { $0 == "<" })
-    return lt * 10 + s.count
+  return nil
+}
+
+private func normaliseMRZish(_ s: String) -> String {
+  let up = s.uppercased().replacingOccurrences(of: " ", with: "")
+  let allowed = up.filter { ch in
+    (ch >= "A" && ch <= "Z") || (ch >= "0" && ch <= "9") || ch == "<"
+  }
+  return String(allowed)
+}
+
+private func scoreMRZLine(_ s: String) -> Int {
+  let lt = s.count(where: { $0 == "<" })
+  return lt * 10 + s.count
+}
+
+private func extractCAN(from lines: [String]) -> String? {
+  let eligibleLines = lines.filter { !$0.contains("<") }
+  let labeledLines = eligibleLines.filter { line in
+    let up = line.uppercased()
+    return up.contains("CAN") || up.contains("CARD") || up.contains("ACCESS")
   }
 
-  nonisolated private static func extractCAN(from lines: [String]) -> String? {
-    let eligibleLines = lines.filter { !$0.contains("<") }
-    let labeledLines = eligibleLines.filter { line in
-      let up = line.uppercased()
-      return up.contains("CAN") || up.contains("CARD") || up.contains("ACCESS")
-    }
+  let labeledCandidates = labeledLines
+    .flatMap { digitRuns(in: $0) }
+    .filter { $0.count == 6 }
 
-    let labeledCandidates = labeledLines
-      .flatMap { digitRuns(in: $0) }
-      .filter { $0.count == 6 }
-
-    if let match = labeledCandidates.first {
-      return match
-    }
-
-    let candidates = eligibleLines
-      .flatMap { digitRuns(in: $0) }
-      .filter { $0.count == 6 }
-
-    return candidates.first
+  if let match = labeledCandidates.first {
+    return match
   }
 
-  nonisolated private static func digitRuns(in s: String) -> [String] {
-    var runs: [String] = []
-    var current = ""
+  let candidates = eligibleLines
+    .flatMap { digitRuns(in: $0) }
+    .filter { $0.count == 6 }
 
-    for ch in s {
-      if ch >= "0" && ch <= "9" {
-        current.append(ch)
-      } else if !current.isEmpty {
-        runs.append(current)
-        current = ""
-      }
-    }
+  return candidates.first
+}
 
-    if !current.isEmpty {
+private func digitRuns(in s: String) -> [String] {
+  var runs: [String] = []
+  var current = ""
+
+  for ch in s {
+    if ch >= "0" && ch <= "9" {
+      current.append(ch)
+    } else if !current.isEmpty {
       runs.append(current)
+      current = ""
     }
-
-    return runs
   }
+
+  if !current.isEmpty {
+    runs.append(current)
+  }
+
+  return runs
 }
