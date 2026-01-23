@@ -10,14 +10,12 @@ import { useVerificationStore } from "../../stores/session";
  */
 export function SessionConsent() {
   const [consentChecked, setConsentChecked] = useState(false);
-  const goToPassportCapture = useVerificationStore(
-    (state) => state.goToPassportCapture
-  );
+  const goToAppCheck = useVerificationStore((state) => state.goToAppCheck);
   const goToExplain = useVerificationStore((state) => state.goToExplain);
 
   const handleStartVerification = () => {
     if (consentChecked) {
-      goToPassportCapture();
+      goToAppCheck();
     }
   };
 
@@ -30,24 +28,26 @@ export function SessionConsent() {
             <Logo className="" title="Kayle ID" />
           </div>
           <h1 className="mb-4 font-light text-3xl text-foreground tracking-tight">
-            Your consent is required
+            Before you start
           </h1>
           <p className="text-lg text-muted-foreground">
-            To continue, you must agree to the following:
+            To continue, please confirm:
           </p>
         </div>
 
         {/* Body */}
         <div className="space-y-4">
           <ul className="list-disc space-y-2 pl-5 text-base text-muted-foreground">
-            <li>I allow Kayle ID to read data from my passport</li>
             <li>
-              I allow Kayle ID to capture a selfie to confirm I am the passport
-              holder
+              I allow Kayle ID to read the chip in my passport or national ID
+              card
             </li>
             <li>
-              I allow Kayle ID to share the verification result and details I
-              choose to share with{" "}
+              I allow Kayle ID to take a selfie to confirm I’m the person named
+              on the ID
+            </li>
+            <li>
+              I allow Kayle ID to share the result and the details I select with{" "}
               <span className="font-bold text-foreground underline decoration-dashed underline-offset-2">
                 Platform Name
               </span>
@@ -98,7 +98,7 @@ export function SessionConsent() {
                 >
                   Privacy Notice
                 </Button>{" "}
-                and consent to identity verification.
+                and I consent to this identity check.
               </Label>
             </div>
           </div>

@@ -7,7 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		B8ABF8A12F13073100ECA26E /* NFCPassportReader in Frameworks */ = {isa = PBXBuildFile; productRef = B8ABF8A02F13073100ECA26E /* NFCPassportReader */; };
+		B8ABF8A12F13073100ECA26E /* MRTDReader in Frameworks */ = {isa = PBXBuildFile; productRef = B8ABF8A02F13073100ECA26E /* MRTDReader */; };
 		B8F0012F2000010000000004 /* OpenSSL in Frameworks */ = {isa = PBXBuildFile; productRef = B8F0012F2000010000000005 /* OpenSSL */; };
 /* End PBXBuildFile section */
 
@@ -86,7 +86,7 @@
 			name = "Kayle ID";
 			packageProductDependencies = (
 				B8F0012F2000010000000005 /* OpenSSL */,
-				B8ABF8A02F13073100ECA26E /* NFCPassportReader */,
+				B8ABF8A02F13073100ECA26E /* MRTDReader */,
 			);
 			productName = "Kayle ID";
 			productReference = B8ED7CF52F081CC700CD508D /* Kayle ID.app */;
@@ -368,12 +368,12 @@
 /* End XCConfigurationList section */
 
 /* Begin XCRemoteSwiftPackageReference section */
-		B8ABF89F2F13073100ECA26E /* XCRemoteSwiftPackageReference "NFCPassportReader" */ = {
+		B8ABF89F2F13073100ECA26E /* XCRemoteSwiftPackageReference "MRTDReader" */ = {
 			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/arsenstorm/NFCPassportReader";
+			repositoryURL = "https://github.com/arsenstorm/MRTDReader";
 			requirement = {
 				kind = upToNextMajorVersion;
-				minimumVersion = 3.0.0;
+				minimumVersion = 4.0.0;
 			};
 		};
 		B8F0012F2000010000000006 /* XCRemoteSwiftPackageReference "OpenSSL-Package" */ = {
@@ -387,10 +387,10 @@
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
-		B8ABF8A02F13073100ECA26E /* NFCPassportReader */ = {
+		B8ABF8A02F13073100ECA26E /* MRTDReader */ = {
 			isa = XCSwiftPackageProductDependency;
-			package = B8ABF89F2F13073100ECA26E /* XCRemoteSwiftPackageReference "NFCPassportReader" */;
-			productName = NFCPassportReader;
+			package = B8ABF89F2F13073100ECA26E /* XCRemoteSwiftPackageReference "MRTDReader" */;
+			productName = MRTDReader;
 		};
 		B8F0012F2000010000000005 /* OpenSSL */ = {
 			isa = XCSwiftPackageProductDependency;

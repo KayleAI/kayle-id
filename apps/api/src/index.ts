@@ -6,15 +6,20 @@ import v1 from "@/v1";
 import verify from "@/v1/verify";
 import auth from "./auth";
 
+// biome-ignore lint/performance/noBarrelFile: required for Cloudflare Workers runtime
+export { VerifySessionService } from "@/services/verify-session";
+
 const app = new OpenAPIHono<{ Bindings: CloudflareBindings }>();
 
 app.use(
   cors({
-    origin: [
+    origin:
       process.env.NODE_ENV === "production"
-        ? "https://kayle.id"
-        : "https://localhost:3000",
-    ],
+        ? ["https://kayle.id", "https://verify.kayle.id"]
+        : [
+            "http://localhost:2999", // verify app
+            "https://localhost:3000", // platform app
+          ],
     allowHeaders: ["Authorization", "Content-Type"],
     allowMethods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     credentials: true,

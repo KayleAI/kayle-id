@@ -17,11 +17,11 @@ export function SessionExplain() {
             <Logo className="" title="Kayle ID" />
           </div>
           <h1 className="mb-4 font-light text-3xl text-foreground tracking-tight">
-            Verify your identity with Kayle ID
+            Verify your identity
           </h1>
           <p className="text-lg text-muted-foreground">
-            Kayle ID lets you verify your identity using your passport's NFC
-            chip and a selfie.
+            Verify your identity using your passport or national ID card and a
+            quick selfie.
           </p>
         </div>
 
@@ -32,11 +32,10 @@ export function SessionExplain() {
               This process:
             </h3>
             <ul className="list-disc space-y-1 pl-5 text-base text-muted-foreground">
-              <li>Confirms that your passport is genuine</li>
-              <li>Confirms that you are the passport holder</li>
+              <li>Confirms your ID is genuine</li>
+              <li>Confirms you're the person named on the ID</li>
               <li>
-                Shares only the verification result and details you choose to
-                share with{" "}
+                Shares only the result and details you choose to share with{" "}
                 <span className="font-bold text-foreground underline decoration-dashed underline-offset-2">
                   Platform Name
                 </span>
@@ -46,11 +45,14 @@ export function SessionExplain() {
 
           <div>
             <h3 className="mb-2 font-medium text-base text-foreground">
-              Kayle ID:
+              Privacy:
             </h3>
             <ul className="list-disc space-y-1 pl-5 text-base text-muted-foreground">
-              <li>Does not store your passport or selfie</li>
-              <li>Does not create an account for you</li>
+              <li>
+                Doesn't keep your document scan or selfie longer than needed to
+                complete this check
+              </li>
+              <li>Doesn't create an account for you</li>
               <li>Processes data only for this verification session</li>
             </ul>
           </div>

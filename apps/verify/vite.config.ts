@@ -18,6 +18,9 @@ const config = defineConfig({
   ],
   envPrefix: "PUBLIC_",
   envDir: new URL("../../", import.meta.url).pathname,
+  server: {
+    port: 2999,
+  },
 });
 
 export default config;

@@ -20,6 +20,17 @@
 	<string>$(MARKETING_VERSION)</string>
 	<key>CFBundleVersion</key>
 	<string>$(CURRENT_PROJECT_VERSION)</string>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>kayle</string>
+			</array>
+			<key>CFBundleURLName</key>
+			<string>com.kayle.id</string>
+		</dict>
+	</array>
 	<key>NFCReaderUsageDescription</key>
 	<string>Used to read ePassport NFC data.</string>
 	<key>NSCameraUsageDescription</key>
@@ -56,5 +67,10 @@
 		<string>A0000002471001</string>
 		<string>00000000000000</string>
 	</array>
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsArbitraryLoads</key>
+		<true/>
+	</dict>
 </dict>
 </plist>

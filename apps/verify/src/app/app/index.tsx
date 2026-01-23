@@ -1,41 +1,43 @@
-import { useCallback, useEffect } from "react";
-import InfoCard from "@/components/info";
-import { useDevice } from "@/utils/use-device";
+import { useEffect } from "react";
 import { useVerificationStore } from "../../stores/session";
 import { ErrorCard } from "../error";
 import { useSession } from "../session-provider";
+import { AppCheck } from "./app-check";
 import { SessionConsent } from "./consent";
 import { SessionExplain } from "./explain";
-import { SessionNfcCapture } from "./nfc-capture";
-import { SessionPassportCapture } from "./passport-capture";
-import { UnsupportedDevice } from "./unsupported-device";
+import { QRHandoff } from "./qr-handoff";
+import { VerificationResult } from "./result";
+import { ShareDetails } from "./share-details";
+import { Teardown } from "./teardown";
+import { WaitingForMobile } from "./waiting-for-mobile";
 
-export function SessionApp() {
-  const { session } = useSession();
-  const { supported: deviceSupported } = useDevice();
+type SessionAppProps = {
+  sessionId: string;
+  redirectUrl?: string | null;
+};
+
+export function SessionApp({ sessionId, redirectUrl }: SessionAppProps) {
+  const { sessionData, isConnected } = useSession();
   const step = useVerificationStore((state) => state.step);
+  const isAllDataReceived = useVerificationStore(
+    (state) => state.isAllDataReceived
+  );
+  const goToResult = useVerificationStore((state) => state.goToResult);
 
-  const notifyUnsupportedDevice = useCallback(async () => {
-    if (!session) {
-      return;
-    }
-
-    await session.notifyUnsupportedDevice();
-  }, [session]);
-
+  // Auto-advance to result when all data is received
   useEffect(() => {
-    if (!deviceSupported && session) {
-      notifyUnsupportedDevice();
+    if (step === "waiting-for-mobile" && isAllDataReceived()) {
+      goToResult();
     }
-  }, [session, deviceSupported, notifyUnsupportedDevice]);
+  }, [step, isAllDataReceived, goToResult]);
 
-  if (!session) {
+  // Wait for WebSocket to connect and get session data
+  if (!(isConnected || sessionData)) {
     return null;
   }
 
-  if (!deviceSupported) {
-    return <UnsupportedDevice />;
-  }
+  // Get the redirect URL from props or session data
+  const finalRedirectUrl = redirectUrl ?? sessionData?.redirectUrl ?? null;
 
   // Render components based on current verification step
   switch (step) {
@@ -43,35 +45,18 @@ export function SessionApp() {
       return <SessionExplain />;
     case "consent":
       return <SessionConsent />;
-    case "passport-capture":
-      return <SessionPassportCapture />;
-    case "nfc-capture":
-      return <SessionNfcCapture />;
-    case "selfie-capture":
+    case "app-check":
+      return <AppCheck />;
+    case "qr-handoff":
+      return <QRHandoff sessionId={sessionId} />;
+    case "waiting-for-mobile":
+      return <WaitingForMobile />;
     case "result":
+      return <VerificationResult sessionId={sessionId} />;
     case "share-details":
+      return <ShareDetails />;
     case "teardown":
-      // Placeholder for other steps - to be implemented later
-      return (
-        <InfoCard
-          buttons={{
-            primary: {
-              label: "Continue",
-              onClick: () => window.location.reload(),
-            },
-          }}
-          colour="emerald"
-          footer={true}
-          header={{
-            title: "Verification Complete",
-            description: "You have successfully verified your identity.",
-          }}
-          message={{
-            title: "Thank you for verifying your identity",
-            description: "You can now close this page.",
-          }}
-        />
-      );
+      return <Teardown redirectUrl={finalRedirectUrl} />;
     default:
       return (
         <ErrorCard error={{ code: "UNKNOWN", message: "Unknown error" }} />

@@ -2,9 +2,10 @@ import { Spinner } from "@kayleai/ui/spinner";
 import { useSession } from "./session-provider";
 
 export function SessionLoader() {
-  const { session, error } = useSession();
+  const { sessionData, isConnected, error } = useSession();
 
-  if (session || error) {
+  // Hide loader if we have session data, are connected, or have an error
+  if (sessionData || isConnected || error) {
     return null;
   }
 

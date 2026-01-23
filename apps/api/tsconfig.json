@@ -13,5 +13,6 @@
     "paths": {
       "@/*": ["./src/*"]
     }
-  }
+  },
+  "include": ["src/**/*", "tests/**/*", "cloudflare-env.d.ts"]
 }

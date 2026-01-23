@@ -1,9 +1,4 @@
 import type { ERROR_MESSAGES } from "@kayle-id/config/error-messages";
-import {
-  newHttpBatchRpcResponse,
-  newWorkersWebSocketRpcResponse,
-} from "capnweb";
-import type { Context } from "hono";
 
 /**
  * Return a WebSocket error response.
@@ -24,6 +19,7 @@ export function webSocketErrorResponse({
   server.accept();
   server.send(
     JSON.stringify({
+      type: "error",
       error: { code, message },
     })
   );
@@ -32,15 +28,4 @@ export function webSocketErrorResponse({
     status: 101,
     webSocket: client,
   });
-}
-
-export function newRpcResponse(
-  c: Context,
-  rpc: unknown
-): Response | Promise<Response> {
-  if (c.req.header("upgrade")?.toLowerCase() !== "websocket") {
-    return newHttpBatchRpcResponse(c.req.raw, rpc);
-  }
-
-  return newWorkersWebSocketRpcResponse(c.req.raw, rpc);
 }

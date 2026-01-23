@@ -26,11 +26,11 @@ createOrganizationRoute.openapi(internalCreateOrganization, async (c) => {
     // Generate a unique key for the logo
     const logoKey = `logos/${crypto.randomUUID()}`;
 
-    logoData = await env.STORAGE.put(logoKey, bytes, {
+    logoData = (await env.STORAGE.put(logoKey, bytes, {
       httpMetadata: {
         contentType,
       },
-    });
+    })) as unknown as R2Object;
   }
 
   try {

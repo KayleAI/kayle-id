@@ -4,8 +4,8 @@
   "type": "module",
   "scripts": {
     "dev": "bunx wrangler dev --env-file ../../.env --ip 0.0.0.0",
-    "test:setup": "cp ../../.env.test.example ./.env.test",
-    "test:dev": "bunx wrangler dev --env-file ./.env.test --local --ip 127.0.0.1 --port 8787",
+    "test:setup": "cp ../../.env.test.example ./.env.test --local-protocol https",
+    "test:dev": "bunx wrangler dev --env-file ./.env.test --local --ip 127.0.0.1 --port 8787 --local-protocol https",
     "deploy": "bunx wrangler deploy --minify",
     "cf-typegen": "bunx wrangler types --env-file ../../.env --env-interface CloudflareBindings cloudflare-env.d.ts"
   },
@@ -16,7 +16,6 @@
     "@kayle-id/config": "*",
     "@kayle-id/database": "*",
     "@scalar/hono-api-reference": "0.9.25",
-    "capnweb": "0.4.0",
     "drizzle-orm": "0.44.7",
     "hono": "4.10.6",
     "hono-openapi": "1.1.1",
@@ -25,6 +24,6 @@
   },
   "devDependencies": {
     "@types/bun": "latest",
-    "wrangler": "4.56.0"
+    "wrangler": "4.59.1"
   }
 }

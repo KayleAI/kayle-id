@@ -14,7 +14,7 @@ export function VerificationApp() {
   return (
     <Layout>
       <SessionProvider sessionId={sessionId}>
-        <SessionApp />
+        <SessionApp sessionId={sessionId} />
         <SessionError />
         <SessionLoader />
         <SessionEnvironment sessionId={sessionId} />
