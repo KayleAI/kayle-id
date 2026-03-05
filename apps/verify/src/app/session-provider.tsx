@@ -1,5 +1,3 @@
-import type { VerifySession } from "@api/shared/verify";
-import type { RpcStub } from "capnweb";
 import type { ReactNode } from "react";
 import {
   createContext,
@@ -10,10 +8,11 @@ import {
   useRef,
   useState,
 } from "react";
-import { initialiseSession } from "@/config/capnweb";
+import type { SessionError, VerifySession } from "@/config/capnp";
+import { initialiseSession } from "@/config/capnp";
 
 type SessionContextType = {
-  session: RpcStub<VerifySession> | null;
+  session: VerifySession | null;
   error: SessionError | null;
   onError: (callback: (sessionError: SessionError) => void) => () => void;
 };
@@ -25,18 +24,13 @@ type SessionProviderProps = {
   children: ReactNode;
 };
 
-type SessionError = {
-  code: string;
-  message: string;
-};
-
 export function SessionProvider({ sessionId, children }: SessionProviderProps) {
   const [isSessionReady, setIsSessionReady] = useState(false);
   const [error, setError] = useState<SessionError | null>(null);
   const errorCallbacksRef = useRef<Set<(sessionError: SessionError) => void>>(
     new Set()
   );
-  const sessionStubRef = useRef<RpcStub<VerifySession> | null>(null);
+  const sessionStubRef = useRef<VerifySession | null>(null);
 
   const notifyErrorCallbacks = useCallback((sessionError: SessionError) => {
     for (const callback of errorCallbacksRef.current) {
@@ -59,21 +53,10 @@ export function SessionProvider({ sessionId, children }: SessionProviderProps) {
   );
 
   const handleRpcError = useCallback(
-    (rpcError: Error) => {
-      try {
-        const parsedError = JSON.parse(
-          rpcError.message.split("bad RPC message:")[1]?.trim()
-        )?.error;
-
-        setIsSessionReady(false);
-        setError(parsedError);
-        notifyErrorCallbacks(parsedError);
-      } catch (parseError) {
-        console.error("Error parsing RPC error:", parseError);
-        setIsSessionReady(false);
-        setError({ code: "UNKNOWN", message: rpcError.message });
-        notifyErrorCallbacks({ code: "UNKNOWN", message: rpcError.message });
-      }
+    (sessionError: SessionError) => {
+      setIsSessionReady(false);
+      setError(sessionError);
+      notifyErrorCallbacks(sessionError);
     },
     [notifyErrorCallbacks]
   );
@@ -85,7 +68,7 @@ export function SessionProvider({ sessionId, children }: SessionProviderProps) {
 
     // Dispose previous stub if it exists
     if (sessionStubRef.current) {
-      sessionStubRef.current[Symbol.dispose]?.();
+      sessionStubRef.current.close();
       sessionStubRef.current = null;
     }
 
@@ -96,28 +79,26 @@ export function SessionProvider({ sessionId, children }: SessionProviderProps) {
     // Attempt to connect and ping
     (async () => {
       try {
+        await stub.connect();
+
         const pingResult = await stub.ping();
 
-        if (pingResult !== "pong") {
+        if (!pingResult) {
           throw new Error("Invalid ping response");
         }
 
         // If ping succeeds, mark session as ready (don't store stub in state!)
         setIsSessionReady(true);
         setError(null);
-      } catch (pingError: unknown) {
-        if (pingError instanceof Error) {
-          handleRpcError(pingError);
-        } else {
-          handleRpcError(new Error(String(pingError)));
-        }
+      } catch {
+        /* noop */
       }
     })();
 
     // Cleanup function
     return () => {
       if (sessionStubRef.current) {
-        sessionStubRef.current[Symbol.dispose]?.();
+        sessionStubRef.current.close();
         sessionStubRef.current = null;
       }
     };

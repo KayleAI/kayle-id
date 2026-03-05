@@ -5,6 +5,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@kayleai/ui/dialog";
+import { useLoaderData } from "@tanstack/react-router";
 import { QRCodeSVG } from "qrcode.react";
 import { useState } from "react";
 import InfoCard from "@/components/info";
@@ -17,6 +18,15 @@ import InfoCard from "@/components/info";
 export function UnsupportedDevice() {
   const [unsupportedDeviceDialogOpen, setUnsupportedDeviceDialogOpen] =
     useState(false);
+  const { sessionId } = useLoaderData({
+    from: "/$",
+  });
+
+  const qrPayload = `kayle-id://${JSON.stringify({
+    session_id: sessionId,
+    attempt_id: "",
+    mobile_write_token: "",
+  })}`;
 
   return (
     <>
@@ -63,7 +73,7 @@ export function UnsupportedDevice() {
               fgColor="currentColor"
               level="M"
               size={200}
-              value={window.location.href}
+              value={qrPayload}
             />
           </div>
         </DialogContent>

@@ -1,9 +1,6 @@
-import type { ERROR_MESSAGES } from "@kayle-id/config/error-messages";
-import {
-  newHttpBatchRpcResponse,
-  newWorkersWebSocketRpcResponse,
-} from "capnweb";
+import { ERROR_MESSAGES } from "@kayle-id/config/error-messages";
 import type { Context } from "hono";
+import { encodeServerError } from "./proto";
 
 /**
  * Return a WebSocket error response.
@@ -22,12 +19,9 @@ export function webSocketErrorResponse({
   // biome-ignore lint/correctness/noUndeclaredVariables: This is a Cloudflare Worker's global
   const [client, server] = Object.values(new WebSocketPair());
   server.accept();
-  server.send(
-    JSON.stringify({
-      error: { code, message },
-    })
-  );
-  server.close(1000, message);
+  const resolvedMessage = message ?? ERROR_MESSAGES[code]?.description ?? code;
+  server.send(encodeServerError(code, resolvedMessage));
+  server.close(1000, resolvedMessage);
   return new Response(null, {
     status: 101,
     webSocket: client,
@@ -35,12 +29,10 @@ export function webSocketErrorResponse({
 }
 
 export function newRpcResponse(
-  c: Context,
-  rpc: unknown
+  _c: Context,
+  _rpc: unknown
 ): Response | Promise<Response> {
-  if (c.req.header("upgrade")?.toLowerCase() !== "websocket") {
-    return newHttpBatchRpcResponse(c.req.raw, rpc);
-  }
-
-  return newWorkersWebSocketRpcResponse(c.req.raw, rpc);
+  return new Response("RPC no longer supported on this endpoint.", {
+    status: 410,
+  });
 }

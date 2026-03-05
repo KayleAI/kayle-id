@@ -1,0 +1,14 @@
+{
+  "name": "@kayle-id/capnp",
+  "type": "module",
+  "private": true,
+  "exports": {
+    ".": {
+      "types": "./generated/ts/verify.d.ts",
+      "import": "./generated/ts/verify.js"
+    }
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  }
+}

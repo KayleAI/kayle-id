@@ -1,13 +1,13 @@
 {
-  "originHash" : "5388aa3cc6c3173238b3505ee4b4d37f6712d350c12ae24e62bb03507c9abeea",
+  "originHash" : "f7e082083baa0aec4a48d66a210193d20e65085a6d9376c026e94566044a8c24",
   "pins" : [
     {
-      "identity" : "nfcpassportreader",
+      "identity" : "mrtdreader",
       "kind" : "remoteSourceControl",
-      "location" : "https://github.com/arsenstorm/NFCPassportReader",
+      "location" : "https://github.com/arsenstorm/MRTDReader",
       "state" : {
-        "revision" : "f20ce4becc34e95d698882a1e2bcca7f4e8c895b",
-        "version" : "3.0.0"
+        "revision" : "d4e341efa8bdf2c5fa213176f4c64a2a7efed934",
+        "version" : "4.0.4"
       }
     },
     {

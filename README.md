@@ -14,6 +14,16 @@ Kayle ID processes end-user identity data to perform document checks.
 
 We minimise what we store, encrypt all verification results, and never use this data for any purpose other than verification. You can read more about our data processing in our [privacy policy](https://kayle.id/privacy).
 
+## Scope
+
+For the initial release (`v1`), Kayle ID has some constraints on what it can and cannot do.
+
+The following items are out-of-scope for `v1`:
+
+- No liveness checks (planned for `v2`)
+- Limited face matching (planned for `v2`)
+- Support for Android devices
+
 ## Webhooks
 
 Kayle ID is webhook-based. This means that in order for a platform to view verification events, they must provide a webhook URL and a public key.
