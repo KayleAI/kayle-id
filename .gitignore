@@ -45,3 +45,6 @@ apps/ios/.DS_Store
 
 # Cap'n Proto generated C++
 /packages/capnp/generated/
+
+# Docs
+docs/*.md
