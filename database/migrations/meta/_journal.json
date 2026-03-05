@@ -8,6 +8,20 @@
       "when": 1764362073722,
       "tag": "0000_initial_schema",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1772719367236,
+      "tag": "0001_phase1_session_share_contract",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1772724463407,
+      "tag": "0003_phase1_failure_code_contract",
+      "breakpoints": true
     }
   ]
 }

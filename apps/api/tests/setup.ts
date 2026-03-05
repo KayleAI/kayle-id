@@ -76,15 +76,17 @@ const setup = async () => {
 };
 
 const teardown = async () => {
-  await db
-    .delete(auth_users)
-    .where(eq(auth_users.id, TEST_DATA?.userId as string));
+  if (!TEST_DATA) {
+    return;
+  }
+
+  await db.delete(auth_users).where(eq(auth_users.id, TEST_DATA.userId));
   await db
     .delete(auth_organizations)
-    .where(eq(auth_organizations.id, TEST_DATA?.organizationId as string));
-  await db
-    .delete(api_keys)
-    .where(eq(api_keys.id, TEST_DATA?.apiKeyId as string));
+    .where(eq(auth_organizations.id, TEST_DATA.organizationId));
+  await db.delete(api_keys).where(eq(api_keys.id, TEST_DATA.apiKeyId));
+
+  TEST_DATA = undefined;
 };
 
 export { setup, teardown, TEST_DATA };

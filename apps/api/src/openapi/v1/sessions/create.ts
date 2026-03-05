@@ -1,7 +1,7 @@
 import { createRoute, z } from "@hono/zod-openapi";
 import { ErrorResponse } from "@/openapi/base";
 import { InternalServerErrorResponse } from "@/openapi/errors";
-import { Session } from "@/openapi/models/sessions";
+import { RequestedShareField, Session } from "@/openapi/models/sessions";
 
 export const createSession = createRoute({
   method: "post",
@@ -26,6 +26,12 @@ export const createSession = createRoute({
                 .optional()
                 .describe(
                   "Optional URL to redirect the user to after the verification session is completed."
+                ),
+              share_fields: z
+                .record(z.string(), RequestedShareField)
+                .optional()
+                .describe(
+                  "Optional map of requested share fields keyed by claim key. Each entry must include `required` (boolean) and `reason` (non-empty string, max 200)."
                 ),
             })
             .openapi("CreateSessionRequest"),
@@ -57,9 +63,9 @@ export const createSession = createRoute({
             example: {
               data: null,
               error: {
-                code: "BAD_REQUEST",
-                message: "Bad request.",
-                hint: "The request is invalid.",
+                code: "UNKNOWN_CLAIM_KEY",
+                message: "Unknown claim key.",
+                hint: "Use a supported claim key from the share contract allowlist.",
                 docs: "https://kayle.id/docs/api/sessions#create",
               },
             },

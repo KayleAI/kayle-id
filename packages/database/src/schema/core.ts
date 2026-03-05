@@ -12,6 +12,28 @@ import {
 } from "drizzle-orm/pg-core";
 import { auth_organizations } from "./auth";
 
+export const verificationSessionStatuses = [
+  "created",
+  "in_progress",
+  "completed",
+  "expired",
+  "cancelled",
+] as const;
+
+export const verificationAttemptStatuses = [
+  "in_progress",
+  "succeeded",
+  "failed",
+  "cancelled",
+] as const;
+
+export const verificationAttemptFailureCodes = [
+  "session_expired",
+  "session_cancelled",
+  "passport_authenticity_failed",
+  "selfie_face_mismatch",
+] as const;
+
 export const api_keys = pgTable(
   "api_keys",
   {
@@ -63,10 +85,12 @@ export const verification_sessions = pgTable(
       .default("live")
       .notNull(),
     status: text({
-      enum: ["created", "in_progress", "completed", "expired", "cancelled"],
+      enum: verificationSessionStatuses,
     })
       .default("created")
       .notNull(),
+    contractVersion: integer("contract_version").default(1).notNull(),
+    shareFields: jsonb("share_fields").default({}).notNull(),
     redirectUrl: text("redirect_url"),
     /**
      * The expiration time of the verification session.
@@ -120,7 +144,7 @@ export const verification_attempts = pgTable(
      * and `failure_code` will be set to `session_expired`.
      */
     status: text({
-      enum: ["in_progress", "succeeded", "failed", "cancelled"],
+      enum: verificationAttemptStatuses,
     })
       .default("in_progress")
       .notNull(),
@@ -129,7 +153,9 @@ export const verification_attempts = pgTable(
      *
      * This is only set if the attempt is marked as `failed`.
      */
-    failureCode: text("failure_code"),
+    failureCode: text("failure_code", {
+      enum: verificationAttemptFailureCodes,
+    }),
     /**
      * Degree of risk associated with the verification attempt.
      *

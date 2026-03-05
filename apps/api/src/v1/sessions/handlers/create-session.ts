@@ -1,0 +1,79 @@
+import type { RouteHandler } from "@hono/zod-openapi";
+import type { createSession } from "@/openapi/v1/sessions/create";
+import { generateId } from "@/utils/generate-id";
+import { normalizeShareFields } from "@/v1/sessions/domain/share-contract/normalize-share-fields";
+import { mapSessionRowToResponse } from "@/v1/sessions/mappers/session-response";
+import { createVerificationSession } from "@/v1/sessions/repo/session-repo";
+import type { SessionsAppEnv } from "@/v1/sessions/types";
+
+const contractVersion = 1;
+
+export const createSessionHandler: RouteHandler<
+  typeof createSession,
+  SessionsAppEnv
+> = async (c) => {
+  const organizationId = c.get("organizationId");
+  const query = c.req.valid("query") ?? {};
+  const body = c.req.valid("json");
+
+  const baseEnvironment = c.get("environment");
+  const environment = baseEnvironment === "either" ? "live" : baseEnvironment;
+  const redirectUrl = body?.redirect_url ?? null;
+
+  const normalized = normalizeShareFields(body?.share_fields);
+  if (!normalized.ok) {
+    console.warn(
+      JSON.stringify({
+        event: "sessions.create.validation_failed",
+        organization_id: organizationId,
+        code: normalized.error.code,
+      })
+    );
+
+    return c.json(
+      {
+        data: null,
+        error: {
+          code: normalized.error.code,
+          message: normalized.error.message,
+          hint: normalized.error.hint,
+          docs: normalized.error.docs,
+        },
+      },
+      normalized.error.status
+    );
+  }
+
+  const id = generateId({ type: "vs", environment });
+  const created = await createVerificationSession({
+    id,
+    organizationId,
+    environment,
+    redirectUrl,
+    shareFields: normalized.shareFields,
+    contractVersion,
+  });
+
+  console.info(
+    JSON.stringify({
+      event: "sessions.create.created",
+      organization_id: organizationId,
+      session_id: created.id,
+      environment: created.environment,
+      share_field_count: Object.keys(normalized.shareFields).length,
+    })
+  );
+
+  const data = mapSessionRowToResponse({
+    row: created,
+    attempts: query.include_attempts ? [] : undefined,
+  });
+
+  return c.json(
+    {
+      data,
+      error: null,
+    },
+    200
+  );
+};
