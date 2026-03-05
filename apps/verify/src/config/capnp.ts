@@ -1,5 +1,9 @@
-import { ClientMessage, ServerMessage } from "@kayle-id/capnp";
-import { Message } from "capnp-es";
+import {
+  decodeServerMessage,
+  encodeClientData,
+  encodeClientHello,
+  encodeClientPhase,
+} from "@kayle-id/capnp/verify-codec";
 import { getApiWsBaseUrl } from "@/config/env";
 
 export type SessionError = {
@@ -32,41 +36,6 @@ export type HelloCredentials = {
   deviceId: string;
   appVersion: string;
 };
-
-type ServerMessageReader = {
-  which: () => number;
-  ack: {
-    message: string;
-  };
-  error: {
-    code: string;
-    message: string;
-  };
-};
-
-type ClientMessageWriter = {
-  _initHello: () => {
-    attemptId: string;
-    mobileWriteToken: string;
-    deviceId: string;
-    appVersion: string;
-  };
-  _initPhase: () => {
-    phase: string;
-    error: string;
-  };
-  _initData: () => {
-    kind: number;
-    raw: Uint8Array;
-    index: number;
-    total: number;
-  };
-};
-
-// `@kayle-id/capnp` and app-local `capnp-es` can resolve to distinct type instances under Bun.
-// We bridge that boundary here via runtime-compatible casts.
-const CLIENT_MESSAGE_CTOR = ClientMessage as unknown as never;
-const SERVER_MESSAGE_CTOR = ServerMessage as unknown as never;
 
 const getBytesFromEvent = async (
   event: MessageEvent
@@ -103,80 +72,34 @@ const parseJsonError = (text: string): SessionError | null => {
   }
 };
 
-const decodeServerMessage = (
-  bytes: Uint8Array
-): { ack?: string; error?: SessionError } | null => {
-  try {
-    const message = new Message(bytes, false);
-    const root = message.getRoot(
-      SERVER_MESSAGE_CTOR
-    ) as unknown as ServerMessageReader;
-    switch (root.which()) {
-      case ServerMessage.ACK: {
-        return { ack: root.ack.message };
-      }
-      case ServerMessage.ERROR: {
-        return {
-          error: {
-            code: root.error.code,
-            message: root.error.message,
-          },
-        };
-      }
-      default:
-        return null;
-    }
-  } catch {
-    return null;
-  }
-};
-
 const encodeHello = ({
   attemptId,
   mobileWriteToken,
   deviceId,
   appVersion,
-}: HelloCredentials): Uint8Array => {
-  const message = new Message();
-  const root = message.initRoot(
-    CLIENT_MESSAGE_CTOR
-  ) as unknown as ClientMessageWriter;
-  const hello = root._initHello();
-  hello.attemptId = attemptId;
-  hello.mobileWriteToken = mobileWriteToken;
-  hello.deviceId = deviceId;
-  hello.appVersion = appVersion;
-  return new Uint8Array(message.toArrayBuffer());
-};
+}: HelloCredentials): Uint8Array =>
+  encodeClientHello({
+    attemptId,
+    mobileWriteToken,
+    deviceId,
+    appVersion,
+  });
 
-const encodePhase = (phase: string, error?: string): Uint8Array => {
-  const message = new Message();
-  const root = message.initRoot(
-    CLIENT_MESSAGE_CTOR
-  ) as unknown as ClientMessageWriter;
-  const update = root._initPhase();
-  update.phase = phase;
-  update.error = error ?? "";
-  return new Uint8Array(message.toArrayBuffer());
-};
+const encodePhase = (phase: string, error?: string): Uint8Array =>
+  encodeClientPhase({ phase, error });
 
 const encodeData = (
   kind: number,
   raw: Uint8Array,
   index: number,
   total: number
-): Uint8Array => {
-  const message = new Message();
-  const root = message.initRoot(
-    CLIENT_MESSAGE_CTOR
-  ) as unknown as ClientMessageWriter;
-  const data = root._initData();
-  data.kind = kind;
-  data.raw = raw;
-  data.index = index;
-  data.total = total;
-  return new Uint8Array(message.toArrayBuffer());
-};
+): Uint8Array =>
+  encodeClientData({
+    kind,
+    raw,
+    index,
+    total,
+  });
 
 export function initialiseSession(
   {
@@ -250,7 +173,7 @@ export function initialiseSession(
     }
 
     if (decoded.ack) {
-      handleServerAck(decoded.ack);
+      handleServerAck(decoded.ack.message);
     }
   };
 

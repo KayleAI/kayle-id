@@ -11,6 +11,14 @@ if (process.env.NODE_ENV !== "production") {
   });
 }
 
+function getCloudflareStringEnv(): Record<string, string> {
+  const entries = Object.entries(cloudflareEnv).filter(
+    ([, value]) => typeof value === "string"
+  );
+
+  return Object.fromEntries(entries);
+}
+
 export const env = createEnv({
   clientPrefix: "PUBLIC_",
   client: {
@@ -27,7 +35,7 @@ export const env = createEnv({
   runtimeEnv: {
     ...(typeof process !== "undefined" ? process?.env : {}),
     ...(typeof import.meta !== "undefined" ? import.meta.env : {}),
-    ...(cloudflareEnv as unknown as Record<string, string>),
+    ...getCloudflareStringEnv(),
   },
 
   emptyStringAsUndefined: true,

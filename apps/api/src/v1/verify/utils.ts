@@ -1,6 +1,28 @@
+import { encodeServerError } from "@kayle-id/capnp/verify-codec";
 import { ERROR_MESSAGES } from "@kayle-id/config/error-messages";
 import type { Context } from "hono";
-import { encodeServerError } from "./proto";
+
+type WebSocketPairFactory = new () => {
+  0: WebSocket;
+  1: WebSocket;
+};
+
+function getWebSocketPairFactory(): WebSocketPairFactory {
+  const factory = (globalThis as { WebSocketPair?: WebSocketPairFactory })
+    .WebSocketPair;
+
+  if (!factory) {
+    throw new Error("WebSocketPair is not available in this runtime.");
+  }
+
+  return factory;
+}
+
+export function createWebSocketPairTuple(): [WebSocket, WebSocket] {
+  const PairFactory = getWebSocketPairFactory();
+  const pair = new PairFactory();
+  return [pair[0], pair[1]];
+}
 
 /**
  * Return a WebSocket error response.
@@ -16,8 +38,7 @@ export function webSocketErrorResponse({
   code: keyof typeof ERROR_MESSAGES;
   message?: string;
 }): Response {
-  // biome-ignore lint/correctness/noUndeclaredVariables: This is a Cloudflare Worker's global
-  const [client, server] = Object.values(new WebSocketPair());
+  const [client, server] = createWebSocketPairTuple();
   server.accept();
   const resolvedMessage = message ?? ERROR_MESSAGES[code]?.description ?? code;
   server.send(encodeServerError(code, resolvedMessage));

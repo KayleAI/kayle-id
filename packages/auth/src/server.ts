@@ -13,6 +13,24 @@ import { eq } from "drizzle-orm";
 import { magic } from "./magic";
 import type { Organization } from "./types";
 
+function maskEmail(email: string): string {
+  const [localPart = "", domain = ""] = email.split("@");
+  if (!domain) {
+    return "***";
+  }
+
+  const prefix = localPart.slice(0, 2);
+  return `${prefix}***@${domain}`;
+}
+
+function safeUrlPath(url: string): string {
+  try {
+    return new URL(url).pathname;
+  } catch {
+    return "/";
+  }
+}
+
 const user = {
   modelName: "auth_users",
   deleteUser: {
@@ -40,12 +58,16 @@ const plugins = [
   }),
   magic({
     expiresIn: 15 * 60, // 15 minutes
-    sendMagicOtpAuth: async ({ email, otp, url, type }) => {
+    sendMagicOtpAuth: async ({ email, otp: _otp, url, type }) => {
       if (process.env.NODE_ENV === "development") {
-        console.log("Sending magic-otp auth to", email);
-        console.log("OTP:", otp);
-        console.log("URL:", url);
-        console.log("Type:", type);
+        console.info(
+          JSON.stringify({
+            event: "auth.magic_otp.generated",
+            email: maskEmail(email),
+            type,
+            path: safeUrlPath(url),
+          })
+        );
         return;
       }
 
@@ -124,8 +146,7 @@ export const auth = betterAuth({
   plugins: [
     ...plugins,
     customSession(
-      // biome-ignore lint/nursery/noShadow: this is fine
-      async ({ user, session }) => {
+      async ({ user: authUser, session: authSession }) => {
         // Extend the session with more fields
         let activeOrganization: Organization | null = null;
 
@@ -141,11 +162,13 @@ export const auth = betterAuth({
             auth_organization_members,
             eq(auth_organizations.id, auth_organization_members.organizationId)
           )
-          .where(eq(auth_organization_members.userId, user.id));
+          .where(eq(auth_organization_members.userId, authUser.id));
 
-        if (session.activeOrganizationId) {
+        if (authSession.activeOrganizationId) {
           const foundOrg =
-            organizations.find((o) => o.id === session.activeOrganizationId) ??
+            organizations.find(
+              (o) => o.id === authSession.activeOrganizationId
+            ) ??
             organizations[0] ??
             null;
           activeOrganization = foundOrg ? { ...foundOrg } : null;
@@ -153,11 +176,11 @@ export const auth = betterAuth({
 
         return {
           user: {
-            ...user,
+            ...authUser,
           },
           organizations,
           session: {
-            ...session,
+            ...authSession,
           },
           activeOrganization,
         };

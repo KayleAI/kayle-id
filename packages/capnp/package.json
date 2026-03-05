@@ -6,6 +6,10 @@
     ".": {
       "types": "./generated/ts/verify.d.ts",
       "import": "./generated/ts/verify.js"
+    },
+    "./verify-codec": {
+      "types": "./src/verify-codec.ts",
+      "import": "./src/verify-codec.ts"
     }
   },
   "peerDependencies": {

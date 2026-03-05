@@ -1,4 +1,5 @@
 import { Layout } from "@kayleai/ui/layout";
+import type { NotFoundRouteProps } from "@tanstack/react-router";
 import InfoCard from "./info";
 
 /**
@@ -6,7 +7,7 @@ import InfoCard from "./info";
  *
  * @returns A not found component.
  */
-export function NotFound() {
+export function NotFound(_props: NotFoundRouteProps) {
   return (
     <Layout>
       <InfoCard

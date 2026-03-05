@@ -5,6 +5,8 @@ import { updateApiKey } from "@/functions/auth/update-api-key";
 import { verifyApiKey } from "@/functions/auth/verify-api-key";
 import { setup, TEST_DATA, teardown } from "../setup";
 
+const API_KEY_PREFIX_PATTERN = /^kk_/;
+
 beforeAll(async () => {
   await setup();
 });
@@ -27,8 +29,7 @@ describe("Handling API Keys", () => {
     expect(apiKey).toBeString();
 
     // Assert that the API key starts with "kk_"
-    // biome-ignore lint/performance/useTopLevelRegex: this is test regex
-    expect(apiKey).toMatch(/^kk_/);
+    expect(apiKey).toMatch(API_KEY_PREFIX_PATTERN);
 
     // Assert that the API key is 32 + 3 (kk_) + 5 (test_ or live_) = 40 characters long
     expect(apiKey.length).toBe(40);
