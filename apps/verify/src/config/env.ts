@@ -28,3 +28,28 @@ export const env = createEnv({
 
   emptyStringAsUndefined: true,
 });
+
+function getApiHost(): string {
+  if (process.env.NODE_ENV === "development" && typeof window !== "undefined") {
+    return `${window.location.hostname}:8787`;
+  }
+
+  return env.PUBLIC_API_HOST;
+}
+
+function getApiWebSocketProtocol(): "ws" | "wss" {
+  return (
+    env.PUBLIC_API_PROTOCOL ??
+    (process.env.NODE_ENV === "development" ? "ws" : "wss")
+  );
+}
+
+export function getApiWsBaseUrl(): string {
+  return `${getApiWebSocketProtocol()}://${getApiHost()}`;
+}
+
+export function getApiHttpBaseUrl(): string {
+  const wsProtocol = getApiWebSocketProtocol();
+  const httpProtocol = wsProtocol === "wss" ? "https" : "http";
+  return `${httpProtocol}://${getApiHost()}`;
+}

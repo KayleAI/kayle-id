@@ -22,6 +22,27 @@
       "when": 1772724463407,
       "tag": "0003_phase1_failure_code_contract",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1772726036003,
+      "tag": "0004_phase2_verify_handoff",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1772728364900,
+      "tag": "0005_phase2_mobile_write_token_seed",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1772734650699,
+      "tag": "0006_phase3_websocket_hello_auth",
+      "breakpoints": true
     }
   ]
 }

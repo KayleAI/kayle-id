@@ -6,7 +6,7 @@ const IPAD_MATCH = /iPad/;
 /**
  * Policy:
  * - iOS >= 16 supported
- * - Android >= 8 supported
+ * - Android unsupported in this phase (iOS-only flow)
  */
 export function useDevice(): {
   supported: boolean;
@@ -40,8 +40,7 @@ export function useDevice(): {
   // Android phones
   const androidMatch = ua?.match(ANDROID_VERSION_MATCH);
   if (androidMatch) {
-    const major = Number(androidMatch[1]);
-    return { supported: major >= 8, os: "android" };
+    return { supported: false, os: "android" };
   }
 
   return { supported: false, os: "unknown" };

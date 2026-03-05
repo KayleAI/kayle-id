@@ -6,7 +6,7 @@ struct Main: App {
 
   var body: some Scene {
     WindowGroup {
-      ContentView()
+      ContentView(pendingQRCode: $pendingQRCode)
         .onOpenURL { url in
           // Handle kayle-id:// URL scheme
           handleIncomingURL(url)

@@ -157,6 +157,40 @@ export const verification_attempts = pgTable(
       enum: verificationAttemptFailureCodes,
     }),
     /**
+     * Random seed used to derive a deterministic mobile write token for the current handoff credential.
+     *
+     * The seed itself is not accepted for authentication.
+     */
+    mobileWriteTokenSeed: text("mobile_write_token_seed"),
+    /**
+     * Hash of the mobile write token issued for this attempt handoff.
+     *
+     * Plaintext tokens are never persisted.
+     */
+    mobileWriteTokenHash: text("mobile_write_token_hash"),
+    /**
+     * Time when the current mobile write token was issued.
+     */
+    mobileWriteTokenIssuedAt: timestamp("mobile_write_token_issued_at"),
+    /**
+     * Time when the current mobile write token expires.
+     */
+    mobileWriteTokenExpiresAt: timestamp("mobile_write_token_expires_at"),
+    /**
+     * Time when the mobile write token was consumed by a successful mobile hello.
+     *
+     * Reserved for Phase 3 auth enforcement.
+     */
+    mobileWriteTokenConsumedAt: timestamp("mobile_write_token_consumed_at"),
+    /**
+     * Hash of the device identifier that first successfully authenticated hello for this attempt.
+     */
+    mobileHelloDeviceIdHash: text("mobile_hello_device_id_hash"),
+    /**
+     * App version reported by the device that authenticated hello for this attempt.
+     */
+    mobileHelloAppVersion: text("mobile_hello_app_version"),
+    /**
      * Degree of risk associated with the verification attempt.
      *
      * Stored as a decimal number between 0 and 1.

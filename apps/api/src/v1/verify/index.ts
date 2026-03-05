@@ -1,10 +1,17 @@
+import { env } from "@kayle-id/config/env";
+import { ERROR_MESSAGES } from "@kayle-id/config/error-messages";
 import { db } from "@kayle-id/database/drizzle";
-import { verification_sessions } from "@kayle-id/database/schema/core";
-import { eq } from "drizzle-orm";
+import {
+  verification_attempts,
+  verification_sessions,
+} from "@kayle-id/database/schema/core";
+import { and, desc, eq } from "drizzle-orm";
 import { Hono } from "hono";
 import { validator } from "hono/validator";
 import { z } from "zod";
+import { createHMAC } from "@/functions/hmac";
 import { sessionIdSchema } from "@/shared/validation";
+import { generateId, generateRandomString } from "@/utils/generate-id";
 import {
   decodeClientMessage,
   encodeServerAck,
@@ -13,6 +20,252 @@ import {
 import { webSocketErrorResponse } from "./utils";
 
 const verify = new Hono<{ Bindings: CloudflareBindings }>();
+const HANDOFF_TOKEN_TTL_MS = 5 * 60_000;
+const HANDOFF_IDEMPOTENCY_WINDOW_MS = 60_000;
+const HANDOFF_PAYLOAD_VERSION = 1;
+
+const handoffParamSchema = z.object({ id: sessionIdSchema });
+
+function isTerminalSessionStatus(status: string): boolean {
+  return ["expired", "cancelled", "completed"].includes(status);
+}
+
+function isTerminalAttemptStatus(status: string): boolean {
+  return ["succeeded", "failed", "cancelled"].includes(status);
+}
+
+function resolveErrorMessage(code: keyof typeof ERROR_MESSAGES): string {
+  return ERROR_MESSAGES[code]?.description ?? code;
+}
+
+function jsonErrorResponse({
+  code,
+  status,
+}: {
+  code: keyof typeof ERROR_MESSAGES;
+  status: 400 | 404 | 409 | 410;
+}) {
+  return {
+    data: null,
+    error: {
+      code,
+      message: ERROR_MESSAGES[code].description,
+    },
+    status,
+  } as const;
+}
+
+function deriveMobileWriteToken({
+  sessionId,
+  attemptId,
+  issuedAt,
+  seed,
+}: {
+  sessionId: string;
+  attemptId: string;
+  issuedAt: Date;
+  seed: string;
+}) {
+  return createHMAC(
+    `verify_handoff_token_v1|${sessionId}|${attemptId}|${issuedAt.toISOString()}|${seed}`,
+    {
+      secret: env.AUTH_SECRET,
+    }
+  );
+}
+
+function hashMobileWriteToken(token: string) {
+  return createHMAC(token, {
+    secret: env.AUTH_SECRET,
+  });
+}
+
+function hashMobileDeviceId(deviceId: string) {
+  return createHMAC(deviceId, {
+    secret: env.AUTH_SECRET,
+  });
+}
+
+function generateMobileWriteTokenSeed(): string {
+  return generateRandomString(64);
+}
+
+verify.post(
+  "/session/:id/handoff",
+  validator("param", (value, c) => {
+    const parsed = handoffParamSchema.safeParse(value);
+
+    if (!parsed.success) {
+      const response = jsonErrorResponse({
+        code: "INVALID_SESSION_ID",
+        status: 400,
+      });
+
+      return c.json(
+        {
+          data: response.data,
+          error: response.error,
+        },
+        response.status
+      );
+    }
+
+    return parsed.data;
+  }),
+  async (c) => {
+    const { id } = c.req.valid("param");
+    const now = new Date();
+
+    const [session] = await db
+      .select({
+        id: verification_sessions.id,
+        environment: verification_sessions.environment,
+        status: verification_sessions.status,
+        expiresAt: verification_sessions.expiresAt,
+      })
+      .from(verification_sessions)
+      .where(eq(verification_sessions.id, id))
+      .limit(1);
+
+    if (!session) {
+      const response = jsonErrorResponse({
+        code: "SESSION_NOT_FOUND",
+        status: 404,
+      });
+
+      return c.json(
+        {
+          data: response.data,
+          error: response.error,
+        },
+        response.status
+      );
+    }
+
+    if (
+      isTerminalSessionStatus(session.status) ||
+      session.expiresAt.getTime() < now.getTime()
+    ) {
+      const response = jsonErrorResponse({
+        code: "SESSION_EXPIRED",
+        status: 410,
+      });
+
+      return c.json(
+        {
+          data: response.data,
+          error: response.error,
+        },
+        response.status
+      );
+    }
+
+    if (session.status === "in_progress") {
+      const response = jsonErrorResponse({
+        code: "SESSION_IN_PROGRESS",
+        status: 409,
+      });
+
+      return c.json(
+        {
+          data: response.data,
+          error: response.error,
+        },
+        response.status
+      );
+    }
+
+    const [latestAttempt] = await db
+      .select({
+        id: verification_attempts.id,
+        status: verification_attempts.status,
+        mobileWriteTokenSeed: verification_attempts.mobileWriteTokenSeed,
+        mobileWriteTokenHash: verification_attempts.mobileWriteTokenHash,
+        mobileWriteTokenIssuedAt:
+          verification_attempts.mobileWriteTokenIssuedAt,
+        mobileWriteTokenExpiresAt:
+          verification_attempts.mobileWriteTokenExpiresAt,
+        mobileWriteTokenConsumedAt:
+          verification_attempts.mobileWriteTokenConsumedAt,
+      })
+      .from(verification_attempts)
+      .where(eq(verification_attempts.verificationSessionId, id))
+      .orderBy(desc(verification_attempts.createdAt))
+      .limit(1);
+
+    const reuseWindowCutoff = now.getTime() - HANDOFF_IDEMPOTENCY_WINDOW_MS;
+    const canReuseAttempt = Boolean(
+      latestAttempt &&
+        latestAttempt.status === "in_progress" &&
+        latestAttempt.mobileWriteTokenSeed &&
+        latestAttempt.mobileWriteTokenHash &&
+        latestAttempt.mobileWriteTokenIssuedAt &&
+        latestAttempt.mobileWriteTokenExpiresAt &&
+        !latestAttempt.mobileWriteTokenConsumedAt &&
+        latestAttempt.mobileWriteTokenIssuedAt.getTime() >= reuseWindowCutoff &&
+        latestAttempt.mobileWriteTokenExpiresAt.getTime() > now.getTime()
+    );
+
+    let attemptId: string;
+    let issuedAt: Date;
+    let expiresAt: Date;
+    let mobileWriteTokenSeed: string;
+
+    if (canReuseAttempt && latestAttempt) {
+      attemptId = latestAttempt.id;
+      issuedAt = latestAttempt.mobileWriteTokenIssuedAt as Date;
+      expiresAt = latestAttempt.mobileWriteTokenExpiresAt as Date;
+      mobileWriteTokenSeed = latestAttempt.mobileWriteTokenSeed as string;
+    } else {
+      attemptId = generateId({
+        type: "va",
+        environment: session.environment,
+      });
+      issuedAt = now;
+      expiresAt = new Date(now.getTime() + HANDOFF_TOKEN_TTL_MS);
+      mobileWriteTokenSeed = generateMobileWriteTokenSeed();
+      const token = await deriveMobileWriteToken({
+        sessionId: session.id,
+        attemptId,
+        issuedAt,
+        seed: mobileWriteTokenSeed,
+      });
+      const tokenHash = await hashMobileWriteToken(token);
+
+      await db.insert(verification_attempts).values({
+        id: attemptId,
+        verificationSessionId: session.id,
+        status: "in_progress",
+        mobileWriteTokenSeed,
+        mobileWriteTokenHash: tokenHash,
+        mobileWriteTokenIssuedAt: issuedAt,
+        mobileWriteTokenExpiresAt: expiresAt,
+        mobileWriteTokenConsumedAt: null,
+      });
+    }
+
+    const mobileWriteToken = await deriveMobileWriteToken({
+      sessionId: session.id,
+      attemptId,
+      issuedAt,
+      seed: mobileWriteTokenSeed,
+    });
+
+    return c.json(
+      {
+        data: {
+          v: HANDOFF_PAYLOAD_VERSION,
+          session_id: session.id,
+          attempt_id: attemptId,
+          mobile_write_token: mobileWriteToken,
+          expires_at: expiresAt.toISOString(),
+        },
+        error: null,
+      },
+      200
+    );
+  }
+);
 
 verify.get(
   "/session/:id",
@@ -58,14 +311,6 @@ verify.get(
     ) {
       return webSocketErrorResponse({
         code: "SESSION_EXPIRED",
-      });
-    }
-
-    if (session.status === "in_progress") {
-      // NOTE: We must only move to the in_progress state if the user for this session is actively in the process of verifying their identity.
-      // If they're for example, switching devices we should not move to the in_progress state.
-      return webSocketErrorResponse({
-        code: "SESSION_IN_PROGRESS",
       });
     }
 
@@ -121,6 +366,12 @@ verify.get(
       server.send(encodeServerError(code, message));
     };
 
+    const sendAuthErrorAndClose = (code: keyof typeof ERROR_MESSAGES) => {
+      const message = resolveErrorMessage(code);
+      sendError(code, message);
+      server.close(1008, code);
+    };
+
     const verifyAuthenticityStub = () => {
       // TODO: implement authenticity verification (e.g. passive auth, SOD signature, CSCA trust store).
       return { ok: true };
@@ -144,10 +395,197 @@ verify.get(
       return;
     };
 
-    const handleHello = () => {
-      logDebug("recv_hello");
+    const parseHelloPayload = (payload: {
+      attemptId?: string;
+      mobileWriteToken?: string;
+      deviceId?: string;
+      appVersion?: string;
+    }) => {
+      const parsed = {
+        attemptId: payload.attemptId?.trim() ?? "",
+        mobileWriteToken: payload.mobileWriteToken?.trim() ?? "",
+        deviceId: payload.deviceId?.trim() ?? "",
+        appVersion: payload.appVersion?.trim() ?? "",
+      };
+
+      if (!(parsed.attemptId && parsed.mobileWriteToken && parsed.deviceId)) {
+        return null;
+      }
+
+      return parsed;
+    };
+
+    const getAttemptForHello = async (attemptId: string) => {
+      const [attempt] = await db
+        .select({
+          id: verification_attempts.id,
+          status: verification_attempts.status,
+          mobileWriteTokenHash: verification_attempts.mobileWriteTokenHash,
+          mobileWriteTokenExpiresAt:
+            verification_attempts.mobileWriteTokenExpiresAt,
+          mobileWriteTokenConsumedAt:
+            verification_attempts.mobileWriteTokenConsumedAt,
+          mobileHelloDeviceIdHash:
+            verification_attempts.mobileHelloDeviceIdHash,
+        })
+        .from(verification_attempts)
+        .where(
+          and(
+            eq(verification_attempts.id, attemptId),
+            eq(verification_attempts.verificationSessionId, session.id)
+          )
+        )
+        .limit(1);
+
+      return attempt ?? null;
+    };
+
+    const resolveHelloAuthState = async ({
+      attempt,
+      mobileWriteToken,
+      deviceId,
+    }: {
+      attempt: NonNullable<Awaited<ReturnType<typeof getAttemptForHello>>>;
+      mobileWriteToken: string;
+      deviceId: string;
+    }) => {
+      if (!attempt.mobileWriteTokenHash) {
+        return {
+          kind: "error" as const,
+          code: "HANDOFF_TOKEN_INVALID" as const,
+        };
+      }
+
+      const providedTokenHash = await hashMobileWriteToken(mobileWriteToken);
+      if (providedTokenHash !== attempt.mobileWriteTokenHash) {
+        return {
+          kind: "error" as const,
+          code: "HANDOFF_TOKEN_INVALID" as const,
+        };
+      }
+
+      const deviceIdHash = await hashMobileDeviceId(deviceId);
+
+      if (attempt.mobileWriteTokenConsumedAt) {
+        if (!attempt.mobileHelloDeviceIdHash) {
+          return {
+            kind: "error" as const,
+            code: "HANDOFF_TOKEN_CONSUMED" as const,
+          };
+        }
+
+        if (attempt.mobileHelloDeviceIdHash !== deviceIdHash) {
+          return {
+            kind: "error" as const,
+            code: "HANDOFF_DEVICE_MISMATCH" as const,
+          };
+        }
+
+        return { kind: "resume" as const };
+      }
+
+      const expiresAtMs = attempt.mobileWriteTokenExpiresAt?.getTime() ?? 0;
+      if (expiresAtMs <= Date.now()) {
+        return {
+          kind: "error" as const,
+          code: "HANDOFF_TOKEN_EXPIRED" as const,
+        };
+      }
+
+      return {
+        kind: "consume" as const,
+        deviceIdHash,
+      };
+    };
+
+    const consumeHelloAttempt = async ({
+      attemptId,
+      deviceIdHash,
+      appVersion,
+    }: {
+      attemptId: string;
+      deviceIdHash: string;
+      appVersion: string;
+    }) => {
+      await db
+        .update(verification_attempts)
+        .set({
+          mobileWriteTokenConsumedAt: new Date(),
+          mobileHelloDeviceIdHash: deviceIdHash,
+          mobileHelloAppVersion: appVersion || null,
+        })
+        .where(eq(verification_attempts.id, attemptId));
+    };
+
+    const markSessionInProgress = async () => {
+      if (session.status === "in_progress") {
+        return;
+      }
+
+      await db
+        .update(verification_sessions)
+        .set({
+          status: "in_progress",
+        })
+        .where(eq(verification_sessions.id, session.id));
+
+      session.status = "in_progress";
+    };
+
+    const acknowledgeHello = () => {
       state.helloReceived = true;
       sendAck("hello_ok");
+    };
+
+    const handleHello = async (payload: {
+      attemptId?: string;
+      mobileWriteToken?: string;
+      deviceId?: string;
+      appVersion?: string;
+    }) => {
+      const parsed = parseHelloPayload(payload);
+
+      logDebug("recv_hello", {
+        attemptIdPresent: Boolean(parsed?.attemptId),
+        mobileWriteTokenPresent: Boolean(parsed?.mobileWriteToken),
+        deviceIdPresent: Boolean(parsed?.deviceId),
+      });
+
+      if (!parsed) {
+        sendAuthErrorAndClose("HELLO_AUTH_REQUIRED");
+        return;
+      }
+
+      const attempt = await getAttemptForHello(parsed.attemptId);
+      if (!attempt || isTerminalAttemptStatus(attempt.status)) {
+        sendAuthErrorAndClose("ATTEMPT_NOT_FOUND");
+        return;
+      }
+
+      const authState = await resolveHelloAuthState({
+        attempt,
+        mobileWriteToken: parsed.mobileWriteToken,
+        deviceId: parsed.deviceId,
+      });
+
+      if (authState.kind === "error") {
+        sendAuthErrorAndClose(authState.code);
+        return;
+      }
+
+      if (authState.kind === "resume") {
+        acknowledgeHello();
+        return;
+      }
+
+      await consumeHelloAttempt({
+        attemptId: attempt.id,
+        deviceIdHash: authState.deviceIdHash,
+        appVersion: parsed.appVersion,
+      });
+      await markSessionInProgress();
+
+      acknowledgeHello();
     };
 
     const handlePhase = (payload: { phase?: string; error?: string }) => {
@@ -318,7 +756,7 @@ verify.get(
       }
 
       if (decoded.hello) {
-        handleHello();
+        await handleHello(decoded.hello);
         return;
       }
 

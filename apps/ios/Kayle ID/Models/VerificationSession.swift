@@ -79,7 +79,12 @@ final class VerificationSession: ObservableObject {
       sessionId: payload.sessionId,
       attemptId: payload.attemptId,
       mobileWriteToken: payload.mobileWriteToken,
-      baseURL: baseURL
+      baseURL: baseURL,
+      onFatalError: { [weak self] socketError in
+        Task { @MainActor [weak self] in
+          self?.handleError(socketError)
+        }
+      }
     )
 
     Task {
@@ -210,6 +215,7 @@ final class VerificationSession: ObservableObject {
 
   /// Reset the session for a new verification attempt.
   func reset() {
+    webSocketService?.disconnect()
     step = .welcome
     payload = nil
     errorMessage = nil

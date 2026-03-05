@@ -1,5 +1,6 @@
 import { client } from "@kayle-id/auth/client";
 import { useAuth } from "@kayle-id/auth/client/provider";
+import type { Organization } from "@kayle-id/auth/types";
 import { Avatar, AvatarFallback, AvatarImage } from "@kayleai/ui/avatar";
 import { Button } from "@kayleai/ui/button";
 import {
@@ -272,7 +273,7 @@ export function AppSidebar() {
                   <DropdownMenuLabel className="text-muted-foreground text-xs">
                     Organizations
                   </DropdownMenuLabel>
-                  {organizations.map((organization) => (
+                  {organizations.map((organization: Organization) => (
                     <DropdownMenuItem
                       key={organization.id}
                       render={

@@ -28,4 +28,40 @@ export const ERROR_MESSAGES = {
     description:
       "This verification is currently active on another device. Please continue on the device where you started the process.",
   },
+
+  HELLO_AUTH_REQUIRED: {
+    title: "Authentication required",
+    description:
+      "This verification connection is missing required credentials. Please restart from the latest verification link.",
+  },
+
+  ATTEMPT_NOT_FOUND: {
+    title: "Verification attempt not found",
+    description:
+      "This verification attempt is no longer available. Please restart the verification process.",
+  },
+
+  HANDOFF_TOKEN_INVALID: {
+    title: "Invalid mobile handoff token",
+    description:
+      "This handoff credential is not valid. Please restart the verification flow from your browser.",
+  },
+
+  HANDOFF_TOKEN_EXPIRED: {
+    title: "Mobile handoff token expired",
+    description:
+      "This handoff credential has expired. Please generate a new QR handoff from your browser.",
+  },
+
+  HANDOFF_TOKEN_CONSUMED: {
+    title: "Handoff token already used",
+    description:
+      "This handoff credential was already used. Please continue on your original device or restart the flow.",
+  },
+
+  HANDOFF_DEVICE_MISMATCH: {
+    title: "Wrong device for resume",
+    description:
+      "This verification attempt is bound to a different device. Continue on that device or start over.",
+  },
 } as const;

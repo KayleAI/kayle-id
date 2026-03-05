@@ -1,4 +1,3 @@
-import { useCallback, useEffect } from "react";
 import InfoCard from "@/components/info";
 import { useDevice } from "@/utils/use-device";
 import { useVerificationStore } from "../../stores/session";
@@ -15,26 +14,12 @@ export function SessionApp() {
   const { supported: deviceSupported } = useDevice();
   const step = useVerificationStore((state) => state.step);
 
-  const notifyUnsupportedDevice = useCallback(async () => {
-    if (!session) {
-      return;
-    }
-
-    await session.notifyUnsupportedDevice();
-  }, [session]);
-
-  useEffect(() => {
-    if (!deviceSupported && session) {
-      notifyUnsupportedDevice();
-    }
-  }, [session, deviceSupported, notifyUnsupportedDevice]);
+  if (!deviceSupported) {
+    return <UnsupportedDevice />;
+  }
 
   if (!session) {
     return null;
-  }
-
-  if (!deviceSupported) {
-    return <UnsupportedDevice />;
   }
 
   // Render components based on current verification step

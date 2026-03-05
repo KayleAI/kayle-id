@@ -2,14 +2,18 @@ import Foundation
 
 /// QR code payload parsed from the `kayle-id://` URL scheme.
 struct QRCodePayload: Codable {
+  let v: Int?
   let sessionId: String
   let attemptId: String
   let mobileWriteToken: String
+  let expiresAt: Date
 
   enum CodingKeys: String, CodingKey {
+    case v
     case sessionId = "session_id"
     case attemptId = "attempt_id"
     case mobileWriteToken = "mobile_write_token"
+    case expiresAt = "expires_at"
   }
 
   /// Parse a QR code payload from a `kayle-id://` URL.
@@ -20,14 +24,26 @@ struct QRCodePayload: Codable {
       throw QRCodePayloadError.invalidScheme
     }
 
-    let jsonString = String(urlString.dropFirst(prefix.count))
+    let payloadString = String(urlString.dropFirst(prefix.count))
+      .trimmingCharacters(in: .whitespacesAndNewlines)
+
+    let normalizedPayload: String
+    if payloadString.hasPrefix("/") {
+      normalizedPayload = String(payloadString.dropFirst())
+    } else {
+      normalizedPayload = payloadString
+    }
+
+    let jsonString = normalizedPayload.removingPercentEncoding ?? normalizedPayload
 
     guard let data = jsonString.data(using: .utf8) else {
       throw QRCodePayloadError.invalidEncoding
     }
 
     do {
-      return try JSONDecoder().decode(QRCodePayload.self, from: data)
+      let decoder = JSONDecoder()
+      decoder.dateDecodingStrategy = .iso8601
+      return try decoder.decode(QRCodePayload.self, from: data)
     } catch {
       throw QRCodePayloadError.decodingFailed(error)
     }
@@ -35,7 +51,12 @@ struct QRCodePayload: Codable {
 
   /// Validate that the payload includes required fields.
   var isValid: Bool {
-    !sessionId.isEmpty
+    let expirySkewToleranceSeconds = 30.0
+
+    return !sessionId.isEmpty &&
+      !attemptId.isEmpty &&
+      !mobileWriteToken.isEmpty &&
+      expiresAt.timeIntervalSinceNow >= -expirySkewToleranceSeconds
   }
 }
 

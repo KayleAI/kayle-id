@@ -1,4 +1,6 @@
 {
+  "include": ["src/**/*.ts"],
+  "exclude": ["src/client.ts", "src/client/**/*.tsx"],
   "compilerOptions": {
     // Environment setup & latest features
     "lib": ["ESNext"],

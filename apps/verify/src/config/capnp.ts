@@ -1,6 +1,6 @@
 import { ClientMessage, ServerMessage } from "@kayle-id/capnp";
 import { Message } from "capnp-es";
-import { env } from "@/config/env";
+import { getApiWsBaseUrl } from "@/config/env";
 
 export type SessionError = {
   code: string;
@@ -25,6 +25,48 @@ type PendingRequest = {
   resolve: (message: string) => void;
   reject: (error: Error) => void;
 };
+
+export type HelloCredentials = {
+  attemptId: string;
+  mobileWriteToken: string;
+  deviceId: string;
+  appVersion: string;
+};
+
+type ServerMessageReader = {
+  which: () => number;
+  ack: {
+    message: string;
+  };
+  error: {
+    code: string;
+    message: string;
+  };
+};
+
+type ClientMessageWriter = {
+  _initHello: () => {
+    attemptId: string;
+    mobileWriteToken: string;
+    deviceId: string;
+    appVersion: string;
+  };
+  _initPhase: () => {
+    phase: string;
+    error: string;
+  };
+  _initData: () => {
+    kind: number;
+    raw: Uint8Array;
+    index: number;
+    total: number;
+  };
+};
+
+// `@kayle-id/capnp` and app-local `capnp-es` can resolve to distinct type instances under Bun.
+// We bridge that boundary here via runtime-compatible casts.
+const CLIENT_MESSAGE_CTOR = ClientMessage as unknown as never;
+const SERVER_MESSAGE_CTOR = ServerMessage as unknown as never;
 
 const getBytesFromEvent = async (
   event: MessageEvent
@@ -66,7 +108,9 @@ const decodeServerMessage = (
 ): { ack?: string; error?: SessionError } | null => {
   try {
     const message = new Message(bytes, false);
-    const root = message.getRoot(ServerMessage);
+    const root = message.getRoot(
+      SERVER_MESSAGE_CTOR
+    ) as unknown as ServerMessageReader;
     switch (root.which()) {
       case ServerMessage.ACK: {
         return { ack: root.ack.message };
@@ -87,20 +131,29 @@ const decodeServerMessage = (
   }
 };
 
-const encodeHello = (): Uint8Array => {
+const encodeHello = ({
+  attemptId,
+  mobileWriteToken,
+  deviceId,
+  appVersion,
+}: HelloCredentials): Uint8Array => {
   const message = new Message();
-  const root = message.initRoot(ClientMessage);
+  const root = message.initRoot(
+    CLIENT_MESSAGE_CTOR
+  ) as unknown as ClientMessageWriter;
   const hello = root._initHello();
-  hello.attemptId = "";
-  hello.mobileWriteToken = "";
-  hello.deviceId = "web";
-  hello.appVersion = "web";
+  hello.attemptId = attemptId;
+  hello.mobileWriteToken = mobileWriteToken;
+  hello.deviceId = deviceId;
+  hello.appVersion = appVersion;
   return new Uint8Array(message.toArrayBuffer());
 };
 
 const encodePhase = (phase: string, error?: string): Uint8Array => {
   const message = new Message();
-  const root = message.initRoot(ClientMessage);
+  const root = message.initRoot(
+    CLIENT_MESSAGE_CTOR
+  ) as unknown as ClientMessageWriter;
   const update = root._initPhase();
   update.phase = phase;
   update.error = error ?? "";
@@ -114,7 +167,9 @@ const encodeData = (
   total: number
 ): Uint8Array => {
   const message = new Message();
-  const root = message.initRoot(ClientMessage);
+  const root = message.initRoot(
+    CLIENT_MESSAGE_CTOR
+  ) as unknown as ClientMessageWriter;
   const data = root._initData();
   data.kind = kind;
   data.raw = raw;
@@ -124,19 +179,16 @@ const encodeData = (
 };
 
 export function initialiseSession(
-  sessionId: string,
+  {
+    sessionId,
+    helloCredentials,
+  }: {
+    sessionId: string;
+    helloCredentials: HelloCredentials | null;
+  },
   onError?: (error: SessionError) => void
 ): VerifySession {
-  const protocol =
-    env.PUBLIC_API_PROTOCOL ||
-    (process.env.NODE_ENV === "development" ? "ws" : "wss");
-  const host = env.PUBLIC_API_HOST;
-
-  let url = `${protocol}://${host}/v1/verify/session/${sessionId}`;
-
-  if (process.env.NODE_ENV === "development") {
-    url = `${protocol}://${window.location.hostname}:8787/v1/verify/session/${sessionId}`;
-  }
+  const url = `${getApiWsBaseUrl()}/v1/verify/session/${sessionId}`;
 
   let socket: WebSocket | null = null;
   let openPromise: Promise<void> | null = null;
@@ -274,8 +326,12 @@ export function initialiseSession(
 
   return {
     async connect() {
+      if (!helloCredentials) {
+        throw new Error("HELLO_AUTH_REQUIRED");
+      }
+
       await ensureOpen();
-      await sendWithAck(encodeHello());
+      await sendWithAck(encodeHello(helloCredentials));
     },
     ping() {
       return sendWithAck(encodePhase("ping"));

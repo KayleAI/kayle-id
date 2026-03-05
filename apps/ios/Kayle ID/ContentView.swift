@@ -1,6 +1,8 @@
 import SwiftUI
 
 struct ContentView: View {
+  @Binding var pendingQRCode: String?
+
   private enum NavigationDirection {
     case forward
     case backward
@@ -75,6 +77,14 @@ struct ContentView: View {
       }
       .presentationDetents([.large])
       .presentationDragIndicator(.visible)
+    }
+    .onChange(of: pendingQRCode) { newCode in
+      guard let code = newCode, !code.isEmpty else {
+        return
+      }
+
+      handleQRCode(code)
+      pendingQRCode = nil
     }
   }
 
