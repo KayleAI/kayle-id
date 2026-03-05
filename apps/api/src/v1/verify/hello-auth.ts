@@ -52,6 +52,7 @@ export async function getAttemptForHello(
       mobileWriteTokenConsumedAt:
         verification_attempts.mobileWriteTokenConsumedAt,
       mobileHelloDeviceIdHash: verification_attempts.mobileHelloDeviceIdHash,
+      currentPhase: verification_attempts.currentPhase,
     })
     .from(verification_attempts)
     .where(

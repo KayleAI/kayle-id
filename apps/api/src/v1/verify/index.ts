@@ -12,6 +12,10 @@ import { validator } from "hono/validator";
 import { z } from "zod";
 import { sessionIdSchema } from "@/shared/validation";
 import {
+  claimAttemptConnection,
+  releaseAttemptConnection,
+} from "./attempt-connection";
+import {
   createTransferState,
   processDataPayload,
   resetTransferState,
@@ -25,6 +29,11 @@ import {
   parseHelloPayload,
   resolveHelloAuthState,
 } from "./hello-auth";
+import {
+  isTrackedAttemptPhase,
+  persistTrackedAttemptPhase,
+  validateTrackedPhaseTransition,
+} from "./phase-state";
 import { isTerminalSessionStatus } from "./status";
 import { createWebSocketPairTuple, webSocketErrorResponse } from "./utils";
 
@@ -168,10 +177,13 @@ verify.get(
     server.accept();
 
     const debug = c.req.query("debug") === "1";
+    const connectionOwnerId = crypto.randomUUID();
 
     const state = {
       helloReceived: false,
       transfer: createTransferState(),
+      attemptId: null as string | null,
+      currentPhase: null as string | null,
     };
 
     const logDebug = (label: string, details?: Record<string, unknown>) => {
@@ -228,6 +240,78 @@ verify.get(
       sendAck("hello_ok");
     };
 
+    const shouldRejectSocketAttemptSwitch = (attemptId: string): boolean => {
+      if (
+        !(
+          state.helloReceived &&
+          state.attemptId &&
+          state.attemptId !== attemptId
+        )
+      ) {
+        return false;
+      }
+
+      sendAuthErrorAndClose("HELLO_AUTH_REQUIRED");
+      return true;
+    };
+
+    const claimAttemptOwnership = (attemptId: string): boolean => {
+      const ownership = claimAttemptConnection({
+        attemptId,
+        ownerId: connectionOwnerId,
+      });
+
+      if (ownership.ok) {
+        return true;
+      }
+
+      sendAuthErrorAndClose(ownership.code);
+      return false;
+    };
+
+    const clearAttemptStateAndOwnership = (attemptId: string) => {
+      releaseAttemptConnection({
+        attemptId,
+        ownerId: connectionOwnerId,
+      });
+      state.attemptId = null;
+      state.currentPhase = null;
+    };
+
+    const persistConnectedPhaseIfMissing = async (attemptId: string) => {
+      if (state.currentPhase) {
+        return;
+      }
+
+      await persistTrackedAttemptPhase({
+        attemptId,
+        phase: "mobile_connected",
+      });
+      state.currentPhase = "mobile_connected";
+    };
+
+    const consumeFirstHello = async ({
+      attemptId,
+      deviceIdHash,
+      appVersion,
+    }: {
+      attemptId: string;
+      deviceIdHash: string;
+      appVersion: string;
+    }) => {
+      await consumeHelloAttempt({
+        attemptId,
+        deviceIdHash,
+        appVersion,
+      });
+      await markSessionInProgress(session);
+      await persistTrackedAttemptPhase({
+        attemptId,
+        phase: "mobile_connected",
+      });
+      state.currentPhase = "mobile_connected";
+    };
+
     const handleHello = async (payload: {
       attemptId?: string;
       mobileWriteToken?: string;
@@ -254,6 +338,10 @@ verify.get(
         return;
       }
 
+      if (shouldRejectSocketAttemptSwitch(attempt.id)) {
+        return;
+      }
+
       const authState = await resolveHelloAuthState({
         attempt,
         mobileWriteToken: parsed.mobileWriteToken,
@@ -266,26 +354,68 @@ verify.get(
         return;
       }
 
+      if (!claimAttemptOwnership(attempt.id)) {
+        return;
+      }
+
+      state.attemptId = attempt.id;
+      state.currentPhase = attempt.currentPhase ?? null;
+
       if (authState.kind === "resume") {
+        await persistConnectedPhaseIfMissing(attempt.id);
         acknowledgeHello();
         return;
       }
 
-      await consumeHelloAttempt({
-        attemptId: attempt.id,
-        deviceIdHash: authState.deviceIdHash,
-        appVersion: parsed.appVersion,
-      });
-      await markSessionInProgress(session);
+      try {
+        await consumeFirstHello({
+          attemptId: attempt.id,
+          deviceIdHash: authState.deviceIdHash,
+          appVersion: parsed.appVersion,
+        });
+      } catch (error) {
+        clearAttemptStateAndOwnership(attempt.id);
+        throw error;
+      }
 
       acknowledgeHello();
     };
 
-    const handlePhase = (payload: { phase?: string; error?: string }) => {
+    const handlePhase = async (payload: { phase?: string; error?: string }) => {
       logDebug("recv_phase", {
         phase: payload.phase ?? "",
         error: payload.error ?? "",
       });
+
+      if (!state.attemptId) {
+        sendError("HELLO_REQUIRED", "Send hello before other messages.");
+        return;
+      }
+
+      const nextPhase = payload.phase?.trim() ?? "";
+      if (!isTrackedAttemptPhase(nextPhase)) {
+        sendAck("phase_ok");
+        return;
+      }
+
+      const transition = validateTrackedPhaseTransition({
+        currentPhase: state.currentPhase,
+        nextPhase,
+      });
+
+      if (!transition.ok) {
+        sendError(transition.code, resolveErrorMessage(transition.code));
+        return;
+      }
+
+      if (transition.changed) {
+        await persistTrackedAttemptPhase({
+          attemptId: state.attemptId,
+          phase: transition.nextPhase,
+        });
+        state.currentPhase = transition.nextPhase;
+      }
+
       sendAck("phase_ok");
     };
 
@@ -356,7 +486,7 @@ verify.get(
       }
 
       if (decoded.phase) {
-        handlePhase(decoded.phase);
+        await handlePhase(decoded.phase);
         return;
       }
 
@@ -380,6 +510,12 @@ verify.get(
     });
 
     server.addEventListener("close", () => {
+      if (state.attemptId) {
+        releaseAttemptConnection({
+          attemptId: state.attemptId,
+          ownerId: connectionOwnerId,
+        });
+      }
       resetTransferState(state.transfer);
     });
 

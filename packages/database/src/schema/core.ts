@@ -191,6 +191,16 @@ export const verification_attempts = pgTable(
      */
     mobileHelloAppVersion: text("mobile_hello_app_version"),
     /**
+     * Current lifecycle phase for this attempt.
+     *
+     * Stores phase metadata only, never MRZ/NFC/selfie payloads.
+     */
+    currentPhase: text("current_phase"),
+    /**
+     * Time when `current_phase` was last updated.
+     */
+    phaseUpdatedAt: timestamp("phase_updated_at"),
+    /**
      * Degree of risk associated with the verification attempt.
      *
      * Stored as a decimal number between 0 and 1.

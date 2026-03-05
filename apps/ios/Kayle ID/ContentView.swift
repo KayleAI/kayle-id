@@ -337,6 +337,9 @@ struct ContentView: View {
     cameraBlur = 0
     didTriggerMRZ = false
     isMRZSheetPresented = true
+    Task {
+      await session.updatePhase(.mrzScanning)
+    }
   }
 
   private func handleMRZSheetDismiss() {

@@ -48,3 +48,6 @@ apps/ios/.DS_Store
 
 # Docs
 docs/*.md
+
+# iOS
+.build/

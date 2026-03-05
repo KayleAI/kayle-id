@@ -64,4 +64,16 @@ export const ERROR_MESSAGES = {
     description:
       "This verification attempt is bound to a different device. Continue on that device or start over.",
   },
+
+  ATTEMPT_CONNECTION_ACTIVE: {
+    title: "Verification already connected",
+    description:
+      "This verification attempt is already active on another connection. Continue there or retry after it closes.",
+  },
+
+  PHASE_OUT_OF_ORDER: {
+    title: "Step order mismatch",
+    description:
+      "This verification step was sent out of order. Continue from the current step.",
+  },
 } as const;

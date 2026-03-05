@@ -8,7 +8,13 @@ struct MRZScannerView: UIViewControllerRepresentable {
   func makeUIViewController(context: Context) -> MRZOCRViewController {
     let vc = MRZOCRViewController()
     vc.onScan = { mrz, can in
-      guard let res = try? MRZParser.parseAndValidate(mrz), res.checks.isValid else { return }
+      guard
+        let res = try? MRZParser.parseAndValidate(mrz),
+        res.format == .td3,
+        res.checks.isValid
+      else {
+        return
+      }
       onValidMRZ(mrz, res, can)
     }
     return vc

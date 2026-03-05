@@ -138,27 +138,17 @@ private func extractMRZ(from lines: [String]) -> String? {
   let mrzLike = normalised
     .filter { $0.count >= 25 && $0.contains("<<") }
 
-  // Try TD1 (3 lines, ~30 chars each)
-  let td1Candidates = mrzLike.filter { $0.count >= 25 && $0.count <= 35 }
-  if td1Candidates.count >= 3 {
-    let ranked = td1Candidates.sorted { scoreMRZLine($0) > scoreMRZLine($1) }
-    let l1 = ranked[0]
-    let l2 = ranked[1]
-    let l3 = ranked[2]
-    if l1.count >= 25, l2.count >= 25, l3.count >= 25 {
-      return "\(l1)\n\(l2)\n\(l3)"
-    }
+  let td3Candidates = mrzLike.filter { $0.count == 44 }
+  if td3Candidates.count < 2 {
+    return nil
   }
 
-  // Try TD2/TD3 (2 lines, >=36 or 44 chars)
-  if mrzLike.count >= 2 {
-    let ranked = mrzLike.sorted { scoreMRZLine($0) > scoreMRZLine($1) }
-    let l1 = ranked[0]
-    let l2 = ranked[1]
+  let ranked = td3Candidates.sorted { scoreMRZLine($0) > scoreMRZLine($1) }
+  let l1 = ranked[0]
+  let l2 = ranked[1]
 
-    if l1.count >= 30, l2.count >= 30 {
-      return "\(l1)\n\(l2)"
-    }
+  if l1.hasPrefix("P") {
+    return "\(l1)\n\(l2)"
   }
 
   return nil

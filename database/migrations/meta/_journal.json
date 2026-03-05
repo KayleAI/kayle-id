@@ -43,6 +43,13 @@
       "when": 1772734650699,
       "tag": "0006_phase3_websocket_hello_auth",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1772739600000,
+      "tag": "0007_phase4_attempt_phase_state",
+      "breakpoints": true
     }
   ]
 }

@@ -4,6 +4,7 @@ enum MRZParseError: Error {
   case notEnoughLines
   case wrongLength
   case invalidCharset
+  case unsupportedDocumentType
 }
 
 enum MRZParser {
@@ -12,30 +13,30 @@ enum MRZParser {
       .split(separator: "\n", omittingEmptySubsequences: true)
       .map(String.init)
 
-    if lines.count == 3 {
-      let l1 = lines[0]
-      let l2 = lines[1]
-      let l3 = lines[2]
-      guard l1.count == 30, l2.count == 30, l3.count == 30 else { throw MRZParseError.wrongLength }
-      guard charsetOK(l1) && charsetOK(l2) && charsetOK(l3) else { throw MRZParseError.invalidCharset }
-      return parseTD1(l1, l2, l3)
+    if lines.count < 2 {
+      throw MRZParseError.notEnoughLines
     }
 
-    if lines.count == 2 {
-      let l1 = lines[0]
-      let l2 = lines[1]
-      if l1.count == 44, l2.count == 44 {
-        guard charsetOK(l1) && charsetOK(l2) else { throw MRZParseError.invalidCharset }
-        return parseTD3(l1, l2)
-      }
-      if l1.count == 36, l2.count == 36 {
-        guard charsetOK(l1) && charsetOK(l2) else { throw MRZParseError.invalidCharset }
-        return parseTD2(l1, l2)
-      }
+    if lines.count != 2 {
       throw MRZParseError.wrongLength
     }
 
-    throw MRZParseError.notEnoughLines
+    let l1 = lines[0]
+    let l2 = lines[1]
+
+    guard l1.count == 44, l2.count == 44 else {
+      throw MRZParseError.wrongLength
+    }
+
+    guard charsetOK(l1) && charsetOK(l2) else {
+      throw MRZParseError.invalidCharset
+    }
+
+    guard l1.hasPrefix("P") else {
+      throw MRZParseError.unsupportedDocumentType
+    }
+
+    return parseTD3(l1, l2)
   }
 
   // MARK: - TD3 (passports)

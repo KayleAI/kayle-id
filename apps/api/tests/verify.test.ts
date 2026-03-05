@@ -120,6 +120,19 @@ function decodeServerMessage(bytes: Uint8Array): ServerAckOrError | null {
 
 function awaitSocketOpen(socket: WebSocket): Promise<void> {
   return new Promise((resolve, reject) => {
+    if (socket.readyState === WebSocket.OPEN) {
+      resolve();
+      return;
+    }
+
+    if (
+      socket.readyState === WebSocket.CLOSING ||
+      socket.readyState === WebSocket.CLOSED
+    ) {
+      reject(new Error("WebSocket closed before opening."));
+      return;
+    }
+
     const handleOpen = () => {
       cleanup();
       resolve();
@@ -312,6 +325,8 @@ describe("Verification Flows", () => {
           mobileHelloDeviceIdHash:
             verification_attempts.mobileHelloDeviceIdHash,
           mobileHelloAppVersion: verification_attempts.mobileHelloAppVersion,
+          currentPhase: verification_attempts.currentPhase,
+          phaseUpdatedAt: verification_attempts.phaseUpdatedAt,
         })
         .from(verification_attempts)
         .where(eq(verification_attempts.id, handoff.attempt_id))
@@ -324,6 +339,8 @@ describe("Verification Flows", () => {
       });
       expect(attempt?.mobileHelloDeviceIdHash).toBe(expectedDeviceHash);
       expect(attempt?.mobileHelloAppVersion).toBe("1.0.0");
+      expect(attempt?.currentPhase).toBe("mobile_connected");
+      expect(attempt?.phaseUpdatedAt).not.toBeNull();
     }
   );
 
@@ -469,6 +486,145 @@ describe("Verification Flows", () => {
       socketTwo.close();
     }
   });
+
+  test.serial(
+    "Rejects second concurrent socket for the same attempt with ATTEMPT_CONNECTION_ACTIVE",
+    async () => {
+      const sessionId = await createSession();
+      const handoff = await createHandoff(sessionId);
+      const helloMessage = encodeHelloMessage({
+        attemptId: handoff.attempt_id,
+        mobileWriteToken: handoff.mobile_write_token,
+        deviceId: "ios-device-a",
+        appVersion: "1.0.0",
+      });
+
+      const socketOne = openVerifySocket(sessionId);
+      const socketTwo = openVerifySocket(sessionId);
+
+      try {
+        await awaitSocketOpen(socketOne);
+        socketOne.send(helloMessage);
+        const firstResponse = await awaitServerMessage(socketOne);
+        expect(firstResponse.ack).toBe("hello_ok");
+
+        await awaitSocketOpen(socketTwo);
+        socketTwo.send(helloMessage);
+        const secondResponse = await awaitServerMessage(socketTwo);
+        expect(secondResponse.error?.code).toBe("ATTEMPT_CONNECTION_ACTIVE");
+      } finally {
+        socketOne.close();
+        socketTwo.close();
+      }
+    }
+  );
+
+  test.serial(
+    "Accepts ordered MRZ phase transitions and persists phase state",
+    async () => {
+      const sessionId = await createSession();
+      const handoff = await createHandoff(sessionId);
+
+      const socket = openVerifySocket(sessionId);
+
+      try {
+        await awaitSocketOpen(socket);
+        socket.send(
+          encodeHelloMessage({
+            attemptId: handoff.attempt_id,
+            mobileWriteToken: handoff.mobile_write_token,
+            deviceId: "ios-device-a",
+            appVersion: "1.0.0",
+          })
+        );
+        const helloResponse = await awaitServerMessage(socket);
+        expect(helloResponse.ack).toBe("hello_ok");
+
+        socket.send(encodePhaseMessage("mobile_connected"));
+        expect((await awaitServerMessage(socket)).ack).toBe("phase_ok");
+
+        socket.send(encodePhaseMessage("mrz_scanning"));
+        expect((await awaitServerMessage(socket)).ack).toBe("phase_ok");
+
+        socket.send(encodePhaseMessage("mrz_complete"));
+        expect((await awaitServerMessage(socket)).ack).toBe("phase_ok");
+      } finally {
+        socket.close();
+      }
+
+      const [attempt] = await db
+        .select({
+          currentPhase: verification_attempts.currentPhase,
+          phaseUpdatedAt: verification_attempts.phaseUpdatedAt,
+        })
+        .from(verification_attempts)
+        .where(eq(verification_attempts.id, handoff.attempt_id))
+        .limit(1);
+
+      expect(attempt?.currentPhase).toBe("mrz_complete");
+      expect(attempt?.phaseUpdatedAt).not.toBeNull();
+    }
+  );
+
+  test.serial("Rejects out-of-order tracked phase transitions", async () => {
+    const sessionId = await createSession();
+    const handoff = await createHandoff(sessionId);
+
+    const socket = openVerifySocket(sessionId);
+
+    try {
+      await awaitSocketOpen(socket);
+      socket.send(
+        encodeHelloMessage({
+          attemptId: handoff.attempt_id,
+          mobileWriteToken: handoff.mobile_write_token,
+          deviceId: "ios-device-a",
+          appVersion: "1.0.0",
+        })
+      );
+      const helloResponse = await awaitServerMessage(socket);
+      expect(helloResponse.ack).toBe("hello_ok");
+
+      socket.send(encodePhaseMessage("mrz_complete"));
+      const response = await awaitServerMessage(socket);
+      expect(response.error?.code).toBe("PHASE_OUT_OF_ORDER");
+    } finally {
+      socket.close();
+    }
+  });
+
+  test.serial(
+    "Accepts duplicate tracked phase updates idempotently",
+    async () => {
+      const sessionId = await createSession();
+      const handoff = await createHandoff(sessionId);
+
+      const socket = openVerifySocket(sessionId);
+
+      try {
+        await awaitSocketOpen(socket);
+        socket.send(
+          encodeHelloMessage({
+            attemptId: handoff.attempt_id,
+            mobileWriteToken: handoff.mobile_write_token,
+            deviceId: "ios-device-a",
+            appVersion: "1.0.0",
+          })
+        );
+        const helloResponse = await awaitServerMessage(socket);
+        expect(helloResponse.ack).toBe("hello_ok");
+
+        socket.send(encodePhaseMessage("mobile_connected"));
+        expect((await awaitServerMessage(socket)).ack).toBe("phase_ok");
+
+        socket.send(encodePhaseMessage("mobile_connected"));
+        const duplicateResponse = await awaitServerMessage(socket);
+        expect(duplicateResponse.ack).toBe("phase_ok");
+      } finally {
+        socket.close();
+      }
+    }
+  );
 
   test.serial(
     "Rejects consumed-token resume from a different device",

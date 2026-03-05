@@ -16,14 +16,12 @@ let package = Package(
   targets: [
     .target(
       name: "KayleIDModels",
-      path: "Kayle ID/Models",
-      exclude: [
-        "MRZResult.swift",
-        "VerificationSession.swift",
-      ],
+      path: "Kayle ID",
       sources: [
-        "QRCodePayload.swift",
-        "VerifyWebSocketAuthPolicy.swift",
+        "Models/MRZResult.swift",
+        "Models/QRCodePayload.swift",
+        "Models/VerifyWebSocketAuthPolicy.swift",
+        "Utilities/MRZParser.swift",
       ]
     ),
     .testTarget(
@@ -31,6 +29,7 @@ let package = Package(
       dependencies: ["KayleIDModels"],
       path: "Kayle IDTests",
       sources: [
+        "MRZParserTests.swift",
         "QRCodePayloadTests.swift",
         "VerifyWebSocketAuthPolicyTests.swift",
       ]
