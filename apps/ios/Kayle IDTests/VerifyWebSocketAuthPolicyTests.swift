@@ -87,6 +87,30 @@ final class VerifyWebSocketAuthPolicyTests: XCTestCase {
     )
   }
 
+  func testParsesMissingSelfieDataInstruction() {
+    let instruction = parseMissingSelfieDataInstruction(
+      errorCode: "SELFIE_REQUIRED_DATA_MISSING",
+      errorMessage:
+        #"{"required_total":3,"missing_selfie_indexes":[1,2],"missing_chunks":[{"kind":3,"index":0,"chunk_total":2,"missing_chunk_indices":[1]}]}"#
+    )
+
+    XCTAssertEqual(
+      instruction,
+      VerifyMissingSelfieDataInstruction(
+        requiredTotal: 3,
+        missingSelfieIndexes: [1, 2],
+        missingChunks: [
+          VerifyMissingNFCChunk(
+            kind: 3,
+            index: 0,
+            chunkTotal: 2,
+            missingChunkIndices: [1]
+          ),
+        ]
+      )
+    )
+  }
+
   func testMatchesExpectedDataChunkAcks() {
     XCTAssertTrue(
       isExpectedDataAck(
@@ -105,6 +129,16 @@ final class VerifyWebSocketAuthPolicyTests: XCTestCase {
         index: 0,
         chunkIndex: 2,
         chunkTotal: 3
+      )
+    )
+
+    XCTAssertTrue(
+      isExpectedDataAck(
+        ackMessage: "data_ok_3_2",
+        kind: 3,
+        index: 2,
+        chunkIndex: 0,
+        chunkTotal: 1
       )
     )
 

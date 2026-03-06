@@ -94,4 +94,16 @@ export const ERROR_MESSAGES = {
     description:
       "Required passport chip data is still missing. Continue the NFC upload before finishing this step.",
   },
+
+  SELFIE_DATA_PHASE_REQUIRED: {
+    title: "Selfie upload not ready",
+    description:
+      "Selfie data can only be uploaded during the selfie capture step. Continue from the current step.",
+  },
+
+  SELFIE_REQUIRED_DATA_MISSING: {
+    title: "Selfie data missing",
+    description:
+      "Required selfie data is still missing. Continue the selfie upload before finishing this step.",
+  },
 } as const;

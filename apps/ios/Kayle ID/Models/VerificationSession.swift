@@ -60,11 +60,19 @@ final class VerificationSession: ObservableObject {
   private var webSocketService: VerifyWebSocketService?
   private var selfieUploadsExpected = 0
   private var selfieSentIndices = Set<Int>()
+  private var selfiePayloadsByIndex: [Int: Data] = [:]
   private var selfieUploadCancelled = false
   private let nfcChunkSize = 512 * 1024
+  private let selfieChunkSize = 512 * 1024
+  private let requiredSelfieTotal = 3
 
   private struct NFCUploadPlan {
     let kind: VerifyDataKind
+    let chunks: [Data]
+  }
+
+  private struct SelfieUploadPlan {
+    let index: Int
     let chunks: [Data]
   }
 
@@ -195,27 +203,46 @@ final class VerificationSession: ObservableObject {
       throw SelfieError.uploadFailed
     }
 
-    if selfieUploadsExpected == 0 {
-      selfieUploadsExpected = total
+    if total != requiredSelfieTotal {
+      throw SelfieError.uploadFailed
     }
 
-    if selfieSentIndices.contains(index) {
-      return selfieSentIndices.count >= selfieUploadsExpected
+    if index < 0 || index >= requiredSelfieTotal {
+      throw SelfieError.uploadFailed
+    }
+
+    if selfieUploadsExpected == 0 {
+      selfieUploadsExpected = total
     }
 
     guard let jpeg = image.jpegData(compressionQuality: 0.8) else {
       throw SelfieError.compressionFailed
     }
 
-    try await sendSelfieChunks(
-      webSocketService: webSocketService,
-      raw: jpeg,
-      index: index,
-      total: total
-    )
+    selfiePayloadsByIndex[index] = jpeg
 
-    selfieSentIndices.insert(index)
-    return selfieSentIndices.count >= selfieUploadsExpected
+    while true {
+      do {
+        let plans = try buildKnownSelfieUploadPlans()
+        try await uploadKnownSelfiePlans(plans, via: webSocketService)
+
+        let hasAllSelfies = selfiePayloadsByIndex.count == requiredSelfieTotal
+        guard hasAllSelfies else {
+          return false
+        }
+
+        try await completeSelfiePhase(plans: plans, via: webSocketService)
+        return true
+      } catch let socketError as VerifyWebSocketError {
+        if !isTransientSocketError(socketError) {
+          throw socketError
+        }
+
+        // Server transfer state is memory-only and reset on disconnect, so resend all.
+        selfieSentIndices.removeAll()
+        try await Task.sleep(nanoseconds: 300_000_000)
+      }
+    }
   }
 
   /// Move to the next step in the flow.
@@ -247,50 +274,192 @@ final class VerificationSession: ObservableObject {
     webSocketService = nil
     selfieUploadsExpected = 0
     selfieSentIndices.removeAll()
+    selfiePayloadsByIndex.removeAll()
     selfieUploadCancelled = false
   }
 
-  private func sendSelfieChunks(
-    webSocketService: VerifyWebSocketService,
-    raw: Data,
-    index: Int,
-    total: Int
-  ) async throws {
-    let chunkSize = 512 * 1024
-    let chunkTotal = Int(ceil(Double(raw.count) / Double(chunkSize)))
-    if chunkTotal <= 1 {
-      if selfieUploadCancelled {
-        throw SelfieError.uploadFailed
-      }
-      try await webSocketService.sendData(
-        kind: .selfie,
-        raw: raw,
-        index: index,
-        total: total,
-        chunkIndex: 0,
-        chunkTotal: 1
-      )
-      return
+  private func buildKnownSelfieUploadPlans() throws -> [SelfieUploadPlan] {
+    let sortedIndexes = selfiePayloadsByIndex.keys.sorted()
+
+    guard !sortedIndexes.isEmpty else {
+      throw VerificationError.uploadFailed
     }
 
-    var chunkIndex = 0
-    var offset = 0
-    while offset < raw.count {
+    let plans = sortedIndexes.compactMap { index -> SelfieUploadPlan? in
+      guard let payload = selfiePayloadsByIndex[index] else {
+        return nil
+      }
+      return SelfieUploadPlan(
+        index: index,
+        chunks: chunkData(payload, chunkSize: selfieChunkSize)
+      )
+    }
+
+    guard !plans.isEmpty else {
+      throw VerificationError.uploadFailed
+    }
+
+    return plans
+  }
+
+  private func isTransientSocketError(_ error: VerifyWebSocketError) -> Bool {
+    switch error {
+    case .connectionClosed, .notConnected, .reconnectFailed, .serverResponseTimedOut:
+      return true
+    default:
+      return false
+    }
+  }
+
+  private func uploadKnownSelfiePlans(
+    _ plans: [SelfieUploadPlan],
+    via webSocketService: VerifyWebSocketService
+  ) async throws {
+    for plan in plans {
+      if selfieSentIndices.contains(plan.index) {
+        continue
+      }
+      try await uploadSelfiePlan(plan, via: webSocketService)
+    }
+  }
+
+  private func uploadSelfiePlan(
+    _ plan: SelfieUploadPlan,
+    via webSocketService: VerifyWebSocketService,
+    startingAt startChunkIndex: Int = 0
+  ) async throws {
+    guard !plan.chunks.isEmpty else {
+      throw VerificationError.uploadFailed
+    }
+
+    let clampedStartChunkIndex = max(0, min(startChunkIndex, plan.chunks.count - 1))
+    var nextChunkIndex = clampedStartChunkIndex
+    let chunkTotal = plan.chunks.count
+
+    while nextChunkIndex < chunkTotal {
       if selfieUploadCancelled {
         throw SelfieError.uploadFailed
       }
-      let end = min(offset + chunkSize, raw.count)
-      let chunk = raw.subdata(in: offset..<end)
-      try await webSocketService.sendData(
-        kind: .selfie,
-        raw: chunk,
-        index: index,
-        total: total,
-        chunkIndex: chunkIndex,
-        chunkTotal: chunkTotal
-      )
-      chunkIndex += 1
-      offset = end
+
+      do {
+        let response = try await webSocketService.sendDataAwaitResponse(
+          kind: .selfie,
+          raw: plan.chunks[nextChunkIndex],
+          index: plan.index,
+          total: requiredSelfieTotal,
+          chunkIndex: nextChunkIndex,
+          chunkTotal: chunkTotal
+        )
+
+        guard
+          isExpectedDataAck(
+            ackMessage: response.ackMessage,
+            kind: VerifyDataKind.selfie.rawValue,
+            index: plan.index,
+            chunkIndex: nextChunkIndex,
+            chunkTotal: chunkTotal
+          )
+        else {
+          throw VerifyWebSocketError.sendFailed
+        }
+
+        nextChunkIndex += 1
+      } catch let socketError as VerifyWebSocketError {
+        guard case .serverError(let code, let message) = socketError else {
+          throw socketError
+        }
+
+        guard
+          let retryInstruction = parseChunkRetryInstruction(
+            errorCode: code,
+            errorMessage: message
+          ),
+          retryInstruction.kind == VerifyDataKind.selfie.rawValue,
+          retryInstruction.index == plan.index,
+          retryInstruction.chunkIndex >= 0,
+          retryInstruction.chunkIndex < chunkTotal
+        else {
+          throw socketError
+        }
+
+        nextChunkIndex = retryInstruction.chunkIndex
+      }
+    }
+
+    selfieSentIndices.insert(plan.index)
+  }
+
+  private func completeSelfiePhase(
+    plans: [SelfieUploadPlan],
+    via webSocketService: VerifyWebSocketService
+  ) async throws {
+    while true {
+      do {
+        let response = try await webSocketService.sendPhaseAwaitResponse(
+          .selfieComplete,
+          error: nil
+        )
+
+        guard response.ackMessage == "phase_ok" else {
+          throw VerifyWebSocketError.sendFailed
+        }
+        return
+      } catch let socketError as VerifyWebSocketError {
+        guard case .serverError(let code, let message) = socketError else {
+          throw socketError
+        }
+
+        guard
+          let missingInstruction = parseMissingSelfieDataInstruction(
+            errorCode: code,
+            errorMessage: message
+          )
+        else {
+          throw socketError
+        }
+
+        try await resendMissingSelfieData(
+          missingInstruction,
+          plans: plans,
+          via: webSocketService
+        )
+      }
+    }
+  }
+
+  private func resendMissingSelfieData(
+    _ missingInstruction: VerifyMissingSelfieDataInstruction,
+    plans: [SelfieUploadPlan],
+    via webSocketService: VerifyWebSocketService
+  ) async throws {
+    let plansByIndex = Dictionary(uniqueKeysWithValues: plans.map { ($0.index, $0) })
+
+    for missingIndex in missingInstruction.missingSelfieIndexes.sorted() {
+      guard let plan = plansByIndex[missingIndex] else {
+        continue
+      }
+      try await uploadSelfiePlan(plan, via: webSocketService)
+    }
+
+    for missingChunk in missingInstruction.missingChunks {
+      guard
+        missingChunk.kind == VerifyDataKind.selfie.rawValue,
+        let plan = plansByIndex[missingChunk.index]
+      else {
+        continue
+      }
+
+      for chunkIndex in missingChunk.missingChunkIndices.sorted() {
+        guard chunkIndex >= 0, chunkIndex < plan.chunks.count else {
+          continue
+        }
+
+        try await uploadSelfiePlan(
+          plan,
+          via: webSocketService,
+          startingAt: chunkIndex
+        )
+      }
     }
   }
 

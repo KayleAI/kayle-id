@@ -18,7 +18,9 @@ import {
 import {
   createTransferState,
   getNfcTransferStatus,
+  getSelfieTransferStatus,
   isNfcDataKind,
+  isSelfieDataKind,
   processDataPayload,
   resetTransferState,
 } from "./data-payload";
@@ -399,6 +401,23 @@ verify.get(
       };
     };
 
+    const createMissingSelfieMessage = () => {
+      const selfieStatus = getSelfieTransferStatus(state.transfer);
+      return {
+        complete: selfieStatus.complete,
+        message: JSON.stringify({
+          required_total: selfieStatus.requiredTotal,
+          missing_selfie_indexes: selfieStatus.missingSelfieIndexes,
+          missing_chunks: selfieStatus.missingChunks.map((chunk) => ({
+            kind: chunk.kind,
+            index: chunk.index,
+            chunk_total: chunk.chunkTotal,
+            missing_chunk_indices: chunk.missingChunkIndices,
+          })),
+        }),
+      };
+    };
+
     const ensureNfcDataReadyForCompletion = (nextPhase: string): boolean => {
       if (nextPhase !== "nfc_complete") {
         return true;
@@ -410,6 +429,20 @@ verify.get(
       }
 
       sendError("NFC_REQUIRED_DATA_MISSING", nfcStatus.message);
+      return false;
+    };
+
+    const ensureSelfieDataReadyForCompletion = (nextPhase: string): boolean => {
+      if (nextPhase !== "selfie_complete") {
+        return true;
+      }
+
+      const selfieStatus = createMissingSelfieMessage();
+      if (selfieStatus.complete) {
+        return true;
+      }
+
+      sendError("SELFIE_REQUIRED_DATA_MISSING", selfieStatus.message);
       return false;
     };
 
@@ -460,11 +493,18 @@ verify.get(
         return;
       }
 
+      if (!ensureSelfieDataReadyForCompletion(nextPhase)) {
+        return;
+      }
+
       await persistTrackedPhaseTransition(nextPhase, attemptId);
     };
 
     const isNfcDataPhaseMismatch = (kind: number): boolean =>
       isNfcDataKind(kind) && state.currentPhase !== "nfc_reading";
+
+    const isSelfieDataPhaseMismatch = (kind: number): boolean =>
+      isSelfieDataKind(kind) && state.currentPhase !== "selfie_capturing";
 
     const acknowledgeDataResult = (
       result: ReturnType<typeof processDataPayload>
@@ -506,6 +546,14 @@ verify.get(
         sendError(
           "NFC_DATA_PHASE_REQUIRED",
           resolveErrorMessage("NFC_DATA_PHASE_REQUIRED")
+        );
+        return;
+      }
+
+      if (isSelfieDataPhaseMismatch(kind)) {
+        sendError(
+          "SELFIE_DATA_PHASE_REQUIRED",
+          resolveErrorMessage("SELFIE_DATA_PHASE_REQUIRED")
         );
         return;
       }

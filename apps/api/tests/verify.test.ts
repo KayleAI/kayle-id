@@ -1006,6 +1006,479 @@ describe("Verification Flows", () => {
   );
 
   test.serial(
+    "Rejects selfie data before selfie_capturing with SELFIE_DATA_PHASE_REQUIRED",
+    async () => {
+      const sessionId = await createSession();
+      const handoff = await createHandoff(sessionId);
+
+      const socket = openVerifySocket(sessionId);
+
+      try {
+        await awaitSocketOpen(socket);
+        socket.send(
+          encodeHelloMessage({
+            attemptId: handoff.attempt_id,
+            mobileWriteToken: handoff.mobile_write_token,
+            deviceId: "ios-device-a",
+            appVersion: "1.0.0",
+          })
+        );
+        expect((await awaitServerMessage(socket)).ack).toBe("hello_ok");
+
+        socket.send(
+          encodeDataMessage({
+            kind: DataKind.SELFIE,
+            raw: new Uint8Array([1, 2, 3]),
+            index: 0,
+            total: 3,
+          })
+        );
+
+        const response = await awaitServerMessage(socket);
+        expect(response.error?.code).toBe("SELFIE_DATA_PHASE_REQUIRED");
+      } finally {
+        socket.close();
+      }
+    }
+  );
+
+  test.serial(
+    "Accepts ordered transition from nfc_complete to selfie_capturing",
+    async () => {
+      const sessionId = await createSession();
+      const handoff = await createHandoff(sessionId);
+
+      const socket = openVerifySocket(sessionId);
+
+      try {
+        await awaitSocketOpen(socket);
+        socket.send(
+          encodeHelloMessage({
+            attemptId: handoff.attempt_id,
+            mobileWriteToken: handoff.mobile_write_token,
+            deviceId: "ios-device-a",
+            appVersion: "1.0.0",
+          })
+        );
+        expect((await awaitServerMessage(socket)).ack).toBe("hello_ok");
+
+        socket.send(encodePhaseMessage("mrz_scanning"));
+        expect((await awaitServerMessage(socket)).ack).toBe("phase_ok");
+
+        socket.send(encodePhaseMessage("mrz_complete"));
+        expect((await awaitServerMessage(socket)).ack).toBe("phase_ok");
+
+        socket.send(encodePhaseMessage("nfc_reading"));
+        expect((await awaitServerMessage(socket)).ack).toBe("phase_ok");
+
+        socket.send(
+          encodeDataMessage({
+            kind: DataKind.DG1,
+            raw: new Uint8Array([1]),
+          })
+        );
+        expect((await awaitServerMessage(socket)).ack).toBe("data_ok_0_0");
+
+        socket.send(
+          encodeDataMessage({
+            kind: DataKind.DG2,
+            raw: new Uint8Array([2]),
+          })
+        );
+        expect((await awaitServerMessage(socket)).ack).toBe("data_ok_1_0");
+
+        socket.send(
+          encodeDataMessage({
+            kind: DataKind.SOD,
+            raw: new Uint8Array([3]),
+          })
+        );
+        expect((await awaitServerMessage(socket)).ack).toBe("data_ok_2_0");
+
+        socket.send(encodePhaseMessage("nfc_complete"));
+        expect((await awaitServerMessage(socket)).ack).toBe("phase_ok");
+
+        socket.send(encodePhaseMessage("selfie_capturing"));
+        expect((await awaitServerMessage(socket)).ack).toBe("phase_ok");
+      } finally {
+        socket.close();
+      }
+    }
+  );
+
+  test.serial(
+    "Rejects selfie_complete until indices 0,1,2 are uploaded",
+    async () => {
+      const sessionId = await createSession();
+      const handoff = await createHandoff(sessionId);
+
+      const socket = openVerifySocket(sessionId);
+
+      try {
+        await awaitSocketOpen(socket);
+        socket.send(
+          encodeHelloMessage({
+            attemptId: handoff.attempt_id,
+            mobileWriteToken: handoff.mobile_write_token,
+            deviceId: "ios-device-a",
+            appVersion: "1.0.0",
+          })
+        );
+        expect((await awaitServerMessage(socket)).ack).toBe("hello_ok");
+
+        socket.send(encodePhaseMessage("mrz_scanning"));
+        expect((await awaitServerMessage(socket)).ack).toBe("phase_ok");
+
+        socket.send(encodePhaseMessage("mrz_complete"));
+        expect((await awaitServerMessage(socket)).ack).toBe("phase_ok");
+
+        socket.send(encodePhaseMessage("nfc_reading"));
+        expect((await awaitServerMessage(socket)).ack).toBe("phase_ok");
+
+        socket.send(
+          encodeDataMessage({
+            kind: DataKind.DG1,
+            raw: new Uint8Array([1]),
+          })
+        );
+        expect((await awaitServerMessage(socket)).ack).toBe("data_ok_0_0");
+
+        socket.send(
+          encodeDataMessage({
+            kind: DataKind.DG2,
+            raw: new Uint8Array([2]),
+          })
+        );
+        expect((await awaitServerMessage(socket)).ack).toBe("data_ok_1_0");
+
+        socket.send(
+          encodeDataMessage({
+            kind: DataKind.SOD,
+            raw: new Uint8Array([3]),
+          })
+        );
+        expect((await awaitServerMessage(socket)).ack).toBe("data_ok_2_0");
+
+        socket.send(encodePhaseMessage("nfc_complete"));
+        expect((await awaitServerMessage(socket)).ack).toBe("phase_ok");
+
+        socket.send(encodePhaseMessage("selfie_capturing"));
+        expect((await awaitServerMessage(socket)).ack).toBe("phase_ok");
+
+        socket.send(
+          encodeDataMessage({
+            kind: DataKind.SELFIE,
+            raw: new Uint8Array([4]),
+            index: 0,
+            total: 3,
+          })
+        );
+        expect((await awaitServerMessage(socket)).ack).toBe("data_ok_3_0");
+
+        socket.send(encodePhaseMessage("selfie_complete"));
+        const response = await awaitServerMessage(socket);
+        expect(response.error?.code).toBe("SELFIE_REQUIRED_DATA_MISSING");
+        const parsed = JSON.parse(response.error?.message ?? "{}") as {
+          required_total?: number;
+          missing_selfie_indexes?: number[];
+        };
+        expect(parsed.required_total).toBe(3);
+        expect(parsed.missing_selfie_indexes).toEqual([1, 2]);
+      } finally {
+        socket.close();
+      }
+    }
+  );
+
+  test.serial(
+    "Allows out-of-order selfie chunk upload and emits data_ok on completion",
+    async () => {
+      const sessionId = await createSession();
+      const handoff = await createHandoff(sessionId);
+
+      const socket = openVerifySocket(sessionId);
+
+      try {
+        await awaitSocketOpen(socket);
+        socket.send(
+          encodeHelloMessage({
+            attemptId: handoff.attempt_id,
+            mobileWriteToken: handoff.mobile_write_token,
+            deviceId: "ios-device-a",
+            appVersion: "1.0.0",
+          })
+        );
+        expect((await awaitServerMessage(socket)).ack).toBe("hello_ok");
+
+        socket.send(encodePhaseMessage("mrz_scanning"));
+        expect((await awaitServerMessage(socket)).ack).toBe("phase_ok");
+
+        socket.send(encodePhaseMessage("mrz_complete"));
+        expect((await awaitServerMessage(socket)).ack).toBe("phase_ok");
+
+        socket.send(encodePhaseMessage("nfc_reading"));
+        expect((await awaitServerMessage(socket)).ack).toBe("phase_ok");
+
+        socket.send(
+          encodeDataMessage({
+            kind: DataKind.DG1,
+            raw: new Uint8Array([1]),
+          })
+        );
+        expect((await awaitServerMessage(socket)).ack).toBe("data_ok_0_0");
+
+        socket.send(
+          encodeDataMessage({
+            kind: DataKind.DG2,
+            raw: new Uint8Array([2]),
+          })
+        );
+        expect((await awaitServerMessage(socket)).ack).toBe("data_ok_1_0");
+
+        socket.send(
+          encodeDataMessage({
+            kind: DataKind.SOD,
+            raw: new Uint8Array([3]),
+          })
+        );
+        expect((await awaitServerMessage(socket)).ack).toBe("data_ok_2_0");
+
+        socket.send(encodePhaseMessage("nfc_complete"));
+        expect((await awaitServerMessage(socket)).ack).toBe("phase_ok");
+
+        socket.send(encodePhaseMessage("selfie_capturing"));
+        expect((await awaitServerMessage(socket)).ack).toBe("phase_ok");
+
+        socket.send(
+          encodeDataMessage({
+            kind: DataKind.SELFIE,
+            raw: new Uint8Array([7]),
+            index: 0,
+            total: 3,
+            chunkIndex: 1,
+            chunkTotal: 2,
+          })
+        );
+        expect((await awaitServerMessage(socket)).ack).toBe(
+          "data_chunk_ok_3_0_1"
+        );
+
+        socket.send(
+          encodeDataMessage({
+            kind: DataKind.SELFIE,
+            raw: new Uint8Array([6]),
+            index: 0,
+            total: 3,
+            chunkIndex: 0,
+            chunkTotal: 2,
+          })
+        );
+        expect((await awaitServerMessage(socket)).ack).toBe("data_ok_3_0");
+      } finally {
+        socket.close();
+      }
+    }
+  );
+
+  test.serial(
+    "Accepts selfie_complete after full selfie set and persists phase",
+    async () => {
+      const sessionId = await createSession();
+      const handoff = await createHandoff(sessionId);
+
+      const socket = openVerifySocket(sessionId);
+
+      try {
+        await awaitSocketOpen(socket);
+        socket.send(
+          encodeHelloMessage({
+            attemptId: handoff.attempt_id,
+            mobileWriteToken: handoff.mobile_write_token,
+            deviceId: "ios-device-a",
+            appVersion: "1.0.0",
+          })
+        );
+        expect((await awaitServerMessage(socket)).ack).toBe("hello_ok");
+
+        socket.send(encodePhaseMessage("mrz_scanning"));
+        expect((await awaitServerMessage(socket)).ack).toBe("phase_ok");
+
+        socket.send(encodePhaseMessage("mrz_complete"));
+        expect((await awaitServerMessage(socket)).ack).toBe("phase_ok");
+
+        socket.send(encodePhaseMessage("nfc_reading"));
+        expect((await awaitServerMessage(socket)).ack).toBe("phase_ok");
+
+        socket.send(
+          encodeDataMessage({
+            kind: DataKind.DG1,
+            raw: new Uint8Array([1]),
+          })
+        );
+        expect((await awaitServerMessage(socket)).ack).toBe("data_ok_0_0");
+
+        socket.send(
+          encodeDataMessage({
+            kind: DataKind.DG2,
+            raw: new Uint8Array([2]),
+          })
+        );
+        expect((await awaitServerMessage(socket)).ack).toBe("data_ok_1_0");
+
+        socket.send(
+          encodeDataMessage({
+            kind: DataKind.SOD,
+            raw: new Uint8Array([3]),
+          })
+        );
+        expect((await awaitServerMessage(socket)).ack).toBe("data_ok_2_0");
+
+        socket.send(encodePhaseMessage("nfc_complete"));
+        expect((await awaitServerMessage(socket)).ack).toBe("phase_ok");
+
+        socket.send(encodePhaseMessage("selfie_capturing"));
+        expect((await awaitServerMessage(socket)).ack).toBe("phase_ok");
+
+        socket.send(
+          encodeDataMessage({
+            kind: DataKind.SELFIE,
+            raw: new Uint8Array([10]),
+            index: 0,
+            total: 3,
+          })
+        );
+        expect((await awaitServerMessage(socket)).ack).toBe("data_ok_3_0");
+
+        socket.send(
+          encodeDataMessage({
+            kind: DataKind.SELFIE,
+            raw: new Uint8Array([11]),
+            index: 1,
+            total: 3,
+          })
+        );
+        expect((await awaitServerMessage(socket)).ack).toBe("data_ok_3_1");
+
+        socket.send(
+          encodeDataMessage({
+            kind: DataKind.SELFIE,
+            raw: new Uint8Array([12]),
+            index: 2,
+            total: 3,
+          })
+        );
+        expect((await awaitServerMessage(socket)).ack).toBe("data_ok_3_2");
+
+        socket.send(encodePhaseMessage("selfie_complete"));
+        expect((await awaitServerMessage(socket)).ack).toBe("phase_ok");
+      } finally {
+        socket.close();
+      }
+
+      const [attempt] = await db
+        .select({
+          currentPhase: verification_attempts.currentPhase,
+          phaseUpdatedAt: verification_attempts.phaseUpdatedAt,
+        })
+        .from(verification_attempts)
+        .where(eq(verification_attempts.id, handoff.attempt_id))
+        .limit(1);
+
+      expect(attempt?.currentPhase).toBe("selfie_complete");
+      expect(attempt?.phaseUpdatedAt).not.toBeNull();
+    }
+  );
+
+  test.serial("Reconnect requires selfie resend after disconnect", async () => {
+    const sessionId = await createSession();
+    const handoff = await createHandoff(sessionId);
+    const hello = encodeHelloMessage({
+      attemptId: handoff.attempt_id,
+      mobileWriteToken: handoff.mobile_write_token,
+      deviceId: "ios-device-a",
+      appVersion: "1.0.0",
+    });
+
+    const socketOne = openVerifySocket(sessionId);
+
+    try {
+      await awaitSocketOpen(socketOne);
+      socketOne.send(hello);
+      expect((await awaitServerMessage(socketOne)).ack).toBe("hello_ok");
+
+      socketOne.send(encodePhaseMessage("mrz_scanning"));
+      expect((await awaitServerMessage(socketOne)).ack).toBe("phase_ok");
+
+      socketOne.send(encodePhaseMessage("mrz_complete"));
+      expect((await awaitServerMessage(socketOne)).ack).toBe("phase_ok");
+
+      socketOne.send(encodePhaseMessage("nfc_reading"));
+      expect((await awaitServerMessage(socketOne)).ack).toBe("phase_ok");
+
+      socketOne.send(
+        encodeDataMessage({
+          kind: DataKind.DG1,
+          raw: new Uint8Array([1]),
+        })
+      );
+      expect((await awaitServerMessage(socketOne)).ack).toBe("data_ok_0_0");
+
+      socketOne.send(
+        encodeDataMessage({
+          kind: DataKind.DG2,
+          raw: new Uint8Array([2]),
+        })
+      );
+      expect((await awaitServerMessage(socketOne)).ack).toBe("data_ok_1_0");
+
+      socketOne.send(
+        encodeDataMessage({
+          kind: DataKind.SOD,
+          raw: new Uint8Array([3]),
+        })
+      );
+      expect((await awaitServerMessage(socketOne)).ack).toBe("data_ok_2_0");
+
+      socketOne.send(encodePhaseMessage("nfc_complete"));
+      expect((await awaitServerMessage(socketOne)).ack).toBe("phase_ok");
+
+      socketOne.send(encodePhaseMessage("selfie_capturing"));
+      expect((await awaitServerMessage(socketOne)).ack).toBe("phase_ok");
+
+      socketOne.send(
+        encodeDataMessage({
+          kind: DataKind.SELFIE,
+          raw: new Uint8Array([9]),
+          index: 0,
+          total: 3,
+        })
+      );
+      expect((await awaitServerMessage(socketOne)).ack).toBe("data_ok_3_0");
+    } finally {
+      socketOne.close();
+    }
+
+    const socketTwo = openVerifySocket(sessionId);
+
+    try {
+      await awaitSocketOpen(socketTwo);
+      socketTwo.send(hello);
+      expect((await awaitServerMessage(socketTwo)).ack).toBe("hello_ok");
+
+      socketTwo.send(encodePhaseMessage("selfie_complete"));
+      const response = await awaitServerMessage(socketTwo);
+
+      expect(response.error?.code).toBe("SELFIE_REQUIRED_DATA_MISSING");
+      const parsed = JSON.parse(response.error?.message ?? "{}") as {
+        missing_selfie_indexes?: number[];
+      };
+      expect(parsed.missing_selfie_indexes).toEqual([0, 1, 2]);
+    } finally {
+      socketTwo.close();
+    }
+  });
+
+  test.serial(
     "Rejects non-hello messages before hello with HELLO_REQUIRED",
     async () => {
       const sessionId = await createSession();

@@ -155,7 +155,6 @@ struct ContentView: View {
               do {
                 let completed = try await session.sendSelfieImage(image, index: index, total: total)
                 if completed {
-                  await session.updatePhase(.selfieComplete)
                   await session.updatePhase(.complete)
                   session.moveToStep(.complete)
                 }

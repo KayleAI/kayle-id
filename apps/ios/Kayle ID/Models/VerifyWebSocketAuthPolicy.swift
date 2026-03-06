@@ -24,6 +24,12 @@ struct VerifyMissingNFCDataInstruction: Equatable {
   let missingChunks: [VerifyMissingNFCChunk]
 }
 
+struct VerifyMissingSelfieDataInstruction: Equatable {
+  let requiredTotal: Int
+  let missingSelfieIndexes: [Int]
+  let missingChunks: [VerifyMissingNFCChunk]
+}
+
 nonisolated func isExpectedDataAck(
   ackMessage: String?,
   kind: Int,
@@ -108,6 +114,49 @@ nonisolated func parseMissingNFCDataInstruction(
 
   return VerifyMissingNFCDataInstruction(
     missingArtifacts: missingArtifacts,
+    missingChunks: missingChunks
+  )
+}
+
+nonisolated func parseMissingSelfieDataInstruction(
+  errorCode: String?,
+  errorMessage: String?
+) -> VerifyMissingSelfieDataInstruction? {
+  guard errorCode == "SELFIE_REQUIRED_DATA_MISSING", let errorMessage else {
+    return nil
+  }
+
+  guard
+    let data = errorMessage.data(using: .utf8),
+    let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+  else {
+    return nil
+  }
+
+  let requiredTotal = json["required_total"] as? Int ?? 0
+  let missingSelfieIndexes = json["missing_selfie_indexes"] as? [Int] ?? []
+  let rawChunks = json["missing_chunks"] as? [[String: Any]] ?? []
+  let missingChunks: [VerifyMissingNFCChunk] = rawChunks.compactMap { chunk in
+    guard
+      let kind = chunk["kind"] as? Int,
+      let index = chunk["index"] as? Int
+    else {
+      return nil
+    }
+
+    let chunkTotal = chunk["chunk_total"] as? Int
+    let missingChunkIndices = chunk["missing_chunk_indices"] as? [Int] ?? []
+    return VerifyMissingNFCChunk(
+      kind: kind,
+      index: index,
+      chunkTotal: chunkTotal,
+      missingChunkIndices: missingChunkIndices
+    )
+  }
+
+  return VerifyMissingSelfieDataInstruction(
+    requiredTotal: requiredTotal,
+    missingSelfieIndexes: missingSelfieIndexes,
     missingChunks: missingChunks
   )
 }

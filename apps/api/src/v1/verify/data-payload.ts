@@ -4,13 +4,17 @@ export type VerifyChunkEntry = {
 };
 
 type RequiredNfcArtifact = "dg1" | "dg2" | "sod";
+const SELFIE_KIND = 3;
+const REQUIRED_SELFIE_TOTAL = 3;
 
-export type MissingNfcChunk = {
+export type MissingTransferChunk = {
   kind: number;
   index: number;
   chunkTotal: number;
   missingChunkIndices: number[];
 };
+
+export type MissingNfcChunk = MissingTransferChunk;
 
 export type NfcTransferStatus = {
   complete: boolean;
@@ -18,13 +22,19 @@ export type NfcTransferStatus = {
   missingChunks: MissingNfcChunk[];
 };
 
+export type SelfieTransferStatus = {
+  complete: boolean;
+  requiredTotal: number;
+  missingSelfieIndexes: number[];
+  missingChunks: MissingTransferChunk[];
+};
+
 export type VerifyTransferState = {
   dg1?: Uint8Array;
   dg2?: Uint8Array;
   sod?: Uint8Array;
-  selfies: Uint8Array[];
+  selfies: Map<number, Uint8Array>;
   chunks: Map<string, VerifyChunkEntry>;
-  selfieTotal?: number;
 };
 
 export type VerifyDataPayload = {
@@ -44,22 +54,22 @@ type DataResult = {
   };
   authenticityReady: boolean;
   nfcStatus: NfcTransferStatus;
+  selfieStatus: SelfieTransferStatus;
 };
 
 export function createTransferState(): VerifyTransferState {
   return {
-    selfies: [],
+    selfies: new Map(),
     chunks: new Map(),
   };
 }
 
 export function resetTransferState(state: VerifyTransferState): void {
-  state.selfies = [];
+  state.selfies.clear();
   state.dg1 = undefined;
   state.dg2 = undefined;
   state.sod = undefined;
   state.chunks.clear();
-  state.selfieTotal = undefined;
 }
 
 function isNonNegativeInteger(value: number): boolean {
@@ -111,6 +121,14 @@ export function isNfcDataKind(kind: number): boolean {
   return kind === 0 || kind === 1 || kind === 2;
 }
 
+export function isSelfieDataKind(kind: number): boolean {
+  return kind === SELFIE_KIND;
+}
+
+function isRequiredSelfieIndex(index: number): boolean {
+  return index >= 0 && index < REQUIRED_SELFIE_TOTAL;
+}
+
 export function getNfcTransferStatus(
   state: VerifyTransferState
 ): NfcTransferStatus {
@@ -150,6 +168,50 @@ export function getNfcTransferStatus(
   return {
     complete: missingArtifacts.length === 0 && missingChunks.length === 0,
     missingArtifacts,
+    missingChunks,
+  };
+}
+
+export function getSelfieTransferStatus(
+  state: VerifyTransferState
+): SelfieTransferStatus {
+  const missingSelfieIndexes: number[] = [];
+
+  for (let index = 0; index < REQUIRED_SELFIE_TOTAL; index += 1) {
+    if (!state.selfies.has(index)) {
+      missingSelfieIndexes.push(index);
+    }
+  }
+
+  const missingChunks: MissingTransferChunk[] = [];
+
+  for (const [key, entry] of state.chunks.entries()) {
+    const parsed = parseChunkKey(key);
+    if (!(parsed && isSelfieDataKind(parsed.kind))) {
+      continue;
+    }
+
+    if (!isRequiredSelfieIndex(parsed.index)) {
+      continue;
+    }
+
+    const missingChunkIndices = getMissingChunkIndices(entry);
+    if (missingChunkIndices.length === 0) {
+      continue;
+    }
+
+    missingChunks.push({
+      kind: parsed.kind,
+      index: parsed.index,
+      chunkTotal: entry.chunkTotal,
+      missingChunkIndices,
+    });
+  }
+
+  return {
+    complete: missingSelfieIndexes.length === 0 && missingChunks.length === 0,
+    requiredTotal: REQUIRED_SELFIE_TOTAL,
+    missingSelfieIndexes,
     missingChunks,
   };
 }
@@ -239,13 +301,13 @@ function assembleChunk({
 function storeData({
   state,
   kind,
+  index,
   data,
-  total,
 }: {
   state: VerifyTransferState;
   kind: number;
+  index: number;
   data: Uint8Array;
-  total: number;
 }): { ok: true } | { ok: false; code: string; message: string } {
   switch (kind) {
     case 0:
@@ -258,10 +320,7 @@ function storeData({
       state.sod = data;
       return { ok: true };
     case 3:
-      state.selfies.push(data);
-      if (total > 0) {
-        state.selfieTotal = total;
-      }
+      state.selfies.set(index, data);
       return { ok: true };
     default:
       return {
@@ -325,6 +384,7 @@ function createErrorResult({
     },
     authenticityReady: false,
     nfcStatus: getNfcTransferStatus(state),
+    selfieStatus: getSelfieTransferStatus(state),
   };
 }
 
@@ -369,6 +429,26 @@ function validateDataPayload({
       index,
       chunkIndex,
       reason: "invalid_index_or_total",
+    });
+  }
+
+  if (isSelfieDataKind(kind) && total !== REQUIRED_SELFIE_TOTAL) {
+    return createChunkRetryResult({
+      state,
+      kind,
+      index,
+      chunkIndex,
+      reason: "invalid_selfie_total",
+    });
+  }
+
+  if (isSelfieDataKind(kind) && !isRequiredSelfieIndex(index)) {
+    return createChunkRetryResult({
+      state,
+      kind,
+      index,
+      chunkIndex,
+      reason: "invalid_selfie_index",
     });
   }
 
@@ -434,14 +514,15 @@ export function processDataPayload({
       ],
       authenticityReady: false,
       nfcStatus: getNfcTransferStatus(state),
+      selfieStatus: getSelfieTransferStatus(state),
     };
   }
 
   const stored = storeData({
     state,
     kind: normalizedPayload.kind,
+    index: normalizedPayload.index,
     data: assembled.data ?? normalizedPayload.raw,
-    total: normalizedPayload.total,
   });
 
   if (!stored.ok) {
@@ -452,16 +533,12 @@ export function processDataPayload({
     });
   }
 
-  const ack =
-    normalizedPayload.kind === 3 &&
-    state.selfieTotal &&
-    state.selfies.length >= state.selfieTotal
-      ? `selfies_ok_${state.selfieTotal}`
-      : `data_ok_${normalizedPayload.kind}_${normalizedPayload.index}`;
+  const ack = `data_ok_${normalizedPayload.kind}_${normalizedPayload.index}`;
 
   return {
     acks: [ack],
     authenticityReady: isAuthenticityReady(state),
     nfcStatus: getNfcTransferStatus(state),
+    selfieStatus: getSelfieTransferStatus(state),
   };
 }
