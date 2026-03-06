@@ -131,7 +131,6 @@ struct ContentView: View {
           // Upload NFC data immediately
           Task {
             do {
-              await session.updatePhase(.nfcComplete)
               try await session.uploadNFCData()
               session.moveToStep(.selfie)
               await session.updatePhase(.selfieCapturing)

@@ -17,6 +17,8 @@ import {
 } from "./attempt-connection";
 import {
   createTransferState,
+  getNfcTransferStatus,
+  isNfcDataKind,
   processDataPayload,
   resetTransferState,
 } from "./data-payload";
@@ -381,23 +383,40 @@ verify.get(
       acknowledgeHello();
     };
 
-    const handlePhase = async (payload: { phase?: string; error?: string }) => {
-      logDebug("recv_phase", {
-        phase: payload.phase ?? "",
-        error: payload.error ?? "",
-      });
+    const createMissingNfcMessage = () => {
+      const nfcStatus = getNfcTransferStatus(state.transfer);
+      return {
+        complete: nfcStatus.complete,
+        message: JSON.stringify({
+          missing_artifacts: nfcStatus.missingArtifacts,
+          missing_chunks: nfcStatus.missingChunks.map((chunk) => ({
+            kind: chunk.kind,
+            index: chunk.index,
+            chunk_total: chunk.chunkTotal,
+            missing_chunk_indices: chunk.missingChunkIndices,
+          })),
+        }),
+      };
+    };
 
-      if (!state.attemptId) {
-        sendError("HELLO_REQUIRED", "Send hello before other messages.");
-        return;
+    const ensureNfcDataReadyForCompletion = (nextPhase: string): boolean => {
+      if (nextPhase !== "nfc_complete") {
+        return true;
       }
 
-      const nextPhase = payload.phase?.trim() ?? "";
-      if (!isTrackedAttemptPhase(nextPhase)) {
-        sendAck("phase_ok");
-        return;
+      const nfcStatus = createMissingNfcMessage();
+      if (nfcStatus.complete) {
+        return true;
       }
 
+      sendError("NFC_REQUIRED_DATA_MISSING", nfcStatus.message);
+      return false;
+    };
+
+    const persistTrackedPhaseTransition = async (
+      nextPhase: string,
+      attemptId: string
+    ): Promise<void> => {
       const transition = validateTrackedPhaseTransition({
         currentPhase: state.currentPhase,
         nextPhase,
@@ -410,13 +429,58 @@ verify.get(
 
       if (transition.changed) {
         await persistTrackedAttemptPhase({
-          attemptId: state.attemptId,
+          attemptId,
           phase: transition.nextPhase,
         });
         state.currentPhase = transition.nextPhase;
       }
 
       sendAck("phase_ok");
+    };
+
+    const handlePhase = async (payload: { phase?: string; error?: string }) => {
+      logDebug("recv_phase", {
+        phase: payload.phase ?? "",
+        error: payload.error ?? "",
+      });
+
+      const attemptId = state.attemptId;
+      if (!attemptId) {
+        sendError("HELLO_REQUIRED", "Send hello before other messages.");
+        return;
+      }
+
+      const nextPhase = payload.phase?.trim() ?? "";
+      if (!isTrackedAttemptPhase(nextPhase)) {
+        sendAck("phase_ok");
+        return;
+      }
+
+      if (!ensureNfcDataReadyForCompletion(nextPhase)) {
+        return;
+      }
+
+      await persistTrackedPhaseTransition(nextPhase, attemptId);
+    };
+
+    const isNfcDataPhaseMismatch = (kind: number): boolean =>
+      isNfcDataKind(kind) && state.currentPhase !== "nfc_reading";
+
+    const acknowledgeDataResult = (
+      result: ReturnType<typeof processDataPayload>
+    ) => {
+      for (const ack of result.acks) {
+        sendAck(ack);
+      }
+
+      if (!result.authenticityReady) {
+        return;
+      }
+
+      const authenticityResult = verifyAuthenticityStub();
+      if (!authenticityResult.ok) {
+        sendError("AUTH_FAILED", "Authenticity verification failed.");
+      }
     };
 
     const handleData = (payload: {
@@ -427,8 +491,10 @@ verify.get(
       chunkIndex?: number;
       chunkTotal?: number;
     }) => {
+      const kind = payload.kind ?? 0;
+
       logDebug("recv_data", {
-        kind: payload.kind ?? 0,
+        kind,
         size: payload.raw?.length ?? 0,
         index: payload.index ?? 0,
         total: payload.total ?? 0,
@@ -436,9 +502,20 @@ verify.get(
         chunkTotal: payload.chunkTotal ?? 0,
       });
 
+      if (isNfcDataPhaseMismatch(kind)) {
+        sendError(
+          "NFC_DATA_PHASE_REQUIRED",
+          resolveErrorMessage("NFC_DATA_PHASE_REQUIRED")
+        );
+        return;
+      }
+
       const result = processDataPayload({
         state: state.transfer,
-        payload,
+        payload: {
+          ...payload,
+          kind,
+        },
       });
 
       if (result.error) {
@@ -446,16 +523,7 @@ verify.get(
         return;
       }
 
-      for (const ack of result.acks) {
-        sendAck(ack);
-      }
-
-      if (result.authenticityReady) {
-        const authenticityResult = verifyAuthenticityStub();
-        if (!authenticityResult.ok) {
-          sendError("AUTH_FAILED", "Authenticity verification failed.");
-        }
-      }
+      acknowledgeDataResult(result);
     };
 
     const handleMessage = async (event: MessageEvent) => {

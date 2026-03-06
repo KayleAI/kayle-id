@@ -76,4 +76,22 @@ export const ERROR_MESSAGES = {
     description:
       "This verification step was sent out of order. Continue from the current step.",
   },
+
+  NFC_DATA_PHASE_REQUIRED: {
+    title: "NFC upload not ready",
+    description:
+      "NFC data can only be uploaded during the NFC reading step. Continue from the current step.",
+  },
+
+  DATA_CHUNK_RETRY: {
+    title: "Retry upload chunk",
+    description:
+      "A data chunk needs to be retried. Continue uploading from the current verification step.",
+  },
+
+  NFC_REQUIRED_DATA_MISSING: {
+    title: "NFC data missing",
+    description:
+      "Required passport chip data is still missing. Continue the NFC upload before finishing this step.",
+  },
 } as const;

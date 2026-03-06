@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { ClientMessage, ServerMessage } from "@kayle-id/capnp";
+import { ClientMessage, DataKind, ServerMessage } from "@kayle-id/capnp";
 import { env } from "@kayle-id/config/env";
 import { db } from "@kayle-id/database/drizzle";
 import {
@@ -68,6 +68,33 @@ function encodePhaseMessage(phase: string): Uint8Array {
   const phaseUpdate = root._initPhase();
   phaseUpdate.phase = phase;
   phaseUpdate.error = "";
+  return new Uint8Array(message.toArrayBuffer());
+}
+
+function encodeDataMessage({
+  kind,
+  raw,
+  index = 0,
+  total = 1,
+  chunkIndex = 0,
+  chunkTotal = 1,
+}: {
+  kind: DataKind;
+  raw: Uint8Array;
+  index?: number;
+  total?: number;
+  chunkIndex?: number;
+  chunkTotal?: number;
+}): Uint8Array {
+  const message = new Message();
+  const root = message.initRoot(ClientMessage);
+  const payload = root._initData();
+  payload.kind = kind;
+  payload._initRaw(raw.length).copyBuffer(raw);
+  payload.index = index;
+  payload.total = total;
+  payload.chunkIndex = chunkIndex;
+  payload.chunkTotal = chunkTotal;
   return new Uint8Array(message.toArrayBuffer());
 }
 
@@ -705,6 +732,276 @@ describe("Verification Flows", () => {
       expect(secondHandoffResponse.status).toBe(409);
       const payload = (await secondHandoffResponse.json()) as HandoffResponse;
       expect(payload.error?.code).toBe("SESSION_IN_PROGRESS");
+    }
+  );
+
+  test.serial(
+    "Rejects NFC DG data before nfc_reading with NFC_DATA_PHASE_REQUIRED",
+    async () => {
+      const sessionId = await createSession();
+      const handoff = await createHandoff(sessionId);
+
+      const socket = openVerifySocket(sessionId);
+
+      try {
+        await awaitSocketOpen(socket);
+        socket.send(
+          encodeHelloMessage({
+            attemptId: handoff.attempt_id,
+            mobileWriteToken: handoff.mobile_write_token,
+            deviceId: "ios-device-a",
+            appVersion: "1.0.0",
+          })
+        );
+        expect((await awaitServerMessage(socket)).ack).toBe("hello_ok");
+
+        socket.send(
+          encodeDataMessage({
+            kind: DataKind.DG1,
+            raw: new Uint8Array([1, 2, 3]),
+          })
+        );
+
+        const response = await awaitServerMessage(socket);
+        expect(response.error?.code).toBe("NFC_DATA_PHASE_REQUIRED");
+      } finally {
+        socket.close();
+      }
+    }
+  );
+
+  test.serial(
+    "Allows out-of-order DG2 chunk upload and emits data_ok on completion",
+    async () => {
+      const sessionId = await createSession();
+      const handoff = await createHandoff(sessionId);
+
+      const socket = openVerifySocket(sessionId);
+
+      try {
+        await awaitSocketOpen(socket);
+        socket.send(
+          encodeHelloMessage({
+            attemptId: handoff.attempt_id,
+            mobileWriteToken: handoff.mobile_write_token,
+            deviceId: "ios-device-a",
+            appVersion: "1.0.0",
+          })
+        );
+        expect((await awaitServerMessage(socket)).ack).toBe("hello_ok");
+
+        socket.send(encodePhaseMessage("mrz_scanning"));
+        expect((await awaitServerMessage(socket)).ack).toBe("phase_ok");
+
+        socket.send(encodePhaseMessage("mrz_complete"));
+        expect((await awaitServerMessage(socket)).ack).toBe("phase_ok");
+
+        socket.send(encodePhaseMessage("nfc_reading"));
+        expect((await awaitServerMessage(socket)).ack).toBe("phase_ok");
+
+        socket.send(
+          encodeDataMessage({
+            kind: DataKind.DG2,
+            raw: new Uint8Array([2, 2]),
+            index: 0,
+            total: 1,
+            chunkIndex: 1,
+            chunkTotal: 2,
+          })
+        );
+        expect((await awaitServerMessage(socket)).ack).toBe(
+          "data_chunk_ok_1_0_1"
+        );
+
+        socket.send(
+          encodeDataMessage({
+            kind: DataKind.DG2,
+            raw: new Uint8Array([1, 1]),
+            index: 0,
+            total: 1,
+            chunkIndex: 0,
+            chunkTotal: 2,
+          })
+        );
+        expect((await awaitServerMessage(socket)).ack).toBe("data_ok_1_0");
+      } finally {
+        socket.close();
+      }
+    }
+  );
+
+  test.serial(
+    "Rejects nfc_complete until DG1/DG2/SOD are fully received",
+    async () => {
+      const sessionId = await createSession();
+      const handoff = await createHandoff(sessionId);
+
+      const socket = openVerifySocket(sessionId);
+
+      try {
+        await awaitSocketOpen(socket);
+        socket.send(
+          encodeHelloMessage({
+            attemptId: handoff.attempt_id,
+            mobileWriteToken: handoff.mobile_write_token,
+            deviceId: "ios-device-a",
+            appVersion: "1.0.0",
+          })
+        );
+        expect((await awaitServerMessage(socket)).ack).toBe("hello_ok");
+
+        socket.send(encodePhaseMessage("mrz_scanning"));
+        expect((await awaitServerMessage(socket)).ack).toBe("phase_ok");
+
+        socket.send(encodePhaseMessage("mrz_complete"));
+        expect((await awaitServerMessage(socket)).ack).toBe("phase_ok");
+
+        socket.send(encodePhaseMessage("nfc_reading"));
+        expect((await awaitServerMessage(socket)).ack).toBe("phase_ok");
+
+        socket.send(encodePhaseMessage("nfc_complete"));
+        const response = await awaitServerMessage(socket);
+        expect(response.error?.code).toBe("NFC_REQUIRED_DATA_MISSING");
+        const parsed = JSON.parse(response.error?.message ?? "{}") as {
+          missing_artifacts?: string[];
+        };
+        expect(parsed.missing_artifacts).toEqual(["dg1", "dg2", "sod"]);
+      } finally {
+        socket.close();
+      }
+    }
+  );
+
+  test.serial(
+    "Accepts nfc_complete after full DG1/DG2/SOD upload and persists phase",
+    async () => {
+      const sessionId = await createSession();
+      const handoff = await createHandoff(sessionId);
+
+      const socket = openVerifySocket(sessionId);
+
+      try {
+        await awaitSocketOpen(socket);
+        socket.send(
+          encodeHelloMessage({
+            attemptId: handoff.attempt_id,
+            mobileWriteToken: handoff.mobile_write_token,
+            deviceId: "ios-device-a",
+            appVersion: "1.0.0",
+          })
+        );
+        expect((await awaitServerMessage(socket)).ack).toBe("hello_ok");
+
+        socket.send(encodePhaseMessage("mrz_scanning"));
+        expect((await awaitServerMessage(socket)).ack).toBe("phase_ok");
+
+        socket.send(encodePhaseMessage("mrz_complete"));
+        expect((await awaitServerMessage(socket)).ack).toBe("phase_ok");
+
+        socket.send(encodePhaseMessage("nfc_reading"));
+        expect((await awaitServerMessage(socket)).ack).toBe("phase_ok");
+
+        socket.send(
+          encodeDataMessage({
+            kind: DataKind.DG1,
+            raw: new Uint8Array([1]),
+          })
+        );
+        expect((await awaitServerMessage(socket)).ack).toBe("data_ok_0_0");
+
+        socket.send(
+          encodeDataMessage({
+            kind: DataKind.DG2,
+            raw: new Uint8Array([2]),
+          })
+        );
+        expect((await awaitServerMessage(socket)).ack).toBe("data_ok_1_0");
+
+        socket.send(
+          encodeDataMessage({
+            kind: DataKind.SOD,
+            raw: new Uint8Array([3]),
+          })
+        );
+        expect((await awaitServerMessage(socket)).ack).toBe("data_ok_2_0");
+
+        socket.send(encodePhaseMessage("nfc_complete"));
+        expect((await awaitServerMessage(socket)).ack).toBe("phase_ok");
+      } finally {
+        socket.close();
+      }
+
+      const [attempt] = await db
+        .select({
+          currentPhase: verification_attempts.currentPhase,
+          phaseUpdatedAt: verification_attempts.phaseUpdatedAt,
+        })
+        .from(verification_attempts)
+        .where(eq(verification_attempts.id, handoff.attempt_id))
+        .limit(1);
+
+      expect(attempt?.currentPhase).toBe("nfc_complete");
+      expect(attempt?.phaseUpdatedAt).not.toBeNull();
+    }
+  );
+
+  test.serial(
+    "Reconnect requires NFC data resend after disconnect",
+    async () => {
+      const sessionId = await createSession();
+      const handoff = await createHandoff(sessionId);
+      const hello = encodeHelloMessage({
+        attemptId: handoff.attempt_id,
+        mobileWriteToken: handoff.mobile_write_token,
+        deviceId: "ios-device-a",
+        appVersion: "1.0.0",
+      });
+
+      const socketOne = openVerifySocket(sessionId);
+
+      try {
+        await awaitSocketOpen(socketOne);
+        socketOne.send(hello);
+        expect((await awaitServerMessage(socketOne)).ack).toBe("hello_ok");
+
+        socketOne.send(encodePhaseMessage("mrz_scanning"));
+        expect((await awaitServerMessage(socketOne)).ack).toBe("phase_ok");
+
+        socketOne.send(encodePhaseMessage("mrz_complete"));
+        expect((await awaitServerMessage(socketOne)).ack).toBe("phase_ok");
+
+        socketOne.send(encodePhaseMessage("nfc_reading"));
+        expect((await awaitServerMessage(socketOne)).ack).toBe("phase_ok");
+
+        socketOne.send(
+          encodeDataMessage({
+            kind: DataKind.DG1,
+            raw: new Uint8Array([9]),
+          })
+        );
+        expect((await awaitServerMessage(socketOne)).ack).toBe("data_ok_0_0");
+      } finally {
+        socketOne.close();
+      }
+
+      const socketTwo = openVerifySocket(sessionId);
+
+      try {
+        await awaitSocketOpen(socketTwo);
+        socketTwo.send(hello);
+        expect((await awaitServerMessage(socketTwo)).ack).toBe("hello_ok");
+
+        socketTwo.send(encodePhaseMessage("nfc_complete"));
+        const response = await awaitServerMessage(socketTwo);
+
+        expect(response.error?.code).toBe("NFC_REQUIRED_DATA_MISSING");
+        const parsed = JSON.parse(response.error?.message ?? "{}") as {
+          missing_artifacts?: string[];
+        };
+        expect(parsed.missing_artifacts).toEqual(["dg1", "dg2", "sod"]);
+      } finally {
+        socketTwo.close();
+      }
     }
   );
 

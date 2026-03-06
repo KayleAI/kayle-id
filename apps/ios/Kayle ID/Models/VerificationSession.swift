@@ -61,6 +61,12 @@ final class VerificationSession: ObservableObject {
   private var selfieUploadsExpected = 0
   private var selfieSentIndices = Set<Int>()
   private var selfieUploadCancelled = false
+  private let nfcChunkSize = 512 * 1024
+
+  private struct NFCUploadPlan {
+    let kind: VerifyDataKind
+    let chunks: [Data]
+  }
 
   /// Initialize a new session from a scanned QR code payload.
   func initialize(with payload: QRCodePayload) throws {
@@ -138,17 +144,32 @@ final class VerificationSession: ObservableObject {
   
   /// Upload NFC data immediately after NFC read completes.
   func uploadNFCData() async throws {
-    guard let nfcResult = nfcResult else {
+    guard let nfcResult else {
       throw VerificationError.notInitialized
     }
-    if let dg1 = nfcResult.dataGroups.first(where: { $0.id == 1 }) {
-      try await uploadData(type: "dg1", data: dg1.data)
+    guard let webSocketService else {
+      throw VerificationError.notInitialized
     }
-    if let dg2 = nfcResult.dataGroups.first(where: { $0.id == 2 }) {
-      try await uploadData(type: "dg2", data: dg2.data)
-    }
-    if let sod = nfcResult.dataGroups.first(where: { $0.name.contains("SOD") }) {
-      try await uploadData(type: "sod", data: sod.data)
+
+    let plans = try buildNFCUploadPlans(from: nfcResult)
+
+    while true {
+      do {
+        for plan in plans {
+          try await uploadNFCPlan(plan, via: webSocketService)
+        }
+
+        try await completeNFCPhase(plans: plans, via: webSocketService)
+        return
+      } catch let socketError as VerifyWebSocketError {
+        switch socketError {
+        case .connectionClosed, .notConnected, .reconnectFailed, .serverResponseTimedOut:
+          try await Task.sleep(nanoseconds: 300_000_000)
+          continue
+        default:
+          throw socketError
+        }
+      }
     }
   }
   
@@ -272,12 +293,205 @@ final class VerificationSession: ObservableObject {
       offset = end
     }
   }
+
+  private func buildNFCUploadPlans(from result: PassportReadResult) throws -> [NFCUploadPlan] {
+    guard let dg1 = result.dataGroups.first(where: { $0.id == 0x61 }) else {
+      throw VerificationError.missingRequiredNFCData("DG1")
+    }
+
+    guard let dg2 = result.dataGroups.first(where: { $0.id == 0x75 }) else {
+      throw VerificationError.missingRequiredNFCData("DG2")
+    }
+
+    guard let sod = result.dataGroups.first(where: { $0.id == 0x77 }) else {
+      throw VerificationError.missingRequiredNFCData("SOD")
+    }
+
+    return [
+      NFCUploadPlan(kind: .dg1, chunks: chunkData(dg1.data, chunkSize: nfcChunkSize)),
+      NFCUploadPlan(kind: .dg2, chunks: chunkData(dg2.data, chunkSize: nfcChunkSize)),
+      NFCUploadPlan(kind: .sod, chunks: chunkData(sod.data, chunkSize: nfcChunkSize)),
+    ]
+  }
+
+  private func chunkData(_ raw: Data, chunkSize: Int) -> [Data] {
+    if raw.count <= chunkSize {
+      return [raw]
+    }
+
+    var chunks: [Data] = []
+    var offset = 0
+
+    while offset < raw.count {
+      let end = min(offset + chunkSize, raw.count)
+      chunks.append(raw.subdata(in: offset..<end))
+      offset = end
+    }
+
+    return chunks
+  }
+
+  private func uploadNFCPlan(
+    _ plan: NFCUploadPlan,
+    via webSocketService: VerifyWebSocketService,
+    startingAt startChunkIndex: Int = 0
+  ) async throws {
+    guard !plan.chunks.isEmpty else {
+      throw VerificationError.uploadFailed
+    }
+
+    let clampedStartChunkIndex = max(0, min(startChunkIndex, plan.chunks.count - 1))
+    var nextChunkIndex = clampedStartChunkIndex
+    let chunkTotal = plan.chunks.count
+
+    while nextChunkIndex < chunkTotal {
+      let chunk = plan.chunks[nextChunkIndex]
+
+      do {
+        let response = try await webSocketService.sendDataAwaitResponse(
+          kind: plan.kind,
+          raw: chunk,
+          index: 0,
+          total: 1,
+          chunkIndex: nextChunkIndex,
+          chunkTotal: chunkTotal
+        )
+
+        guard
+          isExpectedDataAck(
+            ackMessage: response.ackMessage,
+            kind: plan.kind.rawValue,
+            index: 0,
+            chunkIndex: nextChunkIndex,
+            chunkTotal: chunkTotal
+          )
+        else {
+          throw VerifyWebSocketError.sendFailed
+        }
+
+        nextChunkIndex += 1
+      } catch let socketError as VerifyWebSocketError {
+        guard case .serverError(let code, let message) = socketError else {
+          throw socketError
+        }
+
+        guard
+          let retryInstruction = parseChunkRetryInstruction(
+            errorCode: code,
+            errorMessage: message
+          ),
+          retryInstruction.kind == plan.kind.rawValue,
+          retryInstruction.index == 0,
+          retryInstruction.chunkIndex >= 0,
+          retryInstruction.chunkIndex < chunkTotal
+        else {
+          throw socketError
+        }
+
+        nextChunkIndex = retryInstruction.chunkIndex
+      }
+    }
+  }
+
+  private func completeNFCPhase(
+    plans: [NFCUploadPlan],
+    via webSocketService: VerifyWebSocketService
+  ) async throws {
+    while true {
+      do {
+        let response = try await webSocketService.sendPhaseAwaitResponse(
+          .nfcComplete,
+          error: nil
+        )
+
+        guard response.ackMessage == "phase_ok" else {
+          throw VerifyWebSocketError.sendFailed
+        }
+        return
+      } catch let socketError as VerifyWebSocketError {
+        guard case .serverError(let code, let message) = socketError else {
+          throw socketError
+        }
+
+        guard
+          let missingInstruction = parseMissingNFCDataInstruction(
+            errorCode: code,
+            errorMessage: message
+          )
+        else {
+          throw socketError
+        }
+
+        try await resendMissingNFCData(
+          missingInstruction,
+          plans: plans,
+          via: webSocketService
+        )
+      }
+    }
+  }
+
+  private func resendMissingNFCData(
+    _ missingInstruction: VerifyMissingNFCDataInstruction,
+    plans: [NFCUploadPlan],
+    via webSocketService: VerifyWebSocketService
+  ) async throws {
+    let plansByKind = Dictionary(uniqueKeysWithValues: plans.map { ($0.kind.rawValue, $0) })
+
+    for artifact in missingInstruction.missingArtifacts {
+      guard
+        let kind = parseNFCArtifactKind(artifact),
+        let plan = plansByKind[kind.rawValue]
+      else {
+        continue
+      }
+
+      try await uploadNFCPlan(plan, via: webSocketService)
+    }
+
+    for missingChunk in missingInstruction.missingChunks {
+      guard let plan = plansByKind[missingChunk.kind] else {
+        continue
+      }
+
+      let missingChunkIndices = missingChunk.missingChunkIndices.sorted()
+      if missingChunkIndices.isEmpty {
+        continue
+      }
+
+      for chunkIndex in missingChunkIndices {
+        guard chunkIndex >= 0, chunkIndex < plan.chunks.count else {
+          continue
+        }
+
+        try await uploadNFCPlan(
+          plan,
+          via: webSocketService,
+          startingAt: chunkIndex
+        )
+      }
+    }
+  }
+
+  private func parseNFCArtifactKind(_ artifact: String) -> VerifyDataKind? {
+    switch artifact {
+    case "dg1":
+      return .dg1
+    case "dg2":
+      return .dg2
+    case "sod":
+      return .sod
+    default:
+      return nil
+    }
+  }
 }
 
 enum VerificationError: LocalizedError {
   case notInitialized
   case encryptionFailed
   case uploadFailed
+  case missingRequiredNFCData(String)
 
   var errorDescription: String? {
     switch self {
@@ -287,6 +501,8 @@ enum VerificationError: LocalizedError {
       return "Failed to encrypt data."
     case .uploadFailed:
       return "Failed to upload data. Please try again."
+    case .missingRequiredNFCData(let dataGroup):
+      return "Missing \(dataGroup) from NFC read. Please scan your passport chip again."
     }
   }
 }

@@ -136,7 +136,7 @@ final class PassportNFCReader: NSObject, ObservableObject {
       let config = PassportReadingConfiguration(
         mrzKey: currentMRZKey,
         cardAccessNumber: currentCardAccessNumber,
-        dataGroups: [.DG1, .DG2],
+        dataGroups: [.DG1, .DG2, .SOD],
         displayMessageHandler: { [weak self] message in
           self?.handleDisplayMessage(message)
           return nil

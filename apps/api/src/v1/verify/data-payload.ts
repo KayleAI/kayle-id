@@ -3,6 +3,21 @@ export type VerifyChunkEntry = {
   parts: Map<number, Uint8Array>;
 };
 
+type RequiredNfcArtifact = "dg1" | "dg2" | "sod";
+
+export type MissingNfcChunk = {
+  kind: number;
+  index: number;
+  chunkTotal: number;
+  missingChunkIndices: number[];
+};
+
+export type NfcTransferStatus = {
+  complete: boolean;
+  missingArtifacts: RequiredNfcArtifact[];
+  missingChunks: MissingNfcChunk[];
+};
+
 export type VerifyTransferState = {
   dg1?: Uint8Array;
   dg2?: Uint8Array;
@@ -28,6 +43,7 @@ type DataResult = {
     message: string;
   };
   authenticityReady: boolean;
+  nfcStatus: NfcTransferStatus;
 };
 
 export function createTransferState(): VerifyTransferState {
@@ -44,6 +60,98 @@ export function resetTransferState(state: VerifyTransferState): void {
   state.sod = undefined;
   state.chunks.clear();
   state.selfieTotal = undefined;
+}
+
+function isNonNegativeInteger(value: number): boolean {
+  return Number.isInteger(value) && value >= 0;
+}
+
+function parseChunkKey(key: string): { kind: number; index: number } | null {
+  const [kindPart, indexPart] = key.split(":");
+  const kind = Number(kindPart);
+  const index = Number(indexPart);
+
+  if (!(isNonNegativeInteger(kind) && isNonNegativeInteger(index))) {
+    return null;
+  }
+
+  return { kind, index };
+}
+
+function createChunkRetryMessage({
+  kind,
+  index,
+  chunkIndex,
+  reason,
+}: {
+  kind: number;
+  index: number;
+  chunkIndex: number;
+  reason: string;
+}): string {
+  return JSON.stringify({
+    kind,
+    index,
+    chunkIndex,
+    reason,
+  });
+}
+
+function getMissingChunkIndices(entry: VerifyChunkEntry): number[] {
+  const missing: number[] = [];
+  for (let index = 0; index < entry.chunkTotal; index += 1) {
+    if (!entry.parts.has(index)) {
+      missing.push(index);
+    }
+  }
+  return missing;
+}
+
+export function isNfcDataKind(kind: number): boolean {
+  return kind === 0 || kind === 1 || kind === 2;
+}
+
+export function getNfcTransferStatus(
+  state: VerifyTransferState
+): NfcTransferStatus {
+  const missingArtifacts: RequiredNfcArtifact[] = [];
+
+  if (!state.dg1) {
+    missingArtifacts.push("dg1");
+  }
+  if (!state.dg2) {
+    missingArtifacts.push("dg2");
+  }
+  if (!state.sod) {
+    missingArtifacts.push("sod");
+  }
+
+  const missingChunks: MissingNfcChunk[] = [];
+
+  for (const [key, entry] of state.chunks.entries()) {
+    const parsed = parseChunkKey(key);
+    if (!(parsed && isNfcDataKind(parsed.kind))) {
+      continue;
+    }
+
+    const missingChunkIndices = getMissingChunkIndices(entry);
+    if (missingChunkIndices.length === 0) {
+      continue;
+    }
+
+    missingChunks.push({
+      kind: parsed.kind,
+      index: parsed.index,
+      chunkTotal: entry.chunkTotal,
+      missingChunkIndices,
+    });
+  }
+
+  return {
+    complete: missingArtifacts.length === 0 && missingChunks.length === 0,
+    missingArtifacts,
+    missingChunks,
+  };
 }
 
 function getOrCreateChunkEntry(
@@ -168,6 +276,132 @@ function isAuthenticityReady(state: VerifyTransferState): boolean {
   return Boolean(state.dg1 && state.dg2 && state.sod);
 }
 
+type NormalizedDataPayload = {
+  kind: number;
+  raw: Uint8Array;
+  index: number;
+  total: number;
+  chunkIndex: number;
+  chunkTotal: number;
+  chunkKey: string;
+};
+
+function normalizeDataPayload(
+  payload: VerifyDataPayload
+): NormalizedDataPayload {
+  const kind = payload.kind ?? 0;
+  const raw = payload.raw ?? new Uint8Array();
+  const index = payload.index ?? 0;
+  const total = payload.total ?? 0;
+  const chunkIndex = payload.chunkIndex ?? 0;
+  const chunkTotal =
+    payload.chunkTotal && payload.chunkTotal > 0 ? payload.chunkTotal : 1;
+
+  return {
+    kind,
+    raw,
+    index,
+    total,
+    chunkIndex,
+    chunkTotal,
+    chunkKey: `${kind}:${index}`,
+  };
+}
+
+function createErrorResult({
+  state,
+  code,
+  message,
+}: {
+  state: VerifyTransferState;
+  code: string;
+  message: string;
+}): DataResult {
+  return {
+    acks: [],
+    error: {
+      code,
+      message,
+    },
+    authenticityReady: false,
+    nfcStatus: getNfcTransferStatus(state),
+  };
+}
+
+function createChunkRetryResult({
+  state,
+  kind,
+  index,
+  chunkIndex,
+  reason,
+}: {
+  state: VerifyTransferState;
+  kind: number;
+  index: number;
+  chunkIndex: number;
+  reason: string;
+}): DataResult {
+  return createErrorResult({
+    state,
+    code: "DATA_CHUNK_RETRY",
+    message: createChunkRetryMessage({
+      kind,
+      index,
+      chunkIndex,
+      reason,
+    }),
+  });
+}
+
+function validateDataPayload({
+  state,
+  kind,
+  index,
+  total,
+  chunkIndex,
+  chunkTotal,
+  chunkKey,
+}: NormalizedDataPayload & { state: VerifyTransferState }): DataResult | null {
+  if (!(isNonNegativeInteger(index) && isNonNegativeInteger(total))) {
+    return createChunkRetryResult({
+      state,
+      kind,
+      index,
+      chunkIndex,
+      reason: "invalid_index_or_total",
+    });
+  }
+
+  if (
+    !(
+      isNonNegativeInteger(chunkIndex) &&
+      isNonNegativeInteger(chunkTotal) &&
+      chunkIndex < chunkTotal
+    )
+  ) {
+    return createChunkRetryResult({
+      state,
+      kind,
+      index,
+      chunkIndex,
+      reason: "invalid_chunk_range",
+    });
+  }
+
+  const existingChunkEntry = state.chunks.get(chunkKey);
+  if (existingChunkEntry && existingChunkEntry.chunkTotal !== chunkTotal) {
+    return createChunkRetryResult({
+      state,
+      kind,
+      index,
+      chunkIndex,
+      reason: "chunk_total_mismatch",
+    });
+  }
+
+  return null;
+}
+
 export function processDataPayload({
   state,
   payload,
@@ -175,54 +409,59 @@ export function processDataPayload({
   state: VerifyTransferState;
   payload: VerifyDataPayload;
 }): DataResult {
-  const kind = payload.kind ?? 0;
-  const raw = payload.raw ?? new Uint8Array();
-  const index = payload.index ?? 0;
-  const total = payload.total ?? 0;
-  const chunkIndex = payload.chunkIndex ?? 0;
-  const chunkTotal = payload.chunkTotal ?? 0;
-  const chunkKey = `${kind}:${index}`;
+  const normalizedPayload = normalizeDataPayload(payload);
+
+  const validationResult = validateDataPayload({
+    state,
+    ...normalizedPayload,
+  });
+  if (validationResult) {
+    return validationResult;
+  }
 
   const assembled = assembleChunk({
     state,
-    key: chunkKey,
-    chunkIndex,
-    chunkTotal,
-    chunk: raw,
+    key: normalizedPayload.chunkKey,
+    chunkIndex: normalizedPayload.chunkIndex,
+    chunkTotal: normalizedPayload.chunkTotal,
+    chunk: normalizedPayload.raw,
   });
 
   if (!assembled.complete) {
     return {
-      acks: [`data_chunk_ok_${kind}_${index}_${chunkIndex}`],
+      acks: [
+        `data_chunk_ok_${normalizedPayload.kind}_${normalizedPayload.index}_${normalizedPayload.chunkIndex}`,
+      ],
       authenticityReady: false,
+      nfcStatus: getNfcTransferStatus(state),
     };
   }
 
   const stored = storeData({
     state,
-    kind,
-    data: assembled.data ?? raw,
-    total,
+    kind: normalizedPayload.kind,
+    data: assembled.data ?? normalizedPayload.raw,
+    total: normalizedPayload.total,
   });
 
   if (!stored.ok) {
-    return {
-      acks: [],
-      error: {
-        code: stored.code,
-        message: stored.message,
-      },
-      authenticityReady: false,
-    };
+    return createErrorResult({
+      state,
+      code: stored.code,
+      message: stored.message,
+    });
   }
 
   const ack =
-    kind === 3 && state.selfieTotal && state.selfies.length >= state.selfieTotal
+    normalizedPayload.kind === 3 &&
+    state.selfieTotal &&
+    state.selfies.length >= state.selfieTotal
       ? `selfies_ok_${state.selfieTotal}`
-      : `data_ok_${kind}_${index}`;
+      : `data_ok_${normalizedPayload.kind}_${normalizedPayload.index}`;
 
   return {
     acks: [ack],
     authenticityReady: isAuthenticityReady(state),
+    nfcStatus: getNfcTransferStatus(state),
   };
 }
