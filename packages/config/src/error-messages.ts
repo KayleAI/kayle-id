@@ -106,4 +106,16 @@ export const ERROR_MESSAGES = {
     description:
       "Required selfie data is still missing. Continue the selfie upload before finishing this step.",
   },
+
+  passport_authenticity_failed: {
+    title: "Passport authenticity failed",
+    description:
+      "Passport chip integrity checks did not pass. Please retry with a new verification attempt.",
+  },
+
+  selfie_face_mismatch: {
+    title: "Face match failed",
+    description:
+      "Selfie evidence did not match the passport photo. Please retry with a new verification attempt.",
+  },
 } as const;

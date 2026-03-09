@@ -3,6 +3,7 @@ import { ClientMessage, DataKind, ServerMessage } from "@kayle-id/capnp";
 import { env } from "@kayle-id/config/env";
 import { db } from "@kayle-id/database/drizzle";
 import {
+  events,
   verification_attempts,
   verification_sessions,
 } from "@kayle-id/database/schema/core";
@@ -13,6 +14,14 @@ import { createHMAC } from "@/functions/hmac";
 import app from "@/index";
 import type { Session } from "@/openapi/models/sessions";
 import v1 from "@/v1";
+import {
+  createInvalidAuthenticityArtifacts,
+  createMalformedDg2Artifact,
+  createMismatchValidationSelfies,
+  createSelfieJpeg,
+  createValidNfcArtifacts,
+  loadVerifyFixtureBytes,
+} from "./helpers/verify-artifacts";
 import { setup, TEST_DATA, teardown } from "./setup";
 
 type HandoffPayload = {
@@ -189,7 +198,7 @@ function awaitSocketOpen(socket: WebSocket): Promise<void> {
 
 function awaitServerMessage(socket: WebSocket): Promise<ServerAckOrError> {
   return new Promise((resolve, reject) => {
-    const timeoutMs = 3000;
+    const timeoutMs = 15_000;
 
     const timeout = setTimeout(() => {
       cleanup();
@@ -292,6 +301,162 @@ async function createHandoff(sessionId: string): Promise<HandoffPayload> {
   }
 
   return payload.data;
+}
+
+async function assertAckMessage({
+  socket,
+  expected,
+}: {
+  socket: WebSocket;
+  expected: string;
+}): Promise<void> {
+  const response = await awaitServerMessage(socket);
+  if (response.ack !== expected) {
+    throw new Error(
+      `Expected ack "${expected}", received "${response.ack ?? response.error?.code ?? "none"}".`
+    );
+  }
+}
+
+async function sendNfcArtifacts({
+  socket,
+  artifacts,
+}: {
+  socket: WebSocket;
+  artifacts: {
+    dg1: Uint8Array;
+    dg2: Uint8Array;
+    sod: Uint8Array;
+  };
+}): Promise<void> {
+  socket.send(
+    encodeDataMessage({
+      kind: DataKind.DG1,
+      raw: artifacts.dg1,
+    })
+  );
+  await assertAckMessage({
+    socket,
+    expected: "data_ok_0_0",
+  });
+
+  socket.send(
+    encodeDataMessage({
+      kind: DataKind.DG2,
+      raw: artifacts.dg2,
+    })
+  );
+  await assertAckMessage({
+    socket,
+    expected: "data_ok_1_0",
+  });
+
+  socket.send(
+    encodeDataMessage({
+      kind: DataKind.SOD,
+      raw: artifacts.sod,
+    })
+  );
+  await assertAckMessage({
+    socket,
+    expected: "data_ok_2_0",
+  });
+}
+
+async function sendSelfies({
+  selfies,
+  socket,
+}: {
+  socket: WebSocket;
+  selfies: Uint8Array[];
+}): Promise<void> {
+  for (const [index, selfie] of selfies.entries()) {
+    socket.send(
+      encodeDataMessage({
+        kind: DataKind.SELFIE,
+        raw: selfie,
+        index,
+        total: 3,
+      })
+    );
+    await assertAckMessage({
+      socket,
+      expected: `data_ok_3_${index}`,
+    });
+  }
+}
+
+async function sendHello({
+  socket,
+  handoff,
+  deviceId = "ios-device-a",
+}: {
+  socket: WebSocket;
+  handoff: HandoffPayload;
+  deviceId?: string;
+}): Promise<void> {
+  socket.send(
+    encodeHelloMessage({
+      attemptId: handoff.attempt_id,
+      mobileWriteToken: handoff.mobile_write_token,
+      deviceId,
+      appVersion: "1.0.0",
+    })
+  );
+  await assertAckMessage({
+    socket,
+    expected: "hello_ok",
+  });
+}
+
+async function advanceToNfcReading(socket: WebSocket): Promise<void> {
+  socket.send(encodePhaseMessage("mrz_scanning"));
+  await assertAckMessage({
+    socket,
+    expected: "phase_ok",
+  });
+
+  socket.send(encodePhaseMessage("mrz_complete"));
+  await assertAckMessage({
+    socket,
+    expected: "phase_ok",
+  });
+
+  socket.send(encodePhaseMessage("nfc_reading"));
+  await assertAckMessage({
+    socket,
+    expected: "phase_ok",
+  });
+}
+
+async function advanceToSelfieCapturing({
+  socket,
+  artifacts,
+}: {
+  socket: WebSocket;
+  artifacts: {
+    dg1: Uint8Array;
+    dg2: Uint8Array;
+    sod: Uint8Array;
+  };
+}): Promise<void> {
+  await advanceToNfcReading(socket);
+  await sendNfcArtifacts({
+    socket,
+    artifacts,
+  });
+
+  socket.send(encodePhaseMessage("nfc_complete"));
+  await assertAckMessage({
+    socket,
+    expected: "phase_ok",
+  });
+
+  socket.send(encodePhaseMessage("selfie_capturing"));
+  await assertAckMessage({
+    socket,
+    expected: "phase_ok",
+  });
 }
 
 beforeAll(async () => {
@@ -877,6 +1042,7 @@ describe("Verification Flows", () => {
     async () => {
       const sessionId = await createSession();
       const handoff = await createHandoff(sessionId);
+      const artifacts = await createValidNfcArtifacts();
 
       const socket = openVerifySocket(sessionId);
 
@@ -901,29 +1067,10 @@ describe("Verification Flows", () => {
         socket.send(encodePhaseMessage("nfc_reading"));
         expect((await awaitServerMessage(socket)).ack).toBe("phase_ok");
 
-        socket.send(
-          encodeDataMessage({
-            kind: DataKind.DG1,
-            raw: new Uint8Array([1]),
-          })
-        );
-        expect((await awaitServerMessage(socket)).ack).toBe("data_ok_0_0");
-
-        socket.send(
-          encodeDataMessage({
-            kind: DataKind.DG2,
-            raw: new Uint8Array([2]),
-          })
-        );
-        expect((await awaitServerMessage(socket)).ack).toBe("data_ok_1_0");
-
-        socket.send(
-          encodeDataMessage({
-            kind: DataKind.SOD,
-            raw: new Uint8Array([3]),
-          })
-        );
-        expect((await awaitServerMessage(socket)).ack).toBe("data_ok_2_0");
+        await sendNfcArtifacts({
+          socket,
+          artifacts,
+        });
 
         socket.send(encodePhaseMessage("nfc_complete"));
         expect((await awaitServerMessage(socket)).ack).toBe("phase_ok");
@@ -1047,6 +1194,7 @@ describe("Verification Flows", () => {
     async () => {
       const sessionId = await createSession();
       const handoff = await createHandoff(sessionId);
+      const artifacts = await createValidNfcArtifacts();
 
       const socket = openVerifySocket(sessionId);
 
@@ -1071,29 +1219,10 @@ describe("Verification Flows", () => {
         socket.send(encodePhaseMessage("nfc_reading"));
         expect((await awaitServerMessage(socket)).ack).toBe("phase_ok");
 
-        socket.send(
-          encodeDataMessage({
-            kind: DataKind.DG1,
-            raw: new Uint8Array([1]),
-          })
-        );
-        expect((await awaitServerMessage(socket)).ack).toBe("data_ok_0_0");
-
-        socket.send(
-          encodeDataMessage({
-            kind: DataKind.DG2,
-            raw: new Uint8Array([2]),
-          })
-        );
-        expect((await awaitServerMessage(socket)).ack).toBe("data_ok_1_0");
-
-        socket.send(
-          encodeDataMessage({
-            kind: DataKind.SOD,
-            raw: new Uint8Array([3]),
-          })
-        );
-        expect((await awaitServerMessage(socket)).ack).toBe("data_ok_2_0");
+        await sendNfcArtifacts({
+          socket,
+          artifacts,
+        });
 
         socket.send(encodePhaseMessage("nfc_complete"));
         expect((await awaitServerMessage(socket)).ack).toBe("phase_ok");
@@ -1111,6 +1240,7 @@ describe("Verification Flows", () => {
     async () => {
       const sessionId = await createSession();
       const handoff = await createHandoff(sessionId);
+      const artifacts = await createValidNfcArtifacts();
 
       const socket = openVerifySocket(sessionId);
 
@@ -1135,29 +1265,10 @@ describe("Verification Flows", () => {
         socket.send(encodePhaseMessage("nfc_reading"));
         expect((await awaitServerMessage(socket)).ack).toBe("phase_ok");
 
-        socket.send(
-          encodeDataMessage({
-            kind: DataKind.DG1,
-            raw: new Uint8Array([1]),
-          })
-        );
-        expect((await awaitServerMessage(socket)).ack).toBe("data_ok_0_0");
-
-        socket.send(
-          encodeDataMessage({
-            kind: DataKind.DG2,
-            raw: new Uint8Array([2]),
-          })
-        );
-        expect((await awaitServerMessage(socket)).ack).toBe("data_ok_1_0");
-
-        socket.send(
-          encodeDataMessage({
-            kind: DataKind.SOD,
-            raw: new Uint8Array([3]),
-          })
-        );
-        expect((await awaitServerMessage(socket)).ack).toBe("data_ok_2_0");
+        await sendNfcArtifacts({
+          socket,
+          artifacts,
+        });
 
         socket.send(encodePhaseMessage("nfc_complete"));
         expect((await awaitServerMessage(socket)).ack).toBe("phase_ok");
@@ -1195,6 +1306,7 @@ describe("Verification Flows", () => {
     async () => {
       const sessionId = await createSession();
       const handoff = await createHandoff(sessionId);
+      const artifacts = await createValidNfcArtifacts();
 
       const socket = openVerifySocket(sessionId);
 
@@ -1219,29 +1331,10 @@ describe("Verification Flows", () => {
         socket.send(encodePhaseMessage("nfc_reading"));
         expect((await awaitServerMessage(socket)).ack).toBe("phase_ok");
 
-        socket.send(
-          encodeDataMessage({
-            kind: DataKind.DG1,
-            raw: new Uint8Array([1]),
-          })
-        );
-        expect((await awaitServerMessage(socket)).ack).toBe("data_ok_0_0");
-
-        socket.send(
-          encodeDataMessage({
-            kind: DataKind.DG2,
-            raw: new Uint8Array([2]),
-          })
-        );
-        expect((await awaitServerMessage(socket)).ack).toBe("data_ok_1_0");
-
-        socket.send(
-          encodeDataMessage({
-            kind: DataKind.SOD,
-            raw: new Uint8Array([3]),
-          })
-        );
-        expect((await awaitServerMessage(socket)).ack).toBe("data_ok_2_0");
+        await sendNfcArtifacts({
+          socket,
+          artifacts,
+        });
 
         socket.send(encodePhaseMessage("nfc_complete"));
         expect((await awaitServerMessage(socket)).ack).toBe("phase_ok");
@@ -1285,6 +1378,7 @@ describe("Verification Flows", () => {
     async () => {
       const sessionId = await createSession();
       const handoff = await createHandoff(sessionId);
+      const artifacts = await createValidNfcArtifacts();
 
       const socket = openVerifySocket(sessionId);
 
@@ -1309,29 +1403,10 @@ describe("Verification Flows", () => {
         socket.send(encodePhaseMessage("nfc_reading"));
         expect((await awaitServerMessage(socket)).ack).toBe("phase_ok");
 
-        socket.send(
-          encodeDataMessage({
-            kind: DataKind.DG1,
-            raw: new Uint8Array([1]),
-          })
-        );
-        expect((await awaitServerMessage(socket)).ack).toBe("data_ok_0_0");
-
-        socket.send(
-          encodeDataMessage({
-            kind: DataKind.DG2,
-            raw: new Uint8Array([2]),
-          })
-        );
-        expect((await awaitServerMessage(socket)).ack).toBe("data_ok_1_0");
-
-        socket.send(
-          encodeDataMessage({
-            kind: DataKind.SOD,
-            raw: new Uint8Array([3]),
-          })
-        );
-        expect((await awaitServerMessage(socket)).ack).toBe("data_ok_2_0");
+        await sendNfcArtifacts({
+          socket,
+          artifacts,
+        });
 
         socket.send(encodePhaseMessage("nfc_complete"));
         expect((await awaitServerMessage(socket)).ack).toBe("phase_ok");
@@ -1342,7 +1417,7 @@ describe("Verification Flows", () => {
         socket.send(
           encodeDataMessage({
             kind: DataKind.SELFIE,
-            raw: new Uint8Array([10]),
+            raw: artifacts.dg2,
             index: 0,
             total: 3,
           })
@@ -1392,6 +1467,7 @@ describe("Verification Flows", () => {
   test.serial("Reconnect requires selfie resend after disconnect", async () => {
     const sessionId = await createSession();
     const handoff = await createHandoff(sessionId);
+    const artifacts = await createValidNfcArtifacts();
     const hello = encodeHelloMessage({
       attemptId: handoff.attempt_id,
       mobileWriteToken: handoff.mobile_write_token,
@@ -1415,29 +1491,10 @@ describe("Verification Flows", () => {
       socketOne.send(encodePhaseMessage("nfc_reading"));
       expect((await awaitServerMessage(socketOne)).ack).toBe("phase_ok");
 
-      socketOne.send(
-        encodeDataMessage({
-          kind: DataKind.DG1,
-          raw: new Uint8Array([1]),
-        })
-      );
-      expect((await awaitServerMessage(socketOne)).ack).toBe("data_ok_0_0");
-
-      socketOne.send(
-        encodeDataMessage({
-          kind: DataKind.DG2,
-          raw: new Uint8Array([2]),
-        })
-      );
-      expect((await awaitServerMessage(socketOne)).ack).toBe("data_ok_1_0");
-
-      socketOne.send(
-        encodeDataMessage({
-          kind: DataKind.SOD,
-          raw: new Uint8Array([3]),
-        })
-      );
-      expect((await awaitServerMessage(socketOne)).ack).toBe("data_ok_2_0");
+      await sendNfcArtifacts({
+        socket: socketOne,
+        artifacts,
+      });
 
       socketOne.send(encodePhaseMessage("nfc_complete"));
       expect((await awaitServerMessage(socketOne)).ack).toBe("phase_ok");
@@ -1477,6 +1534,351 @@ describe("Verification Flows", () => {
       socketTwo.close();
     }
   });
+
+  test.serial(
+    "Rejects nfc_complete on authenticity failure and enables retry with new attempt",
+    async () => {
+      const sessionId = await createSession();
+      const handoff = await createHandoff(sessionId);
+      const artifacts = await createInvalidAuthenticityArtifacts();
+
+      const socket = openVerifySocket(sessionId);
+
+      try {
+        await awaitSocketOpen(socket);
+        await sendHello({
+          socket,
+          handoff,
+        });
+        await advanceToNfcReading(socket);
+        await sendNfcArtifacts({
+          socket,
+          artifacts,
+        });
+
+        socket.send(encodePhaseMessage("nfc_complete"));
+        const response = await awaitServerMessage(socket);
+        expect(response.error?.code).toBe("passport_authenticity_failed");
+      } finally {
+        socket.close();
+      }
+
+      const [attempt] = await db
+        .select({
+          status: verification_attempts.status,
+          failureCode: verification_attempts.failureCode,
+          riskScore: verification_attempts.riskScore,
+          completedAt: verification_attempts.completedAt,
+        })
+        .from(verification_attempts)
+        .where(eq(verification_attempts.id, handoff.attempt_id))
+        .limit(1);
+
+      const [session] = await db
+        .select({
+          status: verification_sessions.status,
+          completedAt: verification_sessions.completedAt,
+        })
+        .from(verification_sessions)
+        .where(eq(verification_sessions.id, sessionId))
+        .limit(1);
+
+      expect(attempt?.status).toBe("failed");
+      expect(attempt?.failureCode).toBe("passport_authenticity_failed");
+      expect(attempt?.riskScore).toBe(1);
+      expect(attempt?.completedAt).not.toBeNull();
+      expect(session?.status).toBe("created");
+      expect(session?.completedAt).toBeNull();
+
+      const retryHandoff = await createHandoff(sessionId);
+      expect(retryHandoff.attempt_id).not.toBe(handoff.attempt_id);
+    }
+  );
+
+  test.serial(
+    "Rejects selfie_complete on face mismatch and keeps session retryable before limit",
+    async () => {
+      const sessionId = await createSession();
+      const handoff = await createHandoff(sessionId);
+      const artifacts = await createValidNfcArtifacts({
+        dg2ImageData: await loadVerifyFixtureBytes("icon.jpg"),
+      });
+      const mismatchingSelfies = await createMismatchValidationSelfies();
+
+      const socket = openVerifySocket(sessionId);
+
+      try {
+        await awaitSocketOpen(socket);
+        await sendHello({
+          socket,
+          handoff,
+        });
+        await advanceToSelfieCapturing({
+          socket,
+          artifacts,
+        });
+        await sendSelfies({
+          socket,
+          selfies: mismatchingSelfies,
+        });
+
+        socket.send(encodePhaseMessage("selfie_complete"));
+        const response = await awaitServerMessage(socket);
+        expect(response.error?.code).toBe("selfie_face_mismatch");
+      } finally {
+        socket.close();
+      }
+
+      const [attempt] = await db
+        .select({
+          status: verification_attempts.status,
+          failureCode: verification_attempts.failureCode,
+          riskScore: verification_attempts.riskScore,
+          completedAt: verification_attempts.completedAt,
+        })
+        .from(verification_attempts)
+        .where(eq(verification_attempts.id, handoff.attempt_id))
+        .limit(1);
+
+      const [session] = await db
+        .select({
+          status: verification_sessions.status,
+        })
+        .from(verification_sessions)
+        .where(eq(verification_sessions.id, sessionId))
+        .limit(1);
+
+      expect(attempt?.status).toBe("failed");
+      expect(attempt?.failureCode).toBe("selfie_face_mismatch");
+      expect(attempt?.completedAt).not.toBeNull();
+      expect((attempt?.riskScore ?? 0) > 0).toBeTrue();
+      expect(session?.status).toBe("created");
+    },
+    20_000
+  );
+
+  test.serial(
+    "Terminalizes session after third failed validation attempt and blocks handoff",
+    async () => {
+      const sessionId = await createSession();
+      const artifacts = await createValidNfcArtifacts({
+        dg2ImageData: await loadVerifyFixtureBytes("icon.jpg"),
+      });
+      const mismatchingSelfies = await createMismatchValidationSelfies();
+
+      for (let index = 0; index < 3; index += 1) {
+        const handoff = await createHandoff(sessionId);
+        const socket = openVerifySocket(sessionId);
+
+        try {
+          await awaitSocketOpen(socket);
+          await sendHello({
+            socket,
+            handoff,
+            deviceId: `ios-device-${index}`,
+          });
+          await advanceToSelfieCapturing({
+            socket,
+            artifacts,
+          });
+          await sendSelfies({
+            socket,
+            selfies: mismatchingSelfies,
+          });
+
+          socket.send(encodePhaseMessage("selfie_complete"));
+          const response = await awaitServerMessage(socket);
+          expect(response.error?.code).toBe("selfie_face_mismatch");
+        } finally {
+          socket.close();
+        }
+      }
+
+      const attempts = await db
+        .select({
+          status: verification_attempts.status,
+          failureCode: verification_attempts.failureCode,
+        })
+        .from(verification_attempts)
+        .where(eq(verification_attempts.verificationSessionId, sessionId));
+
+      const failedAttempts = attempts.filter(
+        (attempt) => attempt.status === "failed"
+      );
+      expect(failedAttempts).toHaveLength(3);
+      expect(
+        failedAttempts.every(
+          (attempt) => attempt.failureCode === "selfie_face_mismatch"
+        )
+      ).toBeTrue();
+
+      const [session] = await db
+        .select({
+          status: verification_sessions.status,
+          completedAt: verification_sessions.completedAt,
+        })
+        .from(verification_sessions)
+        .where(eq(verification_sessions.id, sessionId))
+        .limit(1);
+
+      expect(session?.status).toBe("completed");
+      expect(session?.completedAt).not.toBeNull();
+
+      const handoffResponse = await app.request(
+        `/v1/verify/session/${sessionId}/handoff`,
+        {
+          method: "POST",
+        }
+      );
+
+      expect(handoffResponse.status).toBe(410);
+      const payload = (await handoffResponse.json()) as HandoffResponse;
+      expect(payload.error?.code).toBe("SESSION_EXPIRED");
+    },
+    20_000
+  );
+
+  test.serial(
+    "Marks attempt succeeded and session completed with risk score when selfie validation passes",
+    async () => {
+      const sessionId = await createSession();
+      const handoff = await createHandoff(sessionId);
+      const matchingSelfie = await loadVerifyFixtureBytes("icon.jpg");
+      const artifacts = await createValidNfcArtifacts({
+        dg2ImageData: matchingSelfie,
+      });
+
+      const socket = openVerifySocket(sessionId);
+
+      try {
+        await awaitSocketOpen(socket);
+        await sendHello({
+          socket,
+          handoff,
+        });
+        await advanceToSelfieCapturing({
+          socket,
+          artifacts,
+        });
+        await sendSelfies({
+          socket,
+          selfies: [
+            matchingSelfie,
+            createSelfieJpeg({
+              red: 0,
+              green: 0,
+              blue: 0,
+            }),
+            createSelfieJpeg({
+              red: 255,
+              green: 255,
+              blue: 255,
+            }),
+          ],
+        });
+
+        socket.send(encodePhaseMessage("selfie_complete"));
+        const response = await awaitServerMessage(socket);
+        expect(response.ack).toBe("phase_ok");
+      } finally {
+        socket.close();
+      }
+
+      const [attempt] = await db
+        .select({
+          status: verification_attempts.status,
+          failureCode: verification_attempts.failureCode,
+          riskScore: verification_attempts.riskScore,
+          completedAt: verification_attempts.completedAt,
+        })
+        .from(verification_attempts)
+        .where(eq(verification_attempts.id, handoff.attempt_id))
+        .limit(1);
+
+      const [session] = await db
+        .select({
+          status: verification_sessions.status,
+          completedAt: verification_sessions.completedAt,
+        })
+        .from(verification_sessions)
+        .where(eq(verification_sessions.id, sessionId))
+        .limit(1);
+
+      expect(attempt?.status).toBe("succeeded");
+      expect(attempt?.failureCode).toBeNull();
+      expect(attempt?.completedAt).not.toBeNull();
+      expect((attempt?.riskScore ?? 1) < 0.2).toBeTrue();
+      expect(session?.status).toBe("completed");
+      expect(session?.completedAt).not.toBeNull();
+    },
+    20_000
+  );
+
+  test.serial(
+    "Uses fail-open face fallback when similarity cannot be computed and records the fallback event",
+    async () => {
+      const sessionId = await createSession();
+      const handoff = await createHandoff(sessionId);
+      const artifacts = await createValidNfcArtifacts({
+        dg2: createMalformedDg2Artifact(),
+      });
+
+      const socket = openVerifySocket(sessionId);
+
+      try {
+        await awaitSocketOpen(socket);
+        await sendHello({
+          socket,
+          handoff,
+        });
+        await advanceToSelfieCapturing({
+          socket,
+          artifacts,
+        });
+        await sendSelfies({
+          socket,
+          selfies: [
+            new Uint8Array([0x00, 0x01, 0x02]),
+            new Uint8Array([0x03, 0x04, 0x05]),
+            new Uint8Array([0x06, 0x07, 0x08]),
+          ],
+        });
+
+        socket.send(encodePhaseMessage("selfie_complete"));
+        const response = await awaitServerMessage(socket);
+        expect(response.ack).toBe("phase_ok");
+      } finally {
+        socket.close();
+      }
+
+      const [attempt] = await db
+        .select({
+          status: verification_attempts.status,
+          riskScore: verification_attempts.riskScore,
+        })
+        .from(verification_attempts)
+        .where(eq(verification_attempts.id, handoff.attempt_id))
+        .limit(1);
+
+      const fallbackEvents = await db
+        .select({
+          type: events.type,
+        })
+        .from(events)
+        .where(eq(events.triggerId, handoff.attempt_id));
+
+      expect(attempt?.status).toBe("succeeded");
+      expect(attempt?.riskScore).toBe(1);
+      expect(
+        fallbackEvents.some(
+          (event) =>
+            event.type ===
+            "verification.attempt.face_score_fallback_v2_followup"
+        )
+      ).toBeTrue();
+    },
+    20_000
+  );
 
   test.serial(
     "Rejects non-hello messages before hello with HELLO_REQUIRED",

@@ -34,16 +34,49 @@ import {
   resolveHelloAuthState,
 } from "./hello-auth";
 import {
+  emitFaceScoreFallbackEvent,
+  markAttemptFailed,
+  markAttemptSucceeded,
+} from "./outcome";
+import {
   isTrackedAttemptPhase,
   persistTrackedAttemptPhase,
   validateTrackedPhaseTransition,
 } from "./phase-state";
 import { isTerminalSessionStatus } from "./status";
 import { createWebSocketPairTuple, webSocketErrorResponse } from "./utils";
+import {
+  computeFaceScore,
+  configureVerifyAssetFetcher,
+  validateAuthenticity,
+} from "./validation";
 
 const verify = new Hono<{ Bindings: CloudflareBindings }>();
+type WorkerAssetBinding = {
+  fetch: typeof fetch;
+};
 
 const handoffParamSchema = z.object({ id: sessionIdSchema });
+
+function getWorkerAssetBinding(env: unknown): WorkerAssetBinding | null {
+  if (!env || typeof env !== "object") {
+    return null;
+  }
+
+  const candidate = Reflect.get(env, "ASSETS");
+
+  if (!candidate || typeof candidate !== "object") {
+    return null;
+  }
+
+  const fetchBinding = Reflect.get(candidate, "fetch");
+
+  return typeof fetchBinding === "function"
+    ? {
+        fetch: fetchBinding as typeof fetch,
+      }
+    : null;
+}
 
 function resolveErrorMessage(code: keyof typeof ERROR_MESSAGES): string {
   return ERROR_MESSAGES[code]?.description ?? code;
@@ -132,6 +165,25 @@ verify.get(
     return parsed.data;
   }),
   async (c) => {
+    const assetBinding = getWorkerAssetBinding(c.env);
+
+    if (assetBinding) {
+      configureVerifyAssetFetcher(async (pathname) => {
+        const request = new Request(
+          new URL(pathname, "https://assets.kayle.id").toString()
+        );
+        const response = await assetBinding.fetch(request);
+
+        if (!response.ok) {
+          throw new Error(`asset_fetch_failed:${pathname}`);
+        }
+
+        return new Uint8Array(await response.arrayBuffer());
+      });
+    } else {
+      configureVerifyAssetFetcher(null);
+    }
+
     const { id } = c.req.valid("param");
 
     const [session] = await db
@@ -218,8 +270,6 @@ verify.get(
       sendError(code, message);
       server.close(1008, code);
     };
-
-    const verifyAuthenticityStub = () => ({ ok: true });
 
     const getBytesFromEvent = async (
       event: MessageEvent
@@ -446,10 +496,7 @@ verify.get(
       return false;
     };
 
-    const persistTrackedPhaseTransition = async (
-      nextPhase: string,
-      attemptId: string
-    ): Promise<void> => {
+    const resolveTrackedPhaseTransition = (nextPhase: string) => {
       const transition = validateTrackedPhaseTransition({
         currentPhase: state.currentPhase,
         nextPhase,
@@ -457,18 +504,172 @@ verify.get(
 
       if (!transition.ok) {
         sendError(transition.code, resolveErrorMessage(transition.code));
+        return null;
+      }
+
+      return transition;
+    };
+
+    const persistTrackedPhase = async ({
+      transition,
+      attemptId,
+    }: {
+      transition: NonNullable<ReturnType<typeof resolveTrackedPhaseTransition>>;
+      attemptId: string;
+    }): Promise<void> => {
+      if (!transition.changed) {
         return;
       }
 
-      if (transition.changed) {
-        await persistTrackedAttemptPhase({
-          attemptId,
-          phase: transition.nextPhase,
-        });
-        state.currentPhase = transition.nextPhase;
+      await persistTrackedAttemptPhase({
+        attemptId,
+        phase: transition.nextPhase,
+      });
+      state.currentPhase = transition.nextPhase;
+    };
+
+    const rejectValidationAndClose = async ({
+      attemptId,
+      code,
+      riskScore,
+    }: {
+      attemptId: string;
+      code: "passport_authenticity_failed" | "selfie_face_mismatch";
+      riskScore: number;
+    }): Promise<void> => {
+      await markAttemptFailed({
+        session,
+        attemptId,
+        failureCode: code,
+        riskScore,
+      });
+      sendError(code, resolveErrorMessage(code));
+      server.close(1008, code);
+    };
+
+    const ensureNfcAuthenticity = async (
+      attemptId: string
+    ): Promise<boolean> => {
+      const { dg1, dg2, sod } = state.transfer;
+      if (!(dg1 && dg2 && sod)) {
+        return false;
       }
 
-      sendAck("phase_ok");
+      const authenticity = await validateAuthenticity({
+        dg1,
+        dg2,
+        sod,
+      });
+
+      if (authenticity.ok) {
+        return true;
+      }
+
+      await rejectValidationAndClose({
+        attemptId,
+        code: "passport_authenticity_failed",
+        riskScore: 1,
+      });
+
+      return false;
+    };
+
+    const ensureSelfieMatch = async (attemptId: string): Promise<boolean> => {
+      const { dg2 } = state.transfer;
+      if (!dg2) {
+        return false;
+      }
+
+      const selfies = Array.from(state.transfer.selfies.values());
+      const faceResult = await computeFaceScore({
+        dg2Image: dg2,
+        selfies,
+      });
+
+      if (faceResult.usedFallback) {
+        await emitFaceScoreFallbackEvent({
+          session,
+          attemptId,
+        });
+
+        await markAttemptSucceeded({
+          session,
+          attemptId,
+          riskScore: 1,
+        });
+
+        return true;
+      }
+
+      const faceScore = faceResult.faceScore ?? 1;
+      if (!faceResult.passed) {
+        await rejectValidationAndClose({
+          attemptId,
+          code: "selfie_face_mismatch",
+          riskScore: 1 - faceScore,
+        });
+        return false;
+      }
+
+      await markAttemptSucceeded({
+        session,
+        attemptId,
+        faceScore,
+      });
+
+      return true;
+    };
+
+    const resolvePhaseContext = (payload: {
+      phase?: string;
+      error?: string;
+    }) => {
+      const attemptId = state.attemptId;
+      if (!attemptId) {
+        sendError("HELLO_REQUIRED", "Send hello before other messages.");
+        return null;
+      }
+
+      const nextPhase = payload.phase?.trim() ?? "";
+      if (!isTrackedAttemptPhase(nextPhase)) {
+        sendAck("phase_ok");
+        return null;
+      }
+
+      return {
+        attemptId,
+        nextPhase,
+      };
+    };
+
+    const validateCompletionRequirements = (nextPhase: string): boolean => {
+      if (!ensureNfcDataReadyForCompletion(nextPhase)) {
+        return false;
+      }
+
+      if (!ensureSelfieDataReadyForCompletion(nextPhase)) {
+        return false;
+      }
+
+      return true;
+    };
+
+    const runPhaseValidation = ({
+      attemptId,
+      nextPhase,
+    }: {
+      attemptId: string;
+      nextPhase: string;
+    }): Promise<boolean> => {
+      if (nextPhase === "nfc_complete") {
+        return ensureNfcAuthenticity(attemptId);
+      }
+
+      if (nextPhase === "selfie_complete") {
+        return ensureSelfieMatch(attemptId);
+      }
+
+      return Promise.resolve(true);
     };
 
     const handlePhase = async (payload: { phase?: string; error?: string }) => {
@@ -477,27 +678,33 @@ verify.get(
         error: payload.error ?? "",
       });
 
-      const attemptId = state.attemptId;
-      if (!attemptId) {
-        sendError("HELLO_REQUIRED", "Send hello before other messages.");
+      const context = resolvePhaseContext(payload);
+      if (!context) {
         return;
       }
 
-      const nextPhase = payload.phase?.trim() ?? "";
-      if (!isTrackedAttemptPhase(nextPhase)) {
-        sendAck("phase_ok");
+      if (!validateCompletionRequirements(context.nextPhase)) {
         return;
       }
 
-      if (!ensureNfcDataReadyForCompletion(nextPhase)) {
+      const transition = resolveTrackedPhaseTransition(context.nextPhase);
+      if (!transition) {
         return;
       }
 
-      if (!ensureSelfieDataReadyForCompletion(nextPhase)) {
+      const passedValidation = await runPhaseValidation({
+        attemptId: context.attemptId,
+        nextPhase: context.nextPhase,
+      });
+      if (!passedValidation) {
         return;
       }
 
-      await persistTrackedPhaseTransition(nextPhase, attemptId);
+      await persistTrackedPhase({
+        transition,
+        attemptId: context.attemptId,
+      });
+      sendAck("phase_ok");
     };
 
     const isNfcDataPhaseMismatch = (kind: number): boolean =>
@@ -511,15 +718,6 @@ verify.get(
     ) => {
       for (const ack of result.acks) {
         sendAck(ack);
-      }
-
-      if (!result.authenticityReady) {
-        return;
-      }
-
-      const authenticityResult = verifyAuthenticityStub();
-      if (!authenticityResult.ok) {
-        sendError("AUTH_FAILED", "Authenticity verification failed.");
       }
     };
 

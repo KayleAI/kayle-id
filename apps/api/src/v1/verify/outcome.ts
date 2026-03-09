@@ -1,0 +1,187 @@
+import { db } from "@kayle-id/database/drizzle";
+import {
+  events,
+  verification_attempts,
+  verification_sessions,
+} from "@kayle-id/database/schema/core";
+import { and, eq } from "drizzle-orm";
+import { generateId } from "@/utils/generate-id";
+
+export const MAX_FAILED_ATTEMPTS = 3;
+
+type SessionContext = {
+  id: string;
+  organizationId: string;
+  environment: "live" | "test";
+  status: string;
+  completedAt: Date | null;
+};
+
+function normalizeRiskScore(score: number): number {
+  if (Number.isNaN(score)) {
+    return 0;
+  }
+
+  return Math.max(0, Math.min(1, score));
+}
+
+export function markAttemptFailed({
+  session,
+  attemptId,
+  failureCode,
+  riskScore,
+}: {
+  session: SessionContext;
+  attemptId: string;
+  failureCode: "passport_authenticity_failed" | "selfie_face_mismatch";
+  riskScore: number;
+}): Promise<{
+  failedAttempts: number;
+  terminalized: boolean;
+}> {
+  const now = new Date();
+
+  return db.transaction(async (tx) => {
+    await tx
+      .update(verification_attempts)
+      .set({
+        status: "failed",
+        failureCode,
+        riskScore: normalizeRiskScore(riskScore),
+        completedAt: now,
+      })
+      .where(eq(verification_attempts.id, attemptId));
+
+    await tx.insert(events).values({
+      id: generateId({ type: "evt", environment: session.environment }),
+      organizationId: session.organizationId,
+      environment: session.environment,
+      type: "verification.attempt.failed",
+      triggerId: attemptId,
+      triggerType: "verification_attempt",
+    });
+
+    const failedAttempts = await tx
+      .select({
+        id: verification_attempts.id,
+      })
+      .from(verification_attempts)
+      .where(
+        and(
+          eq(verification_attempts.verificationSessionId, session.id),
+          eq(verification_attempts.status, "failed")
+        )
+      );
+
+    const exhaustedRetryLimit = failedAttempts.length >= MAX_FAILED_ATTEMPTS;
+
+    await tx
+      .update(verification_sessions)
+      .set({
+        status: exhaustedRetryLimit ? "completed" : "created",
+        completedAt: exhaustedRetryLimit ? now : null,
+      })
+      .where(eq(verification_sessions.id, session.id));
+
+    if (exhaustedRetryLimit) {
+      await tx.insert(events).values({
+        id: generateId({ type: "evt", environment: session.environment }),
+        organizationId: session.organizationId,
+        environment: session.environment,
+        type: "verification.session.completed",
+        triggerId: session.id,
+        triggerType: "verification_session",
+      });
+    }
+
+    session.status = exhaustedRetryLimit ? "completed" : "created";
+    session.completedAt = exhaustedRetryLimit ? now : null;
+
+    return {
+      failedAttempts: failedAttempts.length,
+      terminalized: exhaustedRetryLimit,
+    };
+  });
+}
+
+export async function markAttemptSucceeded({
+  session,
+  attemptId,
+  ...scoreInput
+}: {
+  session: SessionContext;
+  attemptId: string;
+} & (
+  | {
+      faceScore: number;
+      riskScore?: never;
+    }
+  | {
+      faceScore?: never;
+      riskScore: number;
+    }
+)): Promise<void> {
+  const now = new Date();
+  const riskScore =
+    typeof scoreInput.riskScore === "number"
+      ? normalizeRiskScore(scoreInput.riskScore)
+      : normalizeRiskScore(1 - normalizeRiskScore(scoreInput.faceScore));
+
+  await db.transaction(async (tx) => {
+    await tx
+      .update(verification_attempts)
+      .set({
+        status: "succeeded",
+        failureCode: null,
+        riskScore,
+        completedAt: now,
+      })
+      .where(eq(verification_attempts.id, attemptId));
+
+    await tx.insert(events).values({
+      id: generateId({ type: "evt", environment: session.environment }),
+      organizationId: session.organizationId,
+      environment: session.environment,
+      type: "verification.attempt.succeeded",
+      triggerId: attemptId,
+      triggerType: "verification_attempt",
+    });
+
+    await tx
+      .update(verification_sessions)
+      .set({
+        status: "completed",
+        completedAt: now,
+      })
+      .where(eq(verification_sessions.id, session.id));
+
+    await tx.insert(events).values({
+      id: generateId({ type: "evt", environment: session.environment }),
+      organizationId: session.organizationId,
+      environment: session.environment,
+      type: "verification.session.completed",
+      triggerId: session.id,
+      triggerType: "verification_session",
+    });
+  });
+
+  session.status = "completed";
+  session.completedAt = now;
+}
+
+export async function emitFaceScoreFallbackEvent({
+  session,
+  attemptId,
+}: {
+  session: SessionContext;
+  attemptId: string;
+}): Promise<void> {
+  await db.insert(events).values({
+    id: generateId({ type: "evt", environment: session.environment }),
+    organizationId: session.organizationId,
+    environment: session.environment,
+    type: "verification.attempt.face_score_fallback_v2_followup",
+    triggerId: attemptId,
+    triggerType: "verification_attempt",
+  });
+}

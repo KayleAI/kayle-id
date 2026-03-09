@@ -2,6 +2,11 @@
   "$schema": "./node_modules/@biomejs/biome/configuration_schema.json",
   "extends": ["ultracite/core"],
   "files": {
-    "includes": ["!bun.lock", "!**/cloudflare-env.d.ts", "!**/routeTree.gen.ts"]
+    "includes": [
+      "!bun.lock",
+      "!**/.wrangler",
+      "!**/cloudflare-env.d.ts",
+      "!**/routeTree.gen.ts"
+    ]
   }
 }
