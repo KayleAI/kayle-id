@@ -3,6 +3,7 @@ import {
   ClientMessage as CapnpClientMessage,
   DataKind as CapnpDataKind,
   ServerMessage as CapnpServerMessage,
+  VerdictOutcome as CapnpVerdictOutcome,
 } from "../generated/ts/verify.js";
 
 export type VerifyClientHello = {
@@ -40,7 +41,36 @@ export type VerifyServerMessage = {
     code: string;
     message: string;
   };
+  verdict?: {
+    outcome: "accepted" | "rejected";
+    reasonCode: string;
+    reasonMessage: string;
+    retryAllowed: boolean;
+    remainingAttempts: number;
+  };
+  shareRequest?: {
+    contractVersion: number;
+    sessionId: string;
+    fields: Array<{
+      key: string;
+      reason: string;
+      required: boolean;
+    }>;
+  };
 };
+
+export type VerifyServerVerdict = NonNullable<VerifyServerMessage["verdict"]>;
+export type VerifyShareRequest = NonNullable<
+  VerifyServerMessage["shareRequest"]
+>;
+
+function toVerifyVerdictOutcome(
+  outcome:
+    | typeof CapnpVerdictOutcome.ACCEPTED
+    | typeof CapnpVerdictOutcome.REJECTED
+): VerifyServerVerdict["outcome"] {
+  return outcome === CapnpVerdictOutcome.ACCEPTED ? "accepted" : "rejected";
+}
 
 function toCapnpDataKind(
   kind: number | undefined
@@ -74,6 +104,41 @@ export function encodeServerError(code: string, message: string): Uint8Array {
   return new Uint8Array(packet.toArrayBuffer());
 }
 
+export function encodeServerVerdict(verdict: VerifyServerVerdict): Uint8Array {
+  const packet = new Message();
+  const root = packet.initRoot(CapnpServerMessage);
+  const next = root._initVerdict();
+  next.outcome =
+    verdict.outcome === "accepted"
+      ? CapnpVerdictOutcome.ACCEPTED
+      : CapnpVerdictOutcome.REJECTED;
+  next.reasonCode = verdict.reasonCode;
+  next.reasonMessage = verdict.reasonMessage;
+  next.retryAllowed = verdict.retryAllowed;
+  next.remainingAttempts = verdict.remainingAttempts;
+  return new Uint8Array(packet.toArrayBuffer());
+}
+
+export function encodeServerShareRequest(
+  shareRequest: VerifyShareRequest
+): Uint8Array {
+  const packet = new Message();
+  const root = packet.initRoot(CapnpServerMessage);
+  const next = root._initShareRequest();
+  next.contractVersion = shareRequest.contractVersion;
+  next.sessionId = shareRequest.sessionId;
+  const fields = next._initFields(shareRequest.fields.length);
+
+  for (const [index, field] of shareRequest.fields.entries()) {
+    const item = fields.get(index);
+    item.key = field.key;
+    item.reason = field.reason;
+    item.required = field.required;
+  }
+
+  return new Uint8Array(packet.toArrayBuffer());
+}
+
 export function decodeServerMessage(
   bytes: Uint8Array
 ): VerifyServerMessage | null {
@@ -95,6 +160,37 @@ export function decodeServerMessage(
             message: root.error.message,
           },
         };
+      case CapnpServerMessage.VERDICT:
+        return {
+          verdict: {
+            outcome: toVerifyVerdictOutcome(root.verdict.outcome),
+            reasonCode: root.verdict.reasonCode,
+            reasonMessage: root.verdict.reasonMessage,
+            retryAllowed: root.verdict.retryAllowed,
+            remainingAttempts: root.verdict.remainingAttempts,
+          },
+        };
+      case CapnpServerMessage.SHARE_REQUEST: {
+        const fields = root.shareRequest.fields;
+        const decodedFields: VerifyShareRequest["fields"] = [];
+
+        for (let index = 0; index < fields.length; index += 1) {
+          const field = fields.get(index);
+          decodedFields.push({
+            key: field.key,
+            reason: field.reason,
+            required: field.required,
+          });
+        }
+
+        return {
+          shareRequest: {
+            contractVersion: root.shareRequest.contractVersion,
+            sessionId: root.shareRequest.sessionId,
+            fields: decodedFields,
+          },
+        };
+      }
       default:
         return null;
     }

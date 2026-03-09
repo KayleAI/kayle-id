@@ -48,16 +48,52 @@ nonisolated private func verify_server_message_get_error(
   _ outMessageSize: Int
 ) -> Int32
 
+@_silgen_name("verify_server_message_get_verdict")
+nonisolated private func verify_server_message_get_verdict(
+  _ reader: UnsafeMutableRawPointer?,
+  _ outOutcome: UnsafeMutablePointer<Int32>?,
+  _ outReasonCode: UnsafeMutablePointer<CChar>?,
+  _ outReasonCodeSize: Int,
+  _ outReasonMessage: UnsafeMutablePointer<CChar>?,
+  _ outReasonMessageSize: Int,
+  _ outRetryAllowed: UnsafeMutablePointer<Int32>?,
+  _ outRemainingAttempts: UnsafeMutablePointer<UInt32>?
+) -> Int32
+
+@_silgen_name("verify_server_message_get_share_request")
+nonisolated private func verify_server_message_get_share_request(
+  _ reader: UnsafeMutableRawPointer?,
+  _ outContractVersion: UnsafeMutablePointer<UInt32>?,
+  _ outSessionId: UnsafeMutablePointer<CChar>?,
+  _ outSessionIdSize: Int,
+  _ outFieldCount: UnsafeMutablePointer<UInt32>?
+) -> Int32
+
+@_silgen_name("verify_server_message_get_share_request_field")
+nonisolated private func verify_server_message_get_share_request_field(
+  _ reader: UnsafeMutableRawPointer?,
+  _ fieldIndex: UInt32,
+  _ outKey: UnsafeMutablePointer<CChar>?,
+  _ outKeySize: Int,
+  _ outReason: UnsafeMutablePointer<CChar>?,
+  _ outReasonSize: Int,
+  _ outRequired: UnsafeMutablePointer<Int32>?
+) -> Int32
+
 enum VerifyServerMessageKind: Int32 {
   case none = 0
   case ack = 1
   case error = 2
+  case verdict = 3
+  case shareRequest = 4
 }
 
 struct VerifyServerMessage {
   let ackMessage: String?
   let errorCode: String?
   let errorMessage: String?
+  let verdict: VerifyServerVerdict?
+  let shareRequest: VerifyShareRequest?
 }
 
 final class VerifyCapnpCodec {
@@ -174,9 +210,21 @@ final class VerifyCapnpCodec {
       var buffer = [CChar](repeating: 0, count: 256)
       let ok = verify_server_message_get_ack(reader.opaque, &buffer, buffer.count)
       if ok == 1 {
-        return VerifyServerMessage(ackMessage: String(cString: buffer), errorCode: nil, errorMessage: nil)
+        return VerifyServerMessage(
+          ackMessage: String(cString: buffer),
+          errorCode: nil,
+          errorMessage: nil,
+          verdict: nil,
+          shareRequest: nil
+        )
       }
-      return VerifyServerMessage(ackMessage: nil, errorCode: nil, errorMessage: nil)
+      return VerifyServerMessage(
+        ackMessage: nil,
+        errorCode: nil,
+        errorMessage: nil,
+        verdict: nil,
+        shareRequest: nil
+      )
     case .error:
       var codeBuffer = [CChar](repeating: 0, count: 128)
       var messageBuffer = [CChar](repeating: 0, count: 256)
@@ -191,10 +239,126 @@ final class VerifyCapnpCodec {
         return VerifyServerMessage(
           ackMessage: nil,
           errorCode: String(cString: codeBuffer),
-          errorMessage: String(cString: messageBuffer)
+          errorMessage: String(cString: messageBuffer),
+          verdict: nil,
+          shareRequest: nil
         )
       }
-      return VerifyServerMessage(ackMessage: nil, errorCode: nil, errorMessage: nil)
+      return VerifyServerMessage(
+        ackMessage: nil,
+        errorCode: nil,
+        errorMessage: nil,
+        verdict: nil,
+        shareRequest: nil
+      )
+    case .verdict:
+      var outcome: Int32 = -1
+      var retryAllowed: Int32 = 0
+      var remainingAttempts: UInt32 = 0
+      var reasonCodeBuffer = [CChar](repeating: 0, count: 128)
+      var reasonMessageBuffer = [CChar](repeating: 0, count: 256)
+      let ok = verify_server_message_get_verdict(
+        reader.opaque,
+        &outcome,
+        &reasonCodeBuffer,
+        reasonCodeBuffer.count,
+        &reasonMessageBuffer,
+        reasonMessageBuffer.count,
+        &retryAllowed,
+        &remainingAttempts
+      )
+      if ok == 1 {
+        let verdictOutcome: VerifyVerdictOutcome = outcome == 0 ? .accepted : .rejected
+        return VerifyServerMessage(
+          ackMessage: nil,
+          errorCode: nil,
+          errorMessage: nil,
+          verdict: VerifyServerVerdict(
+            outcome: verdictOutcome,
+            reasonCode: String(cString: reasonCodeBuffer),
+            reasonMessage: String(cString: reasonMessageBuffer),
+            retryAllowed: retryAllowed == 1,
+            remainingAttempts: Int(remainingAttempts)
+          ),
+          shareRequest: nil
+        )
+      }
+      return VerifyServerMessage(
+        ackMessage: nil,
+        errorCode: nil,
+        errorMessage: nil,
+        verdict: nil,
+        shareRequest: nil
+      )
+    case .shareRequest:
+      var contractVersion: UInt32 = 0
+      var fieldCount: UInt32 = 0
+      var sessionIdBuffer = [CChar](repeating: 0, count: 256)
+      let ok = verify_server_message_get_share_request(
+        reader.opaque,
+        &contractVersion,
+        &sessionIdBuffer,
+        sessionIdBuffer.count,
+        &fieldCount
+      )
+
+      guard ok == 1 else {
+        return VerifyServerMessage(
+          ackMessage: nil,
+          errorCode: nil,
+          errorMessage: nil,
+          verdict: nil,
+          shareRequest: nil
+        )
+      }
+
+      var fields: [VerifyShareRequestField] = []
+      fields.reserveCapacity(Int(fieldCount))
+
+      for fieldIndex in 0..<fieldCount {
+        var keyBuffer = [CChar](repeating: 0, count: 128)
+        var reasonBuffer = [CChar](repeating: 0, count: 256)
+        var required: Int32 = 0
+        let fieldOk = verify_server_message_get_share_request_field(
+          reader.opaque,
+          fieldIndex,
+          &keyBuffer,
+          keyBuffer.count,
+          &reasonBuffer,
+          reasonBuffer.count,
+          &required
+        )
+
+        guard fieldOk == 1 else {
+          return VerifyServerMessage(
+            ackMessage: nil,
+            errorCode: nil,
+            errorMessage: nil,
+            verdict: nil,
+            shareRequest: nil
+          )
+        }
+
+        fields.append(
+          VerifyShareRequestField(
+            key: String(cString: keyBuffer),
+            reason: String(cString: reasonBuffer),
+            required: required == 1
+          )
+        )
+      }
+
+      return VerifyServerMessage(
+        ackMessage: nil,
+        errorCode: nil,
+        errorMessage: nil,
+        verdict: nil,
+        shareRequest: VerifyShareRequest(
+          contractVersion: Int(contractVersion),
+          sessionId: String(cString: sessionIdBuffer),
+          fields: fields
+        )
+      )
     case .none:
       return nil
     }

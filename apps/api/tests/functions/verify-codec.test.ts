@@ -7,6 +7,8 @@ import {
   encodeClientPhase,
   encodeServerAck,
   encodeServerError,
+  encodeServerShareRequest,
+  encodeServerVerdict,
 } from "@kayle-id/capnp/verify-codec";
 
 describe("verify codec", () => {
@@ -46,7 +48,7 @@ describe("verify codec", () => {
     expect(Array.from(decodedData?.data?.raw ?? [])).toEqual([1, 2, 3]);
   });
 
-  test("round-trips server ack and error payloads", () => {
+  test("round-trips server ack, error, verdict, and share request payloads", () => {
     const ackBytes = encodeServerAck("hello_ok");
     const decodedAck = decodeServerMessage(ackBytes);
     expect(decodedAck?.ack?.message).toBe("hello_ok");
@@ -58,5 +60,55 @@ describe("verify codec", () => {
     const decodedError = decodeServerMessage(errorBytes);
     expect(decodedError?.error?.code).toBe("HELLO_AUTH_REQUIRED");
     expect(decodedError?.error?.message).toBe("Hello authentication required.");
+
+    const verdictBytes = encodeServerVerdict({
+      outcome: "rejected",
+      reasonCode: "selfie_face_mismatch",
+      reasonMessage: "Selfie does not match the passport photo.",
+      retryAllowed: true,
+      remainingAttempts: 2,
+    });
+    const decodedVerdict = decodeServerMessage(verdictBytes);
+    expect(decodedVerdict?.verdict).toEqual({
+      outcome: "rejected",
+      reasonCode: "selfie_face_mismatch",
+      reasonMessage: "Selfie does not match the passport photo.",
+      retryAllowed: true,
+      remainingAttempts: 2,
+    });
+
+    const shareRequestBytes = encodeServerShareRequest({
+      contractVersion: 1,
+      sessionId: "vs_test_123",
+      fields: [
+        {
+          key: "kayle_document_id",
+          reason: 'Sharing "Kayle Document ID"',
+          required: true,
+        },
+        {
+          key: "dg1_nationality",
+          reason: "Nationality is required for this check.",
+          required: false,
+        },
+      ],
+    });
+    const decodedShareRequest = decodeServerMessage(shareRequestBytes);
+    expect(decodedShareRequest?.shareRequest).toEqual({
+      contractVersion: 1,
+      sessionId: "vs_test_123",
+      fields: [
+        {
+          key: "kayle_document_id",
+          reason: 'Sharing "Kayle Document ID"',
+          required: true,
+        },
+        {
+          key: "dg1_nationality",
+          reason: "Nationality is required for this check.",
+          required: false,
+        },
+      ],
+    });
   });
 });

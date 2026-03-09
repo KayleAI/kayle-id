@@ -4,6 +4,7 @@ import SwiftUI
 
 struct PrimaryActionButton: View {
   let title: String
+  var isDisabled = false
   let action: () -> Void
 
   var body: some View {
@@ -13,10 +14,11 @@ struct PrimaryActionButton: View {
         .frame(maxWidth: .infinity)
         .padding(.vertical, 14)
         .foregroundStyle(.white)
-        .background(Color.black)
+        .background(isDisabled ? Color.black.opacity(0.35) : Color.black)
         .clipShape(Capsule())
         .contentShape(Rectangle())
     }
+    .disabled(isDisabled)
     .buttonStyle(.plain)
   }
 }

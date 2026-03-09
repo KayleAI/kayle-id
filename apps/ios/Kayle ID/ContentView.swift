@@ -131,9 +131,11 @@ struct ContentView: View {
           // Upload NFC data immediately
           Task {
             do {
-              try await session.uploadNFCData()
-              session.moveToStep(.selfie)
-              await session.updatePhase(.selfieCapturing)
+              let shouldContinue = try await session.uploadNFCData()
+              if shouldContinue {
+                session.moveToStep(.selfie)
+                await session.updatePhase(.selfieCapturing)
+              }
             } catch {
               session.handleError(error)
             }
@@ -153,11 +155,7 @@ struct ContentView: View {
             session.selfieImages.append(image)
             Task {
               do {
-                let completed = try await session.sendSelfieImage(image, index: index, total: total)
-                if completed {
-                  await session.updatePhase(.complete)
-                  session.moveToStep(.complete)
-                }
+                _ = try await session.sendSelfieImage(image, index: index, total: total)
               } catch {
                 session.handleError(error)
               }
@@ -165,11 +163,18 @@ struct ContentView: View {
           }
         )
       }
+    case .shareDetails:
+      shareSelectionView
     case .complete:
       CompletionView(
-        isSuccess: true,
-        message: "Your identity verification data has been securely transmitted. You can now close this app and return to your browser.",
-        onDone: {
+        isSuccess: isAcceptedVerdict(session.verdict),
+        message: completionMessage,
+        primaryButtonTitle: completionPrimaryButtonTitle,
+        onPrimaryAction: {
+          handleCompletionPrimaryAction()
+        },
+        secondaryButtonTitle: completionSecondaryButtonTitle,
+        onSecondaryAction: completionSecondaryButtonTitle == nil ? nil : {
           session.reset()
         }
       )
@@ -177,9 +182,12 @@ struct ContentView: View {
       CompletionView(
         isSuccess: false,
         message: session.errorMessage ?? "An unexpected error occurred.",
-        onDone: {
+        primaryButtonTitle: "Done",
+        onPrimaryAction: {
           session.reset()
-        }
+        },
+        secondaryButtonTitle: nil,
+        onSecondaryAction: nil
       )
     }
   }
@@ -317,7 +325,127 @@ struct ContentView: View {
     .frame(maxWidth: .infinity, maxHeight: .infinity)
   }
 
+  private var shareSelectionView: some View {
+    VStack(alignment: .leading, spacing: 20) {
+      Text("Review requested details")
+        .font(.title3).bold()
+        .foregroundStyle(.black)
+
+      Text("Required details are locked on. Optional details stay on this device until you choose to share them in the next step.")
+        .font(.subheadline)
+        .foregroundStyle(.black.opacity(0.65))
+
+      ScrollView {
+        LazyVStack(spacing: 12) {
+          ForEach(session.shareRequest?.fields ?? []) { field in
+            shareFieldRow(field)
+          }
+        }
+        .padding(.vertical, 4)
+      }
+
+      VStack(spacing: 12) {
+        PrimaryActionButton(title: "Continue", isDisabled: true) {}
+
+        SecondaryActionButton(title: "Done") {
+          session.reset()
+        }
+      }
+    }
+    .padding(16)
+    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    .background(Color.white.ignoresSafeArea())
+  }
+
+  private func shareFieldRow(_ field: VerifyShareRequestField) -> some View {
+    VStack(alignment: .leading, spacing: 10) {
+      HStack(alignment: .center, spacing: 12) {
+        VStack(alignment: .leading, spacing: 4) {
+          Text(displayNameForShareField(field.key))
+            .font(.headline)
+            .foregroundStyle(.black)
+
+          Text(field.reason)
+            .font(.subheadline)
+            .foregroundStyle(.black.opacity(0.6))
+        }
+
+        Spacer(minLength: 12)
+
+        Toggle(
+          "",
+          isOn: Binding(
+            get: {
+              session.isShareFieldSelected(field.key)
+            },
+            set: { isSelected in
+              session.setShareFieldSelected(field.key, isSelected: isSelected)
+            }
+          )
+        )
+        .labelsHidden()
+        .disabled(field.required)
+      }
+
+      if field.required {
+        Text("Required")
+          .font(.caption.weight(.semibold))
+          .foregroundStyle(.black.opacity(0.55))
+      }
+    }
+    .padding(16)
+    .background(Color.black.opacity(0.03))
+    .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+  }
+
   // MARK: - Helpers
+
+  private var completionMessage: String {
+    guard let verdict = session.verdict else {
+      return "Your identity verification data has been securely transmitted. You can now close this app and return to your browser."
+    }
+
+    if isAcceptedVerdict(verdict) {
+      return "Your identity verification data has been securely transmitted. You can now close this app and return to your browser."
+    }
+
+    return verdict.reasonMessage
+  }
+
+  private var completionPrimaryButtonTitle: String {
+    guard let verdict = session.verdict else {
+      return "Done"
+    }
+
+    if isRejectedVerdict(verdict), verdict.retryAllowed {
+      return "Retry Verification"
+    }
+
+    return "Done"
+  }
+
+  private var completionSecondaryButtonTitle: String? {
+    guard let verdict = session.verdict else {
+      return nil
+    }
+
+    return isRejectedVerdict(verdict) && verdict.retryAllowed ? "Done" : nil
+  }
+
+  private func handleCompletionPrimaryAction() {
+    if let verdict = session.verdict, isRejectedVerdict(verdict), verdict.retryAllowed {
+      Task {
+        do {
+          try await session.retryVerification()
+        } catch {
+          session.handleError(error)
+        }
+      }
+      return
+    }
+
+    session.reset()
+  }
 
   private func handleQRCode(_ code: String) {
     do {

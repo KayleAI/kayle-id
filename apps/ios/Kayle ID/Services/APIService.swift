@@ -43,6 +43,62 @@ final class APIService: NSObject, URLSessionDelegate, URLSessionTaskDelegate {
     #endif
   }
 
+  static func fetchHandoffPayload(sessionId: String) async throws -> QRCodePayload {
+    guard let url = URL(string: "\(baseURL(from: sessionId))/v1/verify/session/\(sessionId)/handoff")
+    else {
+      throw APIError.invalidResponse
+    }
+
+    var request = URLRequest(url: url)
+    request.httpMethod = "POST"
+    request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+    let (data, response) = try await URLSession.shared.data(for: request)
+
+    guard let httpResponse = response as? HTTPURLResponse else {
+      throw APIError.invalidResponse
+    }
+
+    guard
+      let envelope = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+    else {
+      throw APIError.invalidResponse
+    }
+
+    guard (200...299).contains(httpResponse.statusCode) else {
+      if
+        let error = envelope["error"] as? [String: Any],
+        let message = error["message"] as? String
+      {
+        throw APIError.serverError(message)
+      }
+      throw APIError.httpError(httpResponse.statusCode)
+    }
+
+    guard
+      let payload = envelope["data"] as? [String: Any],
+      let payloadSessionId = payload["session_id"] as? String,
+      let attemptId = payload["attempt_id"] as? String,
+      let mobileWriteToken = payload["mobile_write_token"] as? String,
+      let expiresAtValue = payload["expires_at"] as? String
+    else {
+      throw APIError.invalidResponse
+    }
+
+    let formatter = ISO8601DateFormatter()
+    guard let expiresAt = formatter.date(from: expiresAtValue) else {
+      throw APIError.invalidResponse
+    }
+
+    return QRCodePayload(
+      v: payload["v"] as? Int,
+      sessionId: payloadSessionId,
+      attemptId: attemptId,
+      mobileWriteToken: mobileWriteToken,
+      expiresAt: expiresAt
+    )
+  }
+
   /// Update the current verification phase.
   func updatePhase(_ phase: AttemptPhase, error: String? = nil) async throws {
     let url = URL(string: "\(baseURL)/v1/verify/sessions/\(sessionId)/phase")!

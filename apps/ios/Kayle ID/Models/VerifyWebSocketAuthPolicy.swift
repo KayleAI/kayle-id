@@ -5,6 +5,35 @@ enum VerifyHelloResponse: Equatable {
   case failure(code: String, message: String)
 }
 
+enum VerifyVerdictOutcome: Equatable {
+  case accepted
+  case rejected
+}
+
+struct VerifyServerVerdict: Equatable {
+  let outcome: VerifyVerdictOutcome
+  let reasonCode: String
+  let reasonMessage: String
+  let retryAllowed: Bool
+  let remainingAttempts: Int
+}
+
+struct VerifyShareRequestField: Equatable, Identifiable {
+  let key: String
+  let reason: String
+  let required: Bool
+
+  var id: String {
+    key
+  }
+}
+
+struct VerifyShareRequest: Equatable {
+  let contractVersion: Int
+  let sessionId: String
+  let fields: [VerifyShareRequestField]
+}
+
 struct VerifyChunkRetryInstruction: Equatable {
   let kind: Int
   let index: Int
@@ -175,6 +204,77 @@ nonisolated func parseHelloResponse(
   }
 
   return nil
+}
+
+nonisolated func isAcceptedVerdict(_ verdict: VerifyServerVerdict?) -> Bool {
+  guard let verdict else {
+    return false
+  }
+
+  switch verdict.outcome {
+  case .accepted:
+    return true
+  case .rejected:
+    return false
+  }
+}
+
+nonisolated func isRejectedVerdict(_ verdict: VerifyServerVerdict?) -> Bool {
+  guard let verdict else {
+    return false
+  }
+
+  switch verdict.outcome {
+  case .accepted:
+    return false
+  case .rejected:
+    return true
+  }
+}
+
+nonisolated func shouldSuppressReconnectAfterHandledVerdict(
+  _ verdict: VerifyServerVerdict?
+) -> Bool {
+  isRejectedVerdict(verdict)
+}
+
+nonisolated func defaultSelectedShareFieldKeys(
+  _ shareRequest: VerifyShareRequest?
+) -> Set<String> {
+  guard let shareRequest else {
+    return []
+  }
+
+  return Set(
+    shareRequest.fields.compactMap { field in
+      field.required ? field.key : nil
+    }
+  )
+}
+
+nonisolated func displayNameForShareField(_ key: String) -> String {
+  if let suffix = key.split(separator: "_").last, key.hasPrefix("age_over_") {
+    return "Age Over \(suffix)"
+  }
+
+  return key
+    .split(separator: "_")
+    .map { segment in
+      if segment == "dg1" {
+        return "DG1"
+      }
+
+      if segment == "dg2" {
+        return "DG2"
+      }
+
+      if segment == "id" {
+        return "ID"
+      }
+
+      return segment.prefix(1).uppercased() + segment.dropFirst()
+    }
+    .joined(separator: " ")
 }
 
 nonisolated func isNonRetryableAuthErrorCode(_ code: String) -> Bool {

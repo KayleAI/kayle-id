@@ -3,7 +3,10 @@ import SwiftUI
 struct CompletionView: View {
   let isSuccess: Bool
   let message: String
-  let onDone: () -> Void
+  let primaryButtonTitle: String
+  let onPrimaryAction: () -> Void
+  let secondaryButtonTitle: String?
+  let onSecondaryAction: (() -> Void)?
 
   var body: some View {
     VStack(spacing: 24) {
@@ -27,10 +30,19 @@ struct CompletionView: View {
 
       Spacer()
 
-      PrimaryActionButton(title: "Done") {
-        onDone()
+      VStack(spacing: 12) {
+        PrimaryActionButton(title: primaryButtonTitle) {
+          onPrimaryAction()
+        }
+        .frame(maxWidth: 300)
+
+        if let secondaryButtonTitle, let onSecondaryAction {
+          SecondaryActionButton(title: secondaryButtonTitle) {
+            onSecondaryAction()
+          }
+          .frame(maxWidth: 300)
+        }
       }
-      .frame(maxWidth: 300)
       .padding(.bottom, 32)
     }
     .frame(maxWidth: .infinity, maxHeight: .infinity)

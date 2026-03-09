@@ -46,6 +46,22 @@ type ServerAckOrError = {
     code: string;
     message: string;
   };
+  verdict?: {
+    outcome: "accepted" | "rejected";
+    reasonCode: string;
+    reasonMessage: string;
+    retryAllowed: boolean;
+    remainingAttempts: number;
+  };
+  shareRequest?: {
+    contractVersion: number;
+    sessionId: string;
+    fields: Array<{
+      key: string;
+      reason: string;
+      required: boolean;
+    }>;
+  };
 };
 
 const createdSessionIds: string[] = [];
@@ -145,6 +161,39 @@ function decodeServerMessage(bytes: Uint8Array): ServerAckOrError | null {
             message: root.error.message,
           },
         };
+      case ServerMessage.VERDICT:
+        return {
+          verdict: {
+            outcome: root.verdict.outcome === 0 ? "accepted" : "rejected",
+            reasonCode: root.verdict.reasonCode,
+            reasonMessage: root.verdict.reasonMessage,
+            retryAllowed: root.verdict.retryAllowed,
+            remainingAttempts: root.verdict.remainingAttempts,
+          },
+        };
+      case ServerMessage.SHARE_REQUEST: {
+        const fields = root.shareRequest.fields;
+        const decodedFields: NonNullable<
+          ServerAckOrError["shareRequest"]
+        >["fields"] = [];
+
+        for (let index = 0; index < fields.length; index += 1) {
+          const field = fields.get(index);
+          decodedFields.push({
+            key: field.key,
+            reason: field.reason,
+            required: field.required,
+          });
+        }
+
+        return {
+          shareRequest: {
+            contractVersion: root.shareRequest.contractVersion,
+            sessionId: root.shareRequest.sessionId,
+            fields: decodedFields,
+          },
+        };
+      }
 
       default:
         return null;
@@ -255,13 +304,108 @@ function openVerifySocket(sessionId: string): WebSocket {
   return socket;
 }
 
-async function createSession(): Promise<string> {
-  const response = await v1.request("/sessions", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${TEST_DATA?.apiKey}`,
-    },
+function awaitSocketClose(socket: WebSocket): Promise<CloseEvent> {
+  return new Promise((resolve) => {
+    if (socket.readyState === WebSocket.CLOSED) {
+      resolve({ code: 1000 } as CloseEvent);
+      return;
+    }
+
+    socket.addEventListener(
+      "close",
+      (event) => {
+        resolve(event);
+      },
+      { once: true }
+    );
   });
+}
+
+function awaitServerMessageOrClose(socket: WebSocket): Promise<
+  | {
+      kind: "message";
+      message: ServerAckOrError;
+    }
+  | {
+      kind: "close";
+      event: CloseEvent;
+    }
+> {
+  return new Promise((resolve, reject) => {
+    const timeoutMs = 15_000;
+
+    const timeout = setTimeout(() => {
+      cleanup();
+      reject(new Error("Timed out waiting for server message or close."));
+    }, timeoutMs);
+
+    const handleMessage = async (event: MessageEvent) => {
+      const bytes = await getEventBytes(event.data);
+
+      if (!bytes) {
+        cleanup();
+        reject(new Error("Expected a binary server message."));
+        return;
+      }
+
+      const decoded = decodeServerMessage(bytes);
+      if (!decoded) {
+        cleanup();
+        reject(new Error("Failed to decode server protobuf message."));
+        return;
+      }
+
+      cleanup();
+      resolve({
+        kind: "message",
+        message: decoded,
+      });
+    };
+
+    const handleError = () => {
+      cleanup();
+      reject(new Error("WebSocket connection failed."));
+    };
+
+    const handleClose = (event: CloseEvent) => {
+      cleanup();
+      resolve({
+        kind: "close",
+        event,
+      });
+    };
+
+    const cleanup = () => {
+      clearTimeout(timeout);
+      socket.removeEventListener("message", handleMessage);
+      socket.removeEventListener("error", handleError);
+      socket.removeEventListener("close", handleClose);
+    };
+
+    socket.addEventListener("message", handleMessage);
+    socket.addEventListener("error", handleError);
+    socket.addEventListener("close", handleClose);
+  });
+}
+
+async function createSession(body?: {
+  share_fields?: Record<string, { required: boolean; reason: string }>;
+}): Promise<string> {
+  const headers: Record<string, string> = {
+    Authorization: `Bearer ${TEST_DATA?.apiKey}`,
+  };
+
+  const requestInit: RequestInit = {
+    method: "POST",
+    headers,
+  };
+
+  if (body) {
+    headers["Content-Type"] = "application/json";
+    requestInit.body = JSON.stringify(body);
+  }
+
+  const response = await v1.request("/sessions", requestInit);
 
   if (response.status !== 200) {
     throw new Error(`Expected 200 from /sessions, received ${response.status}`);
@@ -1374,9 +1518,20 @@ describe("Verification Flows", () => {
   );
 
   test.serial(
-    "Accepts selfie_complete after full selfie set and persists phase",
+    "Accepts selfie_complete, then delivers shareRequest and keeps the socket open",
     async () => {
-      const sessionId = await createSession();
+      const sessionId = await createSession({
+        share_fields: {
+          dg1_nationality: {
+            required: false,
+            reason: "Nationality is optional for this flow.",
+          },
+          kayle_document_id: {
+            required: true,
+            reason: "Document ID is required for delivery.",
+          },
+        },
+      });
       const handoff = await createHandoff(sessionId);
       const artifacts = await createValidNfcArtifacts();
 
@@ -1445,7 +1600,31 @@ describe("Verification Flows", () => {
         expect((await awaitServerMessage(socket)).ack).toBe("data_ok_3_2");
 
         socket.send(encodePhaseMessage("selfie_complete"));
-        expect((await awaitServerMessage(socket)).ack).toBe("phase_ok");
+        expect((await awaitServerMessage(socket)).verdict).toEqual({
+          outcome: "accepted",
+          reasonCode: "",
+          reasonMessage: "",
+          retryAllowed: false,
+          remainingAttempts: 0,
+        });
+
+        expect((await awaitServerMessage(socket)).shareRequest).toEqual({
+          contractVersion: 1,
+          sessionId,
+          fields: [
+            {
+              key: "dg1_nationality",
+              reason: "Nationality is optional for this flow.",
+              required: false,
+            },
+            {
+              key: "kayle_document_id",
+              reason: "Document ID is required for delivery.",
+              required: true,
+            },
+          ],
+        });
+        expect(socket.readyState).toBe(WebSocket.OPEN);
       } finally {
         socket.close();
       }
@@ -1558,7 +1737,20 @@ describe("Verification Flows", () => {
 
         socket.send(encodePhaseMessage("nfc_complete"));
         const response = await awaitServerMessage(socket);
-        expect(response.error?.code).toBe("passport_authenticity_failed");
+        expect(response.error).toBeUndefined();
+        expect(response.verdict).toEqual({
+          outcome: "rejected",
+          reasonCode: "passport_authenticity_failed",
+          reasonMessage:
+            "Passport chip integrity checks did not pass. Please retry with a new verification attempt.",
+          retryAllowed: true,
+          remainingAttempts: 2,
+        });
+        const nextEvent = await awaitServerMessageOrClose(socket);
+        expect(nextEvent.kind).toBe("close");
+        if (nextEvent.kind === "close") {
+          expect(nextEvent.event.code).toBe(1008);
+        }
       } finally {
         socket.close();
       }
@@ -1624,7 +1816,17 @@ describe("Verification Flows", () => {
 
         socket.send(encodePhaseMessage("selfie_complete"));
         const response = await awaitServerMessage(socket);
-        expect(response.error?.code).toBe("selfie_face_mismatch");
+        expect(response.error).toBeUndefined();
+        expect(response.verdict).toEqual({
+          outcome: "rejected",
+          reasonCode: "selfie_face_mismatch",
+          reasonMessage:
+            "Selfie evidence did not match the passport photo. Please retry with a new verification attempt.",
+          retryAllowed: true,
+          remainingAttempts: 2,
+        });
+        const closeEvent = await awaitSocketClose(socket);
+        expect(closeEvent.code).toBe(1008);
       } finally {
         socket.close();
       }
@@ -1688,7 +1890,11 @@ describe("Verification Flows", () => {
 
           socket.send(encodePhaseMessage("selfie_complete"));
           const response = await awaitServerMessage(socket);
-          expect(response.error?.code).toBe("selfie_face_mismatch");
+          expect(response.error).toBeUndefined();
+          expect(response.verdict?.reasonCode).toBe("selfie_face_mismatch");
+          expect(response.verdict?.retryAllowed).toBe(index < 2);
+          expect(response.verdict?.remainingAttempts).toBe(2 - index);
+          await awaitSocketClose(socket);
         } finally {
           socket.close();
         }
@@ -1779,7 +1985,15 @@ describe("Verification Flows", () => {
 
         socket.send(encodePhaseMessage("selfie_complete"));
         const response = await awaitServerMessage(socket);
-        expect(response.ack).toBe("phase_ok");
+        expect(response.ack).toBeUndefined();
+        expect(response.verdict).toEqual({
+          outcome: "accepted",
+          reasonCode: "",
+          reasonMessage: "",
+          retryAllowed: false,
+          remainingAttempts: 0,
+        });
+        expect(socket.readyState).toBe(WebSocket.OPEN);
       } finally {
         socket.close();
       }
@@ -1846,7 +2060,14 @@ describe("Verification Flows", () => {
 
         socket.send(encodePhaseMessage("selfie_complete"));
         const response = await awaitServerMessage(socket);
-        expect(response.ack).toBe("phase_ok");
+        expect(response.ack).toBeUndefined();
+        expect(response.verdict).toEqual({
+          outcome: "accepted",
+          reasonCode: "",
+          reasonMessage: "",
+          retryAllowed: false,
+          remainingAttempts: 0,
+        });
       } finally {
         socket.close();
       }

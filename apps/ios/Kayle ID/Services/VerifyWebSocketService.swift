@@ -60,6 +60,7 @@ final class VerifyWebSocketService: NSObject, URLSessionWebSocketDelegate {
   private let mobileWriteToken: String
   private let baseURL: String
   private let onFatalError: ((VerifyWebSocketError) -> Void)?
+  private let onShareRequest: ((VerifyShareRequest) -> Void)?
   private let codec = VerifyCapnpCodec()
 
   private var webSocketTask: URLSessionWebSocketTask?
@@ -78,6 +79,7 @@ final class VerifyWebSocketService: NSObject, URLSessionWebSocketDelegate {
   private var helloTimeoutTask: Task<Void, Never>?
   private var pendingServerResponseContinuation: CheckedContinuation<VerifyServerMessage, Error>?
   private var serverResponseTimeoutTask: Task<Void, Never>?
+  private var expectedVerdictClose = false
 
   private lazy var urlSession: URLSession = {
     let config = URLSessionConfiguration.default
@@ -92,13 +94,15 @@ final class VerifyWebSocketService: NSObject, URLSessionWebSocketDelegate {
     attemptId: String,
     mobileWriteToken: String,
     baseURL: String,
-    onFatalError: ((VerifyWebSocketError) -> Void)? = nil
+    onFatalError: ((VerifyWebSocketError) -> Void)? = nil,
+    onShareRequest: ((VerifyShareRequest) -> Void)? = nil
   ) {
     self.sessionId = sessionId
     self.attemptId = attemptId
     self.mobileWriteToken = mobileWriteToken
     self.baseURL = baseURL
     self.onFatalError = onFatalError
+    self.onShareRequest = onShareRequest
     super.init()
   }
 
@@ -108,6 +112,7 @@ final class VerifyWebSocketService: NSObject, URLSessionWebSocketDelegate {
     }
     stateQueue.sync {
       isClosing = false
+      expectedVerdictClose = false
     }
     startSocket(url: url)
   }
@@ -258,6 +263,7 @@ final class VerifyWebSocketService: NSObject, URLSessionWebSocketDelegate {
   func disconnect() {
     stateQueue.sync {
       isClosing = true
+      expectedVerdictClose = false
     }
     resolvePendingHello(.failure(.connectionClosed))
     resolvePendingServerResponse(.failure(.connectionClosed))
@@ -271,6 +277,9 @@ final class VerifyWebSocketService: NSObject, URLSessionWebSocketDelegate {
 
   private func startSocket(url: URL) {
     closeSocket()
+    stateQueue.sync {
+      expectedVerdictClose = false
+    }
     let task = urlSession.webSocketTask(with: url)
     webSocketTask = task
     task.resume()
@@ -401,6 +410,20 @@ final class VerifyWebSocketService: NSObject, URLSessionWebSocketDelegate {
     }
   }
 
+  private func expectVerdictClose() {
+    stateQueue.sync {
+      expectedVerdictClose = true
+    }
+  }
+
+  private func consumeExpectedVerdictClose() -> Bool {
+    stateQueue.sync {
+      let expected = expectedVerdictClose
+      expectedVerdictClose = false
+      return expected
+    }
+  }
+
   private func setAuthenticated(_ value: Bool) {
     stateQueue.sync {
       isAuthenticated = value
@@ -410,6 +433,12 @@ final class VerifyWebSocketService: NSObject, URLSessionWebSocketDelegate {
   private func handleFatalError(_ error: VerifyWebSocketError) {
     Task { @MainActor [onFatalError] in
       onFatalError?(error)
+    }
+  }
+
+  private func handleShareRequest(_ shareRequest: VerifyShareRequest) {
+    Task { @MainActor [onShareRequest] in
+      onShareRequest?(shareRequest)
     }
   }
 
@@ -556,12 +585,27 @@ final class VerifyWebSocketService: NSObject, URLSessionWebSocketDelegate {
             }
 
             if self.isAwaitingServerResponse() {
+              if let shareRequest = serverMessage.shareRequest {
+                self.handleShareRequest(shareRequest)
+                self.receiveLoop()
+                return
+              }
+
               if let code = serverMessage.errorCode {
                 let error = VerifyWebSocketError.serverError(
                   code: code,
                   message: serverMessage.errorMessage ?? code
                 )
                 self.resolvePendingServerResponse(.failure(error))
+                self.receiveLoop()
+                return
+              }
+
+              if let verdict = serverMessage.verdict {
+                if shouldSuppressReconnectAfterHandledVerdict(verdict) {
+                  self.expectVerdictClose()
+                }
+                self.resolvePendingServerResponse(.success(serverMessage))
                 self.receiveLoop()
                 return
               }
@@ -573,9 +617,30 @@ final class VerifyWebSocketService: NSObject, URLSessionWebSocketDelegate {
               }
             }
 
+            if let shareRequest = serverMessage.shareRequest {
+              self.handleShareRequest(shareRequest)
+              self.receiveLoop()
+              return
+            }
+
 #if DEBUG
             if let ack = serverMessage.ackMessage {
               print("WS <- ack \(ack)")
+            } else if let verdict = serverMessage.verdict {
+              let verdictLabel: String
+              switch verdict.outcome {
+              case .accepted:
+                verdictLabel = "accepted"
+              case .rejected:
+                verdictLabel = "rejected"
+              }
+              print(
+                "WS <- verdict \(verdictLabel) \(verdict.reasonCode)"
+              )
+            } else if let shareRequest = serverMessage.shareRequest {
+              print(
+                "WS <- shareRequest fields=\(shareRequest.fields.count)"
+              )
             } else if let errorMessage = serverMessage.errorMessage {
               let code = serverMessage.errorCode ?? "unknown"
               print("WS <- error \(code) \(errorMessage)")
@@ -595,6 +660,9 @@ final class VerifyWebSocketService: NSObject, URLSessionWebSocketDelegate {
         }
       case .failure(let error):
         print("WebSocket receive error: \(error)")
+        if self.consumeExpectedVerdictClose() {
+          return
+        }
         self.resolvePendingHello(.failure(.connectionClosed))
         self.resolvePendingServerResponse(.failure(.connectionClosed))
         self.scheduleReconnect(lastErrorCode: nil)
@@ -611,6 +679,10 @@ final class VerifyWebSocketService: NSObject, URLSessionWebSocketDelegate {
     reason: Data?
   ) {
     if closeCode == .normalClosure || stateQueue.sync(execute: { isClosing }) {
+      return
+    }
+
+    if consumeExpectedVerdictClose() {
       return
     }
 

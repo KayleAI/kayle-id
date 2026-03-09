@@ -10,6 +10,7 @@ enum VerificationStep: Int, CaseIterable {
   case rfidCheck      // Asking if document has RFID (required, no skip)
   case nfc            // Reading NFC chip
   case selfie         // Taking selfie
+  case shareDetails   // Review requested fields
   case complete       // Verification complete
   case error          // Error state
 
@@ -21,6 +22,7 @@ enum VerificationStep: Int, CaseIterable {
     case .rfidCheck: return "RFID Check"
     case .nfc: return "Read Chip"
     case .selfie: return "Take Selfie"
+    case .shareDetails: return "Review Details"
     case .complete: return "Complete"
     case .error: return "Error"
     }
@@ -49,6 +51,9 @@ final class VerificationSession: ObservableObject {
   @Published var step: VerificationStep = .welcome
   @Published var payload: QRCodePayload?
   @Published var errorMessage: String?
+  @Published var verdict: VerifyServerVerdict?
+  @Published var shareRequest: VerifyShareRequest?
+  @Published var selectedShareFieldKeys = Set<String>()
 
   // Captured data
   @Published var mrzResult: MRZResult?
@@ -78,38 +83,12 @@ final class VerificationSession: ObservableObject {
 
   /// Initialize a new session from a scanned QR code payload.
   func initialize(with payload: QRCodePayload) throws {
-    // Validate payload
     guard payload.isValid else {
       throw QRCodePayloadError.invalidPayload
     }
 
-    self.payload = payload
-
-    // Construct base URL from session ID environment prefix
-    let baseURL = APIService.baseURL(from: payload.sessionId)
-
-    // Initialize services
-    self.webSocketService = VerifyWebSocketService(
-      sessionId: payload.sessionId,
-      attemptId: payload.attemptId,
-      mobileWriteToken: payload.mobileWriteToken,
-      baseURL: baseURL,
-      onFatalError: { [weak self] socketError in
-        Task { @MainActor [weak self] in
-          self?.handleError(socketError)
-        }
-      }
-    )
-
-    Task {
-      do {
-        try webSocketService?.connect()
-        try await webSocketService?.sendHello()
-        await updatePhase(.mobileConnected)
-      } catch {
-        handleError(error)
-      }
-    }
+    resetAttemptState(clearPayload: false)
+    bootstrapAttempt(with: payload)
   }
 
   /// Update the current phase on the server.
@@ -151,7 +130,7 @@ final class VerificationSession: ObservableObject {
   }
   
   /// Upload NFC data immediately after NFC read completes.
-  func uploadNFCData() async throws {
+  func uploadNFCData() async throws -> Bool {
     guard let nfcResult else {
       throw VerificationError.notInitialized
     }
@@ -167,8 +146,7 @@ final class VerificationSession: ObservableObject {
           try await uploadNFCPlan(plan, via: webSocketService)
         }
 
-        try await completeNFCPhase(plans: plans, via: webSocketService)
-        return
+        return try await completeNFCPhase(plans: plans, via: webSocketService)
       } catch let socketError as VerifyWebSocketError {
         switch socketError {
         case .connectionClosed, .notConnected, .reconnectFailed, .serverResponseTimedOut:
@@ -252,6 +230,7 @@ final class VerificationSession: ObservableObject {
 
   /// Handle an error during verification.
   func handleError(_ error: Error) {
+    verdict = nil
     errorMessage = error.localizedDescription
     step = .error
     selfieUploadCancelled = true
@@ -265,8 +244,74 @@ final class VerificationSession: ObservableObject {
   func reset() {
     webSocketService?.disconnect()
     step = .welcome
-    payload = nil
+    resetAttemptState(clearPayload: true)
+  }
+
+  func retryVerification() async throws {
+    guard let currentPayload = payload else {
+      throw VerificationError.notInitialized
+    }
+
+    webSocketService?.disconnect()
+    resetAttemptState(clearPayload: false)
+
+    let nextPayload = try await APIService.fetchHandoffPayload(
+      sessionId: currentPayload.sessionId
+    )
+
+    guard nextPayload.isValid else {
+      throw QRCodePayloadError.invalidPayload
+    }
+
+    bootstrapAttempt(with: nextPayload)
+    moveToStep(.mrz)
+  }
+
+  private func bootstrapAttempt(with payload: QRCodePayload) {
+    self.payload = payload
+    verdict = nil
     errorMessage = nil
+    selfieUploadCancelled = false
+
+    let baseURL = APIService.baseURL(from: payload.sessionId)
+
+    webSocketService = VerifyWebSocketService(
+      sessionId: payload.sessionId,
+      attemptId: payload.attemptId,
+      mobileWriteToken: payload.mobileWriteToken,
+      baseURL: baseURL,
+      onFatalError: { [weak self] socketError in
+        Task { @MainActor [weak self] in
+          self?.handleError(socketError)
+        }
+      },
+      onShareRequest: { [weak self] shareRequest in
+        Task { @MainActor [weak self] in
+          self?.handleShareRequest(shareRequest)
+        }
+      }
+    )
+
+    Task {
+      do {
+        try webSocketService?.connect()
+        try await webSocketService?.sendHello()
+        await updatePhase(.mobileConnected)
+      } catch {
+        handleError(error)
+      }
+    }
+  }
+
+  private func resetAttemptState(clearPayload: Bool) {
+    if clearPayload {
+      payload = nil
+    }
+
+    verdict = nil
+    errorMessage = nil
+    shareRequest = nil
+    selectedShareFieldKeys = []
     mrzResult = nil
     nfcResult = nil
     selfieImages = []
@@ -276,6 +321,44 @@ final class VerificationSession: ObservableObject {
     selfieSentIndices.removeAll()
     selfiePayloadsByIndex.removeAll()
     selfieUploadCancelled = false
+  }
+
+  private func handleVerdict(_ verdict: VerifyServerVerdict) {
+    self.verdict = verdict
+    errorMessage = nil
+    selfieUploadCancelled = isRejectedVerdict(verdict)
+
+    if isRejectedVerdict(verdict) {
+      shareRequest = nil
+      selectedShareFieldKeys = []
+      moveToStep(.complete)
+    }
+  }
+
+  private func handleShareRequest(_ shareRequest: VerifyShareRequest) {
+    self.shareRequest = shareRequest
+    selectedShareFieldKeys = defaultSelectedShareFieldKeys(shareRequest)
+    moveToStep(.shareDetails)
+  }
+
+  func isShareFieldSelected(_ key: String) -> Bool {
+    selectedShareFieldKeys.contains(key)
+  }
+
+  func setShareFieldSelected(_ key: String, isSelected: Bool) {
+    guard
+      let field = shareRequest?.fields.first(where: { $0.key == key }),
+      !field.required
+    else {
+      return
+    }
+
+    if isSelected {
+      selectedShareFieldKeys.insert(key)
+      return
+    }
+
+    selectedShareFieldKeys.remove(key)
   }
 
   private func buildKnownSelfieUploadPlans() throws -> [SelfieUploadPlan] {
@@ -400,10 +483,12 @@ final class VerificationSession: ObservableObject {
           error: nil
         )
 
-        guard response.ackMessage == "phase_ok" else {
-          throw VerifyWebSocketError.sendFailed
+        if let verdict = response.verdict {
+          handleVerdict(verdict)
+          return
         }
-        return
+
+        throw VerifyWebSocketError.sendFailed
       } catch let socketError as VerifyWebSocketError {
         guard case .serverError(let code, let message) = socketError else {
           throw socketError
@@ -565,7 +650,7 @@ final class VerificationSession: ObservableObject {
   private func completeNFCPhase(
     plans: [NFCUploadPlan],
     via webSocketService: VerifyWebSocketService
-  ) async throws {
+  ) async throws -> Bool {
     while true {
       do {
         let response = try await webSocketService.sendPhaseAwaitResponse(
@@ -573,10 +658,16 @@ final class VerificationSession: ObservableObject {
           error: nil
         )
 
-        guard response.ackMessage == "phase_ok" else {
-          throw VerifyWebSocketError.sendFailed
+        if response.ackMessage == "phase_ok" {
+          return true
         }
-        return
+
+        if let verdict = response.verdict {
+          handleVerdict(verdict)
+          return false
+        }
+
+        throw VerifyWebSocketError.sendFailed
       } catch let socketError as VerifyWebSocketError {
         guard case .serverError(let code, let message) = socketError else {
           throw socketError

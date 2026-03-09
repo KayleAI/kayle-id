@@ -152,4 +152,67 @@ final class VerifyWebSocketAuthPolicyTests: XCTestCase {
       )
     )
   }
+
+  func testAcceptedVerdictHelpers() {
+    let verdict = VerifyServerVerdict(
+      outcome: .accepted,
+      reasonCode: "",
+      reasonMessage: "",
+      retryAllowed: false,
+      remainingAttempts: 0
+    )
+
+    XCTAssertTrue(isAcceptedVerdict(verdict))
+    XCTAssertFalse(isRejectedVerdict(verdict))
+    XCTAssertFalse(shouldSuppressReconnectAfterHandledVerdict(verdict))
+  }
+
+  func testRejectedVerdictHelpers() {
+    let verdict = VerifyServerVerdict(
+      outcome: .rejected,
+      reasonCode: "selfie_face_mismatch",
+      reasonMessage: "Selfie evidence did not match the passport photo.",
+      retryAllowed: true,
+      remainingAttempts: 2
+    )
+
+    XCTAssertFalse(isAcceptedVerdict(verdict))
+    XCTAssertTrue(isRejectedVerdict(verdict))
+    XCTAssertTrue(shouldSuppressReconnectAfterHandledVerdict(verdict))
+  }
+
+  func testDefaultSelectedShareFieldKeysOnlyIncludesRequiredFields() {
+    let shareRequest = VerifyShareRequest(
+      contractVersion: 1,
+      sessionId: "vs_test_123",
+      fields: [
+        VerifyShareRequestField(
+          key: "kayle_document_id",
+          reason: "Document ID is required.",
+          required: true
+        ),
+        VerifyShareRequestField(
+          key: "dg1_nationality",
+          reason: "Nationality is optional.",
+          required: false
+        ),
+      ]
+    )
+
+    XCTAssertEqual(
+      defaultSelectedShareFieldKeys(shareRequest),
+      Set(["kayle_document_id"])
+    )
+  }
+
+  func testDisplayNameForShareFieldHumanizesClaimKeys() {
+    XCTAssertEqual(
+      displayNameForShareField("kayle_document_id"),
+      "Kayle Document ID"
+    )
+    XCTAssertEqual(
+      displayNameForShareField("age_over_18"),
+      "Age Over 18"
+    )
+  }
 }

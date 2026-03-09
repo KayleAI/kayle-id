@@ -45,9 +45,36 @@ struct ServerError {
   message @1 :Text;
 }
 
+enum VerdictOutcome {
+  accepted @0;
+  rejected @1;
+}
+
+struct ServerVerdict {
+  outcome @0 :VerdictOutcome;
+  reasonCode @1 :Text;
+  reasonMessage @2 :Text;
+  retryAllowed @3 :Bool;
+  remainingAttempts @4 :UInt32;
+}
+
+struct ShareRequestField {
+  key @0 :Text;
+  reason @1 :Text;
+  required @2 :Bool;
+}
+
+struct ShareRequest {
+  contractVersion @0 :UInt32;
+  sessionId @1 :Text;
+  fields @2 :List(ShareRequestField);
+}
+
 struct ServerMessage {
   union {
     ack @0 :ServerAck;
     error @1 :ServerError;
+    verdict @2 :ServerVerdict;
+    shareRequest @3 :ShareRequest;
   }
 }

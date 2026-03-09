@@ -2,6 +2,10 @@ import {
   decodeClientMessage,
   encodeServerAck,
   encodeServerError,
+  encodeServerShareRequest,
+  encodeServerVerdict,
+  type VerifyServerVerdict,
+  type VerifyShareRequest,
 } from "@kayle-id/capnp/verify-codec";
 import { ERROR_MESSAGES } from "@kayle-id/config/error-messages";
 import { db } from "@kayle-id/database/drizzle";
@@ -11,6 +15,7 @@ import { Hono } from "hono";
 import { validator } from "hono/validator";
 import { z } from "zod";
 import { sessionIdSchema } from "@/shared/validation";
+import { normalizeShareFields } from "@/v1/sessions/domain/share-contract/normalize-share-fields";
 import {
   claimAttemptConnection,
   releaseAttemptConnection,
@@ -35,6 +40,7 @@ import {
 } from "./hello-auth";
 import {
   emitFaceScoreFallbackEvent,
+  MAX_FAILED_ATTEMPTS,
   markAttemptFailed,
   markAttemptSucceeded,
 } from "./outcome";
@@ -57,6 +63,40 @@ type WorkerAssetBinding = {
 };
 
 const handoffParamSchema = z.object({ id: sessionIdSchema });
+const defaultNormalizedShareFields = (() => {
+  const normalized = normalizeShareFields(undefined);
+
+  if (!normalized.ok) {
+    throw new Error("Failed to initialize default share fields.");
+  }
+
+  return normalized.shareFields;
+})();
+
+function createShareRequestPayload({
+  contractVersion,
+  sessionId,
+  shareFieldsInput,
+}: {
+  contractVersion: number;
+  sessionId: string;
+  shareFieldsInput: unknown;
+}): VerifyShareRequest {
+  const normalized = normalizeShareFields(shareFieldsInput);
+  const shareFields = normalized.ok
+    ? normalized.shareFields
+    : defaultNormalizedShareFields;
+
+  return {
+    contractVersion,
+    sessionId,
+    fields: Object.entries(shareFields).map(([key, field]) => ({
+      key,
+      reason: field.reason,
+      required: field.required,
+    })),
+  };
+}
 
 function getWorkerAssetBinding(env: unknown): WorkerAssetBinding | null {
   if (!env || typeof env !== "object") {
@@ -192,6 +232,8 @@ verify.get(
         organizationId: verification_sessions.organizationId,
         environment: verification_sessions.environment,
         status: verification_sessions.status,
+        contractVersion: verification_sessions.contractVersion,
+        shareFields: verification_sessions.shareFields,
         redirectUrl: verification_sessions.redirectUrl,
         expiresAt: verification_sessions.expiresAt,
         completedAt: verification_sessions.completedAt,
@@ -216,6 +258,12 @@ verify.get(
         code: "SESSION_EXPIRED",
       });
     }
+
+    const shareRequestPayload = createShareRequestPayload({
+      contractVersion: session.contractVersion,
+      sessionId: session.id,
+      shareFieldsInput: session.shareFields,
+    });
 
     if (c.req.header("upgrade")?.toLowerCase() !== "websocket") {
       return c.json(
@@ -263,6 +311,25 @@ verify.get(
     const sendError = (code: string, message: string) => {
       logDebug("send_error", { code, message });
       server.send(encodeServerError(code, message));
+    };
+
+    const sendVerdict = (verdict: VerifyServerVerdict) => {
+      logDebug("send_verdict", verdict);
+      server.send(encodeServerVerdict(verdict));
+    };
+
+    const sendShareRequest = (shareRequest: VerifyShareRequest) => {
+      logDebug("send_share_request", {
+        contractVersion: shareRequest.contractVersion,
+        fieldCount: shareRequest.fields.length,
+      });
+      server.send(encodeServerShareRequest(shareRequest));
+    };
+
+    const closeAfterVerdict = (code: string) => {
+      setTimeout(() => {
+        server.close(1008, code);
+      }, 0);
     };
 
     const sendAuthErrorAndClose = (code: keyof typeof ERROR_MESSAGES) => {
@@ -536,23 +603,34 @@ verify.get(
       attemptId: string;
       code: "passport_authenticity_failed" | "selfie_face_mismatch";
       riskScore: number;
-    }): Promise<void> => {
-      await markAttemptFailed({
+    }): Promise<VerifyServerVerdict> => {
+      const result = await markAttemptFailed({
         session,
         attemptId,
         failureCode: code,
         riskScore,
       });
-      sendError(code, resolveErrorMessage(code));
-      server.close(1008, code);
+
+      const remainingAttempts = Math.max(
+        0,
+        MAX_FAILED_ATTEMPTS - result.failedAttempts
+      );
+
+      return {
+        outcome: "rejected",
+        reasonCode: code,
+        reasonMessage: resolveErrorMessage(code),
+        retryAllowed: !result.terminalized,
+        remainingAttempts,
+      };
     };
 
     const ensureNfcAuthenticity = async (
       attemptId: string
-    ): Promise<boolean> => {
+    ): Promise<VerifyServerVerdict | null> => {
       const { dg1, dg2, sod } = state.transfer;
       if (!(dg1 && dg2 && sod)) {
-        return false;
+        return null;
       }
 
       const authenticity = await validateAuthenticity({
@@ -562,22 +640,25 @@ verify.get(
       });
 
       if (authenticity.ok) {
-        return true;
+        return null;
       }
 
-      await rejectValidationAndClose({
+      const verdict = await rejectValidationAndClose({
         attemptId,
         code: "passport_authenticity_failed",
         riskScore: 1,
       });
-
-      return false;
+      sendVerdict(verdict);
+      closeAfterVerdict(verdict.reasonCode);
+      return verdict;
     };
 
-    const ensureSelfieMatch = async (attemptId: string): Promise<boolean> => {
+    const ensureSelfieMatch = async (
+      attemptId: string
+    ): Promise<VerifyServerVerdict | null> => {
       const { dg2 } = state.transfer;
       if (!dg2) {
-        return false;
+        return null;
       }
 
       const selfies = Array.from(state.transfer.selfies.values());
@@ -598,17 +679,25 @@ verify.get(
           riskScore: 1,
         });
 
-        return true;
+        return {
+          outcome: "accepted",
+          reasonCode: "",
+          reasonMessage: "",
+          retryAllowed: false,
+          remainingAttempts: 0,
+        };
       }
 
       const faceScore = faceResult.faceScore ?? 1;
       if (!faceResult.passed) {
-        await rejectValidationAndClose({
+        const verdict = await rejectValidationAndClose({
           attemptId,
           code: "selfie_face_mismatch",
           riskScore: 1 - faceScore,
         });
-        return false;
+        sendVerdict(verdict);
+        closeAfterVerdict(verdict.reasonCode);
+        return verdict;
       }
 
       await markAttemptSucceeded({
@@ -617,7 +706,13 @@ verify.get(
         faceScore,
       });
 
-      return true;
+      return {
+        outcome: "accepted",
+        reasonCode: "",
+        reasonMessage: "",
+        retryAllowed: false,
+        remainingAttempts: 0,
+      };
     };
 
     const resolvePhaseContext = (payload: {
@@ -660,7 +755,7 @@ verify.get(
     }: {
       attemptId: string;
       nextPhase: string;
-    }): Promise<boolean> => {
+    }): Promise<VerifyServerVerdict | null> => {
       if (nextPhase === "nfc_complete") {
         return ensureNfcAuthenticity(attemptId);
       }
@@ -669,7 +764,7 @@ verify.get(
         return ensureSelfieMatch(attemptId);
       }
 
-      return Promise.resolve(true);
+      return Promise.resolve(null);
     };
 
     const handlePhase = async (payload: { phase?: string; error?: string }) => {
@@ -692,11 +787,14 @@ verify.get(
         return;
       }
 
-      const passedValidation = await runPhaseValidation({
+      const verdict = await runPhaseValidation({
         attemptId: context.attemptId,
         nextPhase: context.nextPhase,
       });
-      if (!passedValidation) {
+      if (
+        verdict?.outcome === "rejected" ||
+        (context.nextPhase === "nfc_complete" && verdict)
+      ) {
         return;
       }
 
@@ -704,6 +802,13 @@ verify.get(
         transition,
         attemptId: context.attemptId,
       });
+
+      if (context.nextPhase === "selfie_complete" && verdict) {
+        sendVerdict(verdict);
+        sendShareRequest(shareRequestPayload);
+        return;
+      }
+
       sendAck("phase_ok");
     };
 

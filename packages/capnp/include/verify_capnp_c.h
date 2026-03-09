@@ -18,8 +18,15 @@ typedef enum verify_data_kind {
 typedef enum verify_server_message_kind {
   VERIFY_SERVER_MESSAGE_NONE = 0,
   VERIFY_SERVER_MESSAGE_ACK = 1,
-  VERIFY_SERVER_MESSAGE_ERROR = 2
+  VERIFY_SERVER_MESSAGE_ERROR = 2,
+  VERIFY_SERVER_MESSAGE_VERDICT = 3,
+  VERIFY_SERVER_MESSAGE_SHARE_REQUEST = 4
 } verify_server_message_kind_t;
+
+typedef enum verify_server_verdict_outcome {
+  VERIFY_SERVER_VERDICT_ACCEPTED = 0,
+  VERIFY_SERVER_VERDICT_REJECTED = 1
+} verify_server_verdict_outcome_t;
 
 // The builder and reader pointers are opaque pointers from CapnpCLib:
 // - capnp_c_message_builder_get()
@@ -64,6 +71,35 @@ int verify_server_message_get_error(
   size_t out_code_size,
   char* out_message,
   size_t out_message_size
+);
+
+int verify_server_message_get_verdict(
+  void* message_reader,
+  int* out_outcome,
+  char* out_reason_code,
+  size_t out_reason_code_size,
+  char* out_reason_message,
+  size_t out_reason_message_size,
+  int* out_retry_allowed,
+  uint32_t* out_remaining_attempts
+);
+
+int verify_server_message_get_share_request(
+  void* message_reader,
+  uint32_t* out_contract_version,
+  char* out_session_id,
+  size_t out_session_id_size,
+  uint32_t* out_field_count
+);
+
+int verify_server_message_get_share_request_field(
+  void* message_reader,
+  uint32_t field_index,
+  char* out_key,
+  size_t out_key_size,
+  char* out_reason,
+  size_t out_reason_size,
+  int* out_required
 );
 
 #ifdef __cplusplus

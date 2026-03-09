@@ -104,6 +104,10 @@ verify_server_message_kind_t verify_server_message_kind(void* message_reader) {
       return VERIFY_SERVER_MESSAGE_ACK;
     case ServerMessage::ERROR:
       return VERIFY_SERVER_MESSAGE_ERROR;
+    case ServerMessage::VERDICT:
+      return VERIFY_SERVER_MESSAGE_VERDICT;
+    case ServerMessage::SHARE_REQUEST:
+      return VERIFY_SERVER_MESSAGE_SHARE_REQUEST;
     default:
       return VERIFY_SERVER_MESSAGE_NONE;
   }
@@ -148,5 +152,135 @@ int verify_server_message_get_error(
   if (!copy_text_to_buffer(err.getMessage(), out_message, out_message_size)) {
     return 0;
   }
+  return 1;
+}
+
+int verify_server_message_get_verdict(
+  void* message_reader,
+  int* out_outcome,
+  char* out_reason_code,
+  size_t out_reason_code_size,
+  char* out_reason_message,
+  size_t out_reason_message_size,
+  int* out_retry_allowed,
+  uint32_t* out_remaining_attempts
+) {
+  if (
+    !message_reader ||
+    !out_outcome ||
+    !out_retry_allowed ||
+    !out_remaining_attempts
+  ) {
+    return 0;
+  }
+
+  auto* reader = reinterpret_cast<capnp::MessageReader*>(message_reader);
+  auto root = reader->getRoot<ServerMessage>();
+  if (root.which() != ServerMessage::VERDICT) {
+    return 0;
+  }
+
+  auto verdict = root.getVerdict();
+  *out_outcome = verdict.getOutcome() == VerdictOutcome::ACCEPTED
+    ? VERIFY_SERVER_VERDICT_ACCEPTED
+    : VERIFY_SERVER_VERDICT_REJECTED;
+
+  if (
+    !copy_text_to_buffer(
+      verdict.getReasonCode(),
+      out_reason_code,
+      out_reason_code_size
+    )
+  ) {
+    return 0;
+  }
+
+  if (
+    !copy_text_to_buffer(
+      verdict.getReasonMessage(),
+      out_reason_message,
+      out_reason_message_size
+    )
+  ) {
+    return 0;
+  }
+
+  *out_retry_allowed = verdict.getRetryAllowed() ? 1 : 0;
+  *out_remaining_attempts = verdict.getRemainingAttempts();
+  return 1;
+}
+
+int verify_server_message_get_share_request(
+  void* message_reader,
+  uint32_t* out_contract_version,
+  char* out_session_id,
+  size_t out_session_id_size,
+  uint32_t* out_field_count
+) {
+  if (
+    !message_reader ||
+    !out_contract_version ||
+    !out_field_count
+  ) {
+    return 0;
+  }
+
+  auto* reader = reinterpret_cast<capnp::MessageReader*>(message_reader);
+  auto root = reader->getRoot<ServerMessage>();
+  if (root.which() != ServerMessage::SHARE_REQUEST) {
+    return 0;
+  }
+
+  auto share_request = root.getShareRequest();
+  *out_contract_version = share_request.getContractVersion();
+  *out_field_count = share_request.getFields().size();
+
+  if (
+    !copy_text_to_buffer(
+      share_request.getSessionId(),
+      out_session_id,
+      out_session_id_size
+    )
+  ) {
+    return 0;
+  }
+
+  return 1;
+}
+
+int verify_server_message_get_share_request_field(
+  void* message_reader,
+  uint32_t field_index,
+  char* out_key,
+  size_t out_key_size,
+  char* out_reason,
+  size_t out_reason_size,
+  int* out_required
+) {
+  if (!message_reader || !out_required) {
+    return 0;
+  }
+
+  auto* reader = reinterpret_cast<capnp::MessageReader*>(message_reader);
+  auto root = reader->getRoot<ServerMessage>();
+  if (root.which() != ServerMessage::SHARE_REQUEST) {
+    return 0;
+  }
+
+  auto fields = root.getShareRequest().getFields();
+  if (field_index >= fields.size()) {
+    return 0;
+  }
+
+  auto field = fields[field_index];
+  if (!copy_text_to_buffer(field.getKey(), out_key, out_key_size)) {
+    return 0;
+  }
+
+  if (!copy_text_to_buffer(field.getReason(), out_reason, out_reason_size)) {
+    return 0;
+  }
+
+  *out_required = field.getRequired() ? 1 : 0;
   return 1;
 }
