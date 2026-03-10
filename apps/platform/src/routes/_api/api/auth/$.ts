@@ -20,9 +20,6 @@ export const Route = createFileRoute("/_api/api/auth/$")({
           .replace(/\/+$/g, "")
           .replace(/\/\/+/g, "/");
 
-        // ERROR: env.API is undefined
-        console.log(env.API);
-
         const response = await env.API.fetch(
           `http://api/${targetPath}${url.search}`,
           {
