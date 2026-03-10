@@ -58,7 +58,7 @@ const plugins = [
   }),
   magic({
     expiresIn: 15 * 60, // 15 minutes
-    sendMagicOtpAuth: async ({ email, otp: _otp, url, type }) => {
+    sendMagicOtpAuth: async ({ email, otp, url, type }) => {
       if (process.env.NODE_ENV === "development") {
         console.info(
           JSON.stringify({
@@ -66,6 +66,7 @@ const plugins = [
             email: maskEmail(email),
             type,
             path: safeUrlPath(url),
+            otp,
           })
         );
         return;

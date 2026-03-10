@@ -2,10 +2,18 @@
   "$schema": "../../node_modules/wrangler/config-schema.json",
   "name": "kayle-id-verify",
   "compatibility_date": "2025-11-22",
-  "compatibility_flags": ["nodejs_compat"],
+  "compatibility_flags": [
+    "nodejs_compat"
+  ],
   "main": "@tanstack/react-start/server-entry",
   "observability": {
     "enabled": true,
     "head_sampling_rate": 1
-  }
+  },
+  "services": [
+    {
+      "binding": "API",
+      "service": "kayle-id-api"
+    }
+  ]
 }

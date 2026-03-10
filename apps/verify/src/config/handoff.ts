@@ -1,5 +1,3 @@
-import { getApiHttpBaseUrl } from "@/config/env";
-
 export type HandoffPayload = {
   v: number;
   session_id: string;
@@ -32,12 +30,9 @@ function createHandoffError(
 export async function requestHandoffPayload(
   sessionId: string
 ): Promise<HandoffPayload> {
-  const response = await fetch(
-    `${getApiHttpBaseUrl()}/v1/verify/session/${sessionId}/handoff`,
-    {
-      method: "POST",
-    }
-  );
+  const response = await fetch(`/v1/verify/session/${sessionId}/handoff`, {
+    method: "POST",
+  });
 
   const payload = (await response.json()) as HandoffResponse;
 
