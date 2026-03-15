@@ -211,6 +211,30 @@ final class VerifyWebSocketAuthPolicyTests: XCTestCase {
     )
   }
 
+  func testDefaultSelectedShareFieldKeysAlwaysIncludeKayleHumanId() {
+    let shareRequest = VerifyShareRequest(
+      contractVersion: 1,
+      sessionId: "vs_test_123",
+      fields: [
+        VerifyShareRequestField(
+          key: "kayle_human_id",
+          reason: "Human ID supports anti-fraud checks.",
+          required: false
+        ),
+        VerifyShareRequestField(
+          key: "dg1_nationality",
+          reason: "Nationality is optional.",
+          required: false
+        ),
+      ]
+    )
+
+    XCTAssertEqual(
+      defaultSelectedShareFieldKeys(shareRequest),
+      Set(["kayle_human_id"])
+    )
+  }
+
   func testDisplayNameForShareFieldHumanizesClaimKeys() {
     XCTAssertEqual(
       displayNameForShareField("kayle_document_id"),
@@ -269,6 +293,44 @@ final class VerifyWebSocketAuthPolicyTests: XCTestCase {
     XCTAssertEqual(
       optionalShareRequestFields(shareRequest).map(\.key),
       ["dg2_face_image"]
+    )
+  }
+
+  func testShareFieldDetailTextUsesVerifiedDatePreviewWhenAvailable() {
+    let field = VerifyShareRequestField(
+      key: "dg1_date_of_birth",
+      reason: "Sharing Date of Birth",
+      required: true
+    )
+    let previewContext = VerifySharePreviewContext(
+      birthDate: "2005-04-29",
+      documentNumber: nil,
+      documentType: nil,
+      expiryDate: nil,
+      givenNames: nil,
+      issuingCountry: nil,
+      nationality: nil,
+      optionalData: nil,
+      sex: nil,
+      surname: nil
+    )
+
+    XCTAssertEqual(
+      shareFieldDetailText(field, previewContext: previewContext),
+      "29/04/2005"
+    )
+  }
+
+  func testShareFieldDetailTextExplainsRequiredSecurityFields() {
+    let field = VerifyShareRequestField(
+      key: "kayle_human_id",
+      reason: "Sharing Kayle Human ID",
+      required: true
+    )
+
+    XCTAssertEqual(
+      shareFieldDetailText(field, previewContext: nil),
+      "Required security identifier to help prevent duplicate claims."
     )
   }
 
@@ -338,5 +400,15 @@ final class VerifyWebSocketAuthPolicyTests: XCTestCase {
         selectedShareFieldKeys: []
       )
     )
+  }
+
+  func testKayleHumanIdSelectionIsLockedEvenWhenNotMarkedRequired() {
+    let field = VerifyShareRequestField(
+      key: "kayle_human_id",
+      reason: "Human ID supports anti-fraud checks.",
+      required: false
+    )
+
+    XCTAssertTrue(isShareFieldSelectionLocked(field))
   }
 }

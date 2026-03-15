@@ -327,31 +327,27 @@ struct ContentView: View {
     let optionalFields = optionalShareRequestFields(session.shareRequest)
 
     return VStack(alignment: .leading, spacing: 20) {
-      Text("Review requested details")
+      Text("Choose what to share")
         .font(.title3).bold()
         .foregroundStyle(.black)
-
-      Text("Review what will be shared before you continue. Required items stay enabled. Optional items stay on this device unless you choose to include them.")
-        .font(.subheadline)
-        .foregroundStyle(.black.opacity(0.65))
 
       ScrollView {
         LazyVStack(alignment: .leading, spacing: 20) {
           shareFieldSection(
             title: "Security Details",
-            description: "These identifiers help protect your verification from misuse and duplicate claims.",
+            description: "These details are used to protect services from abuse.",
             fields: kayleFields
           )
 
           shareFieldSection(
             title: "Required Details",
-            description: "These details are required by the relying service to complete verification.",
+            description: "These details are required to complete verification.",
             fields: requiredFields
           )
 
           shareFieldSection(
             title: "Optional Details",
-            description: "You can choose whether to include these extra details in the shared result.",
+            description: "You can optionally choose to share these details.",
             fields: optionalFields
           )
         }
@@ -395,13 +391,18 @@ struct ContentView: View {
     .padding(16)
     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     .background(Color.white.ignoresSafeArea())
-    .alert("Cancel verification?", isPresented: $isShareCancelConfirmationPresented) {
-      Button("Keep reviewing", role: .cancel) {}
+    .tint(Color(uiColor: .systemBlue))
+    .confirmationDialog(
+      "Cancel verification?",
+      isPresented: $isShareCancelConfirmationPresented,
+      titleVisibility: .visible
+    ) {
       Button("Cancel verification", role: .destructive) {
         session.reset()
       }
+      Button("Stay here", role: .cancel) {}
     } message: {
-      Text("This will end the current verification flow on this device.")
+      Text("This will stop the current verification on this device.")
     }
   }
 
@@ -413,7 +414,7 @@ struct ContentView: View {
             .font(.headline)
             .foregroundStyle(.black)
 
-          Text(field.reason)
+          Text(shareFieldDetailText(field, previewContext: sharePreviewContext))
             .font(.subheadline)
             .foregroundStyle(.black.opacity(0.6))
         }
@@ -433,12 +434,57 @@ struct ContentView: View {
         )
         .labelsHidden()
         .tint(.green)
-        .disabled(field.required)
+        .disabled(isShareFieldSelectionLocked(field))
       }
     }
     .padding(16)
     .background(Color.black.opacity(0.03))
     .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+  }
+
+  private var sharePreviewContext: VerifySharePreviewContext? {
+    if session.nfcResult == nil && session.mrzResult == nil {
+      return nil
+    }
+
+    return VerifySharePreviewContext(
+      birthDate: nonEmptySharePreviewValue(
+        session.nfcResult?.dateOfBirth ?? session.mrzResult?.birthDateYYMMDD
+      ),
+      documentNumber: nonEmptySharePreviewValue(
+        session.nfcResult?.documentNumber ?? session.mrzResult?.documentNumber
+      ),
+      documentType: nonEmptySharePreviewValue(
+        session.nfcResult?.documentType ?? session.mrzResult?.documentType
+      ),
+      expiryDate: nonEmptySharePreviewValue(
+        session.nfcResult?.expiryDate ?? session.mrzResult?.expiryDateYYMMDD
+      ),
+      givenNames: nonEmptySharePreviewValue(
+        session.nfcResult?.firstName ?? session.mrzResult?.givenNames
+      ),
+      issuingCountry: nonEmptySharePreviewValue(
+        session.mrzResult?.issuingCountry ?? session.nfcResult?.issuingAuthority
+      ),
+      nationality: nonEmptySharePreviewValue(
+        session.nfcResult?.nationality ?? session.mrzResult?.nationality
+      ),
+      optionalData: nonEmptySharePreviewValue(session.mrzResult?.optionalData),
+      sex: nonEmptySharePreviewValue(
+        session.nfcResult?.gender ?? session.mrzResult?.sex
+      ),
+      surname: nonEmptySharePreviewValue(
+        session.nfcResult?.lastName ?? session.mrzResult?.surnames
+      )
+    )
+  }
+
+  private func nonEmptySharePreviewValue(_ value: String?) -> String? {
+    guard let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines) else {
+      return nil
+    }
+
+    return trimmed.isEmpty ? nil : trimmed
   }
 
   @ViewBuilder

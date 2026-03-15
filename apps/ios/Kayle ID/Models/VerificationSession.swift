@@ -463,7 +463,7 @@ final class VerificationSession: ObservableObject {
   func setShareFieldSelected(_ key: String, isSelected: Bool) {
     guard
       let field = shareRequest?.fields.first(where: { $0.key == key }),
-      !field.required
+      !isShareFieldSelectionLocked(field)
     else {
       return
     }
