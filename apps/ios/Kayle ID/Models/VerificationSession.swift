@@ -2,6 +2,41 @@ import Combine
 import Foundation
 import SwiftUI
 
+nonisolated func describeUnexpectedServerMessage(
+  _ message: VerifyServerMessage,
+  fallback: String
+) -> String {
+  if let ackMessage = message.ackMessage {
+    return "\(fallback) Received ack '\(ackMessage)'."
+  }
+
+  if let errorCode = message.errorCode {
+    let errorMessage = message.errorMessage ?? errorCode
+    return "\(fallback) Received server error '\(errorCode)': \(errorMessage)"
+  }
+
+  if let verdict = message.verdict {
+    let outcomeLabel: String
+    switch verdict.outcome {
+    case .accepted:
+      outcomeLabel = "accepted"
+    case .rejected:
+      outcomeLabel = "rejected"
+    }
+    return "\(fallback) Received verdict '\(outcomeLabel)'."
+  }
+
+  if message.shareRequest != nil {
+    return "\(fallback) Received a share request."
+  }
+
+  if message.shareReady != nil {
+    return "\(fallback) Received a share-ready confirmation."
+  }
+
+  return fallback
+}
+
 /// The current step in the verification flow.
 enum VerificationStep: Int, CaseIterable {
   case welcome        // Landing screen
@@ -54,6 +89,11 @@ final class VerificationSession: ObservableObject {
   @Published var verdict: VerifyServerVerdict?
   @Published var shareRequest: VerifyShareRequest?
   @Published var selectedShareFieldKeys = Set<String>()
+  @Published var shareSelectionErrorMessage: String?
+  @Published var isSubmittingShareSelection = false
+  @Published var isUploadingNFC = false
+  @Published var nfcUploadStatusMessage: String?
+  @Published var nfcUploadProgress: Double = 0
 
   // Captured data
   @Published var mrzResult: MRZResult?
@@ -67,8 +107,11 @@ final class VerificationSession: ObservableObject {
   private var selfieSentIndices = Set<Int>()
   private var selfiePayloadsByIndex: [Int: Data] = [:]
   private var selfieUploadCancelled = false
-  private let nfcChunkSize = 512 * 1024
-  private let selfieChunkSize = 512 * 1024
+  private var selfieUploadInFlight = false
+  private var pendingPhaseUpdateTask: Task<Void, Never>?
+  private let nfcChunkSize = 64 * 1024
+  private let selfieChunkSize = 128 * 1024
+  private let selfieCompressionQuality: CGFloat = 0.72
   private let requiredSelfieTotal = 3
 
   private struct NFCUploadPlan {
@@ -93,13 +136,7 @@ final class VerificationSession: ObservableObject {
 
   /// Update the current phase on the server.
   func updatePhase(_ phase: AttemptPhase, error: String? = nil) async {
-    guard let webSocketService else { return }
-
-    do {
-      try await webSocketService.sendPhase(phase, error: error)
-    } catch {
-      print("Failed to update phase: \(error)")
-    }
+    queuePhaseUpdate(phase, error: error)
   }
 
   /// Upload encrypted data to the relay.
@@ -139,22 +176,63 @@ final class VerificationSession: ObservableObject {
     }
 
     let plans = try buildNFCUploadPlans(from: nfcResult)
+    let totalChunkCount = max(1, plans.reduce(0) { $0 + $1.chunks.count })
+    var acknowledgedChunks = Set<String>()
+
+    beginNFCUpload(totalChunkCount: totalChunkCount)
+    await Task.yield()
+    await waitForPendingPhaseUpdates()
+    nfcUploadStatusMessage = "Reconnecting to continue secure upload…"
+    try await webSocketService.reconnectForTransfer()
+    nfcUploadStatusMessage = "Preparing secure upload…"
 
     while true {
       do {
         for plan in plans {
-          try await uploadNFCPlan(plan, via: webSocketService)
+          try await uploadNFCPlan(
+            plan,
+            via: webSocketService,
+            onChunkAcknowledged: { [weak self] chunkKey, chunkIndex, chunkTotal, kind in
+              guard let self else { return }
+              if acknowledgedChunks.insert(chunkKey).inserted {
+                self.nfcUploadProgress =
+                  Double(acknowledgedChunks.count) / Double(totalChunkCount)
+              }
+              self.nfcUploadStatusMessage = "Uploading \(self.nfcArtifactLabel(for: kind)) \(chunkIndex + 1) of \(chunkTotal)…"
+            }
+          )
         }
 
-        return try await completeNFCPhase(plans: plans, via: webSocketService)
+        nfcUploadStatusMessage = "Waiting for secure verification…"
+        let shouldContinue = try await completeNFCPhase(
+          plans: plans,
+          via: webSocketService,
+          onChunkAcknowledged: { [weak self] chunkKey, chunkIndex, chunkTotal, kind in
+            guard let self else { return }
+            if acknowledgedChunks.insert(chunkKey).inserted {
+              self.nfcUploadProgress =
+                Double(acknowledgedChunks.count) / Double(totalChunkCount)
+            }
+            self.nfcUploadStatusMessage = "Uploading \(self.nfcArtifactLabel(for: kind)) \(chunkIndex + 1) of \(chunkTotal)…"
+          }
+        )
+        resetNFCUploadState()
+        return shouldContinue
       } catch let socketError as VerifyWebSocketError {
         switch socketError {
         case .connectionClosed, .notConnected, .reconnectFailed, .serverResponseTimedOut:
+          acknowledgedChunks.removeAll()
+          nfcUploadProgress = 0
+          nfcUploadStatusMessage = "Reconnecting to continue secure upload…"
           try await Task.sleep(nanoseconds: 300_000_000)
           continue
         default:
+          resetNFCUploadState()
           throw socketError
         }
+      } catch {
+        resetNFCUploadState()
+        throw error
       }
     }
   }
@@ -173,9 +251,16 @@ final class VerificationSession: ObservableObject {
 
   /// Send a single selfie image immediately after capture.
   func sendSelfieImage(_ image: UIImage, index: Int, total: Int) async throws -> Bool {
+    try await waitForSelfieUploadTurn()
+    defer {
+      selfieUploadInFlight = false
+    }
+
     guard let webSocketService else {
       throw VerificationError.notInitialized
     }
+
+    await waitForPendingPhaseUpdates()
 
     if selfieUploadCancelled {
       throw SelfieError.uploadFailed
@@ -193,7 +278,7 @@ final class VerificationSession: ObservableObject {
       selfieUploadsExpected = total
     }
 
-    guard let jpeg = image.jpegData(compressionQuality: 0.8) else {
+    guard let jpeg = image.jpegData(compressionQuality: selfieCompressionQuality) else {
       throw SelfieError.compressionFailed
     }
 
@@ -228,15 +313,28 @@ final class VerificationSession: ObservableObject {
     step = newStep
   }
 
+  func syncCompletedMRZScan() {
+    Task { @MainActor in
+      await updatePhase(.mrzComplete)
+
+      do {
+        try await uploadMRZData()
+      } catch {
+        print("Failed to finalize MRZ scan: \(error.localizedDescription)")
+      }
+    }
+  }
+
   /// Handle an error during verification.
   func handleError(_ error: Error) {
+    let resolvedError = resolveDisplayError(error)
     verdict = nil
-    errorMessage = error.localizedDescription
+    errorMessage = resolvedError.localizedDescription
     step = .error
     selfieUploadCancelled = true
 
     Task {
-      await updatePhase(.error, error: error.localizedDescription)
+      await updatePhase(.error, error: resolvedError.localizedDescription)
     }
   }
 
@@ -271,6 +369,8 @@ final class VerificationSession: ObservableObject {
     self.payload = payload
     verdict = nil
     errorMessage = nil
+    shareSelectionErrorMessage = nil
+    isSubmittingShareSelection = false
     selfieUploadCancelled = false
 
     let baseURL = APIService.baseURL(from: payload.sessionId)
@@ -282,7 +382,11 @@ final class VerificationSession: ObservableObject {
       baseURL: baseURL,
       onFatalError: { [weak self] socketError in
         Task { @MainActor [weak self] in
-          self?.handleError(socketError)
+          guard let self else { return }
+          if self.shouldDeferSocketFailure(socketError) {
+            return
+          }
+          self.handleError(socketError)
         }
       },
       onShareRequest: { [weak self] shareRequest in
@@ -312,6 +416,8 @@ final class VerificationSession: ObservableObject {
     errorMessage = nil
     shareRequest = nil
     selectedShareFieldKeys = []
+    shareSelectionErrorMessage = nil
+    isSubmittingShareSelection = false
     mrzResult = nil
     nfcResult = nil
     selfieImages = []
@@ -321,14 +427,21 @@ final class VerificationSession: ObservableObject {
     selfieSentIndices.removeAll()
     selfiePayloadsByIndex.removeAll()
     selfieUploadCancelled = false
+    selfieUploadInFlight = false
+    resetNFCUploadState()
+    pendingPhaseUpdateTask?.cancel()
+    pendingPhaseUpdateTask = nil
   }
 
   private func handleVerdict(_ verdict: VerifyServerVerdict) {
     self.verdict = verdict
     errorMessage = nil
+    shareSelectionErrorMessage = nil
+    isSubmittingShareSelection = false
     selfieUploadCancelled = isRejectedVerdict(verdict)
 
     if isRejectedVerdict(verdict) {
+      webSocketService?.disconnect()
       shareRequest = nil
       selectedShareFieldKeys = []
       moveToStep(.complete)
@@ -338,6 +451,8 @@ final class VerificationSession: ObservableObject {
   private func handleShareRequest(_ shareRequest: VerifyShareRequest) {
     self.shareRequest = shareRequest
     selectedShareFieldKeys = defaultSelectedShareFieldKeys(shareRequest)
+    shareSelectionErrorMessage = nil
+    isSubmittingShareSelection = false
     moveToStep(.shareDetails)
   }
 
@@ -359,6 +474,67 @@ final class VerificationSession: ObservableObject {
     }
 
     selectedShareFieldKeys.remove(key)
+  }
+
+  func canSubmitShareSelection() -> Bool {
+    isShareSelectionSubmittable(
+      shareRequest: shareRequest,
+      selectedShareFieldKeys: selectedShareFieldKeys
+    )
+  }
+
+  func submitShareSelection() async {
+    guard let shareRequest, let webSocketService else {
+      handleError(VerificationError.notInitialized)
+      return
+    }
+
+    let orderedSelectedFieldKeys = orderedSelectedShareFieldKeys(
+      shareRequest: shareRequest,
+      selectedShareFieldKeys: selectedShareFieldKeys
+    )
+
+    guard !orderedSelectedFieldKeys.isEmpty else {
+      shareSelectionErrorMessage =
+        "Choose at least one verification detail before continuing."
+      return
+    }
+
+    shareSelectionErrorMessage = nil
+    isSubmittingShareSelection = true
+
+    do {
+      let response = try await webSocketService.sendShareSelectionAwaitResponse(
+        sessionId: shareRequest.sessionId,
+        selectedFieldKeys: orderedSelectedFieldKeys
+      )
+
+      if let shareReady = response.shareReady {
+        selectedShareFieldKeys = Set(shareReady.selectedFieldKeys)
+        isSubmittingShareSelection = false
+        moveToStep(.complete)
+        return
+      }
+
+      throw VerifyWebSocketError.unexpectedServerResponse(
+        describeUnexpectedServerMessage(
+          response,
+          fallback: "Unexpected share selection response from the server."
+        )
+      )
+    } catch let socketError as VerifyWebSocketError {
+      isSubmittingShareSelection = false
+
+      if case .serverError(_, let message) = socketError {
+        shareSelectionErrorMessage = message
+        return
+      }
+
+      handleError(socketError)
+    } catch {
+      isSubmittingShareSelection = false
+      handleError(error)
+    }
   }
 
   private func buildKnownSelfieUploadPlans() throws -> [SelfieUploadPlan] {
@@ -387,7 +563,13 @@ final class VerificationSession: ObservableObject {
 
   private func isTransientSocketError(_ error: VerifyWebSocketError) -> Bool {
     switch error {
-    case .connectionClosed, .notConnected, .reconnectFailed, .serverResponseTimedOut:
+    case .connectionClosed,
+      .notConnected,
+      .sendFailed,
+      .sendFailedWithReason,
+      .helloTimedOut,
+      .serverResponseTimedOut,
+      .reconnectFailed:
       return true
     default:
       return false
@@ -443,7 +625,12 @@ final class VerificationSession: ObservableObject {
             chunkTotal: chunkTotal
           )
         else {
-          throw VerifyWebSocketError.sendFailed
+          throw VerifyWebSocketError.unexpectedServerResponse(
+            describeUnexpectedServerMessage(
+              response,
+              fallback: "Unexpected selfie upload response from the server."
+            )
+          )
         }
 
         nextChunkIndex += 1
@@ -488,7 +675,12 @@ final class VerificationSession: ObservableObject {
           return
         }
 
-        throw VerifyWebSocketError.sendFailed
+        throw VerifyWebSocketError.unexpectedServerResponse(
+          describeUnexpectedServerMessage(
+            response,
+            fallback: "Unexpected selfie completion response from the server."
+          )
+        )
       } catch let socketError as VerifyWebSocketError {
         guard case .serverError(let code, let message) = socketError else {
           throw socketError
@@ -588,7 +780,8 @@ final class VerificationSession: ObservableObject {
   private func uploadNFCPlan(
     _ plan: NFCUploadPlan,
     via webSocketService: VerifyWebSocketService,
-    startingAt startChunkIndex: Int = 0
+    startingAt startChunkIndex: Int = 0,
+    onChunkAcknowledged: ((String, Int, Int, VerifyDataKind) -> Void)? = nil
   ) async throws {
     guard !plan.chunks.isEmpty else {
       throw VerificationError.uploadFailed
@@ -620,9 +813,16 @@ final class VerificationSession: ObservableObject {
             chunkTotal: chunkTotal
           )
         else {
-          throw VerifyWebSocketError.sendFailed
+          throw VerifyWebSocketError.unexpectedServerResponse(
+            describeUnexpectedServerMessage(
+              response,
+              fallback: "Unexpected NFC upload response from the server."
+            )
+          )
         }
 
+        let chunkKey = "\(plan.kind.rawValue)-0-\(nextChunkIndex)"
+        onChunkAcknowledged?(chunkKey, nextChunkIndex, chunkTotal, plan.kind)
         nextChunkIndex += 1
       } catch let socketError as VerifyWebSocketError {
         guard case .serverError(let code, let message) = socketError else {
@@ -649,7 +849,8 @@ final class VerificationSession: ObservableObject {
 
   private func completeNFCPhase(
     plans: [NFCUploadPlan],
-    via webSocketService: VerifyWebSocketService
+    via webSocketService: VerifyWebSocketService,
+    onChunkAcknowledged: ((String, Int, Int, VerifyDataKind) -> Void)? = nil
   ) async throws -> Bool {
     while true {
       do {
@@ -667,7 +868,12 @@ final class VerificationSession: ObservableObject {
           return false
         }
 
-        throw VerifyWebSocketError.sendFailed
+        throw VerifyWebSocketError.unexpectedServerResponse(
+          describeUnexpectedServerMessage(
+            response,
+            fallback: "Unexpected NFC completion response from the server."
+          )
+        )
       } catch let socketError as VerifyWebSocketError {
         guard case .serverError(let code, let message) = socketError else {
           throw socketError
@@ -685,7 +891,8 @@ final class VerificationSession: ObservableObject {
         try await resendMissingNFCData(
           missingInstruction,
           plans: plans,
-          via: webSocketService
+          via: webSocketService,
+          onChunkAcknowledged: onChunkAcknowledged
         )
       }
     }
@@ -694,7 +901,8 @@ final class VerificationSession: ObservableObject {
   private func resendMissingNFCData(
     _ missingInstruction: VerifyMissingNFCDataInstruction,
     plans: [NFCUploadPlan],
-    via webSocketService: VerifyWebSocketService
+    via webSocketService: VerifyWebSocketService,
+    onChunkAcknowledged: ((String, Int, Int, VerifyDataKind) -> Void)? = nil
   ) async throws {
     let plansByKind = Dictionary(uniqueKeysWithValues: plans.map { ($0.kind.rawValue, $0) })
 
@@ -706,7 +914,11 @@ final class VerificationSession: ObservableObject {
         continue
       }
 
-      try await uploadNFCPlan(plan, via: webSocketService)
+      try await uploadNFCPlan(
+        plan,
+        via: webSocketService,
+        onChunkAcknowledged: onChunkAcknowledged
+      )
     }
 
     for missingChunk in missingInstruction.missingChunks {
@@ -727,7 +939,8 @@ final class VerificationSession: ObservableObject {
         try await uploadNFCPlan(
           plan,
           via: webSocketService,
-          startingAt: chunkIndex
+          startingAt: chunkIndex,
+          onChunkAcknowledged: onChunkAcknowledged
         )
       }
     }
@@ -743,6 +956,93 @@ final class VerificationSession: ObservableObject {
       return .sod
     default:
       return nil
+    }
+  }
+
+  private func queuePhaseUpdate(_ phase: AttemptPhase, error: String?) {
+    let previousTask = pendingPhaseUpdateTask
+    pendingPhaseUpdateTask = Task { @MainActor [weak self] in
+      await previousTask?.value
+
+      guard let self, let webSocketService = self.webSocketService else {
+        return
+      }
+
+      do {
+        try await webSocketService.sendPhase(phase, error: error)
+      } catch {
+        print("Failed to update phase \(phase.rawValue): \(error.localizedDescription)")
+      }
+    }
+  }
+
+  private func waitForPendingPhaseUpdates() async {
+    let task = pendingPhaseUpdateTask
+    await task?.value
+  }
+
+  private func waitForSelfieUploadTurn() async throws {
+    while selfieUploadInFlight {
+      try await Task.sleep(nanoseconds: 50_000_000)
+    }
+
+    selfieUploadInFlight = true
+  }
+
+  private func resolveDisplayError(_ error: Error) -> Error {
+    guard let socketError = error as? VerifyWebSocketError else {
+      return error
+    }
+
+    switch socketError {
+    case .connectionClosed:
+      return VerifyWebSocketError.reconnectFailed
+    default:
+      return socketError
+    }
+  }
+
+  private func shouldDeferSocketFailure(_ error: VerifyWebSocketError) -> Bool {
+    guard step == .nfc, !isUploadingNFC else {
+      return false
+    }
+
+    switch error {
+    case .connectionClosed,
+      .notConnected,
+      .sendFailed,
+      .sendFailedWithReason,
+      .helloTimedOut,
+      .serverResponseTimedOut,
+      .reconnectFailed:
+      return true
+    default:
+      return false
+    }
+  }
+
+  private func beginNFCUpload(totalChunkCount: Int) {
+    isUploadingNFC = true
+    nfcUploadProgress = totalChunkCount > 0 ? 0 : 1
+    nfcUploadStatusMessage = "Preparing secure upload…"
+  }
+
+  private func resetNFCUploadState() {
+    isUploadingNFC = false
+    nfcUploadProgress = 0
+    nfcUploadStatusMessage = nil
+  }
+
+  private func nfcArtifactLabel(for kind: VerifyDataKind) -> String {
+    switch kind {
+    case .dg1:
+      return "passport details"
+    case .dg2:
+      return "passport portrait"
+    case .sod:
+      return "passport security data"
+    case .selfie:
+      return "selfie"
     }
   }
 }

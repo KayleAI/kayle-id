@@ -13,6 +13,12 @@
     "directory": "./public",
     "run_worker_first": true
   },
+  "services": [
+    {
+      "binding": "FACE_MATCHER",
+      "service": "kayle-id-face-matcher"
+    }
+  ],
   "r2_buckets": [
     {
       "binding": "STORAGE",

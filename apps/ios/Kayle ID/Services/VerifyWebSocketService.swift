@@ -12,10 +12,12 @@ enum VerifyWebSocketError: LocalizedError {
   case notConnected
   case invalidURL
   case sendFailed
+  case sendFailedWithReason(String)
   case connectionClosed
   case helloTimedOut
   case serverResponseTimedOut
   case serverError(code: String, message: String)
+  case unexpectedServerResponse(String)
   case reconnectFailed
 
   var errorDescription: String? {
@@ -26,6 +28,8 @@ enum VerifyWebSocketError: LocalizedError {
       return "Invalid WebSocket URL."
     case .sendFailed:
       return "Failed to send WebSocket message."
+    case .sendFailedWithReason(let message):
+      return "Failed to send WebSocket message: \(message)"
     case .connectionClosed:
       return "WebSocket connection closed unexpectedly."
     case .helloTimedOut:
@@ -33,6 +37,8 @@ enum VerifyWebSocketError: LocalizedError {
     case .serverResponseTimedOut:
       return "Timed out waiting for verification server response."
     case .serverError(_, let message):
+      return message
+    case .unexpectedServerResponse(let message):
       return message
     case .reconnectFailed:
       return "Failed to reconnect verification session."
@@ -55,6 +61,10 @@ enum VerifyWebSocketError: LocalizedError {
 }
 
 final class VerifyWebSocketService: NSObject, URLSessionWebSocketDelegate {
+  // The verification flow keeps the socket open while the user scans MRZ and reads NFC.
+  private let requestTimeoutSeconds = 10 * 60.0
+  private let resourceTimeoutSeconds = 15 * 60.0
+  private let keepaliveIntervalNs: UInt64 = 20_000_000_000
   private let sessionId: String
   private let attemptId: String
   private let mobileWriteToken: String
@@ -65,7 +75,7 @@ final class VerifyWebSocketService: NSObject, URLSessionWebSocketDelegate {
 
   private var webSocketTask: URLSessionWebSocketTask?
   private let stateQueue = DispatchQueue(label: "com.kayle.verify.websocket.state")
-  private let maxReconnectAttempts = 3
+  private let maxReconnectAttempts = 8
   private let helloAckTimeoutNs: UInt64 = 8_000_000_000
   private let serverResponseTimeoutNs: UInt64 = 8_000_000_000
 
@@ -80,11 +90,12 @@ final class VerifyWebSocketService: NSObject, URLSessionWebSocketDelegate {
   private var pendingServerResponseContinuation: CheckedContinuation<VerifyServerMessage, Error>?
   private var serverResponseTimeoutTask: Task<Void, Never>?
   private var expectedVerdictClose = false
+  private var keepaliveTask: Task<Void, Never>?
 
   private lazy var urlSession: URLSession = {
     let config = URLSessionConfiguration.default
-    config.timeoutIntervalForRequest = 30
-    config.timeoutIntervalForResource = 60
+    config.timeoutIntervalForRequest = requestTimeoutSeconds
+    config.timeoutIntervalForResource = resourceTimeoutSeconds
     config.tlsMinimumSupportedProtocolVersion = .TLSv12
     return URLSession(configuration: config, delegate: self, delegateQueue: nil)
   }()
@@ -139,18 +150,20 @@ final class VerifyWebSocketService: NSObject, URLSessionWebSocketDelegate {
       if let wsError = error as? VerifyWebSocketError {
         throw wsError
       }
-      throw VerifyWebSocketError.sendFailed
+      throw VerifyWebSocketError.sendFailedWithReason(error.localizedDescription)
     }
   }
 
   func sendPhase(_ phase: AttemptPhase, error: String?) async throws {
-    guard let payload = codec.encodePhase(phase: phase.rawValue, error: error) else {
-      throw VerifyWebSocketError.sendFailed
+    let response = try await sendPhaseAwaitResponse(phase, error: error)
+    guard isExpectedPhaseAck(response.ackMessage) else {
+      throw VerifyWebSocketError.unexpectedServerResponse(
+        describeUnexpectedServerMessage(
+          response,
+          fallback: "Unexpected verification phase response from the server."
+        )
+      )
     }
-    #if DEBUG
-    print("WS -> phase \(phase.rawValue)")
-    #endif
-    try await send(data: payload)
   }
 
   func sendPhaseAwaitResponse(
@@ -170,7 +183,7 @@ final class VerifyWebSocketService: NSObject, URLSessionWebSocketDelegate {
       if let wsError = error as? VerifyWebSocketError {
         throw wsError
       }
-      throw VerifyWebSocketError.sendFailed
+      throw VerifyWebSocketError.sendFailedWithReason(error.localizedDescription)
     }
   }
 
@@ -228,7 +241,31 @@ final class VerifyWebSocketService: NSObject, URLSessionWebSocketDelegate {
       if let wsError = error as? VerifyWebSocketError {
         throw wsError
       }
+      throw VerifyWebSocketError.sendFailedWithReason(error.localizedDescription)
+    }
+  }
+
+  func sendShareSelectionAwaitResponse(
+    sessionId: String,
+    selectedFieldKeys: [String]
+  ) async throws -> VerifyServerMessage {
+    guard let payload = codec.encodeShareSelection(
+      sessionId: sessionId,
+      selectedFieldKeys: selectedFieldKeys
+    ) else {
       throw VerifyWebSocketError.sendFailed
+    }
+
+    let responseTask = Task { try await waitForServerResponse() }
+    do {
+      try await send(data: payload)
+      return try await responseTask.value
+    } catch {
+      responseTask.cancel()
+      if let wsError = error as? VerifyWebSocketError {
+        throw wsError
+      }
+      throw VerifyWebSocketError.sendFailedWithReason(error.localizedDescription)
     }
   }
 
@@ -265,12 +302,20 @@ final class VerifyWebSocketService: NSObject, URLSessionWebSocketDelegate {
       isClosing = true
       expectedVerdictClose = false
     }
+    stopKeepalive()
     resolvePendingHello(.failure(.connectionClosed))
     resolvePendingServerResponse(.failure(.connectionClosed))
     closeSocket()
   }
 
+  func reconnectForTransfer() async throws {
+    disconnect()
+    try connect()
+    try await sendHello()
+  }
+
   private func closeSocket() {
+    stopKeepalive()
     webSocketTask?.cancel(with: .goingAway, reason: nil)
     webSocketTask = nil
   }
@@ -283,7 +328,13 @@ final class VerifyWebSocketService: NSObject, URLSessionWebSocketDelegate {
     let task = urlSession.webSocketTask(with: url)
     webSocketTask = task
     task.resume()
-    receiveLoop()
+    receiveLoop(for: task)
+  }
+
+  private func isCurrentTask(_ task: URLSessionWebSocketTask) -> Bool {
+    stateQueue.sync {
+      webSocketTask === task
+    }
   }
 
   private func resolveHelloMetadata() async -> (String, String) {
@@ -430,6 +481,50 @@ final class VerifyWebSocketService: NSObject, URLSessionWebSocketDelegate {
     }
   }
 
+  private func startKeepalive() {
+    stopKeepalive()
+    keepaliveTask = Task { [weak self] in
+      guard let self else { return }
+
+      while !Task.isCancelled {
+        do {
+          try await Task.sleep(nanoseconds: keepaliveIntervalNs)
+        } catch {
+          return
+        }
+
+        guard !Task.isCancelled else {
+          return
+        }
+
+        do {
+          try await sendPing()
+        } catch let wsError as VerifyWebSocketError {
+#if DEBUG
+          print("WebSocket keepalive failed: \(wsError.localizedDescription)")
+#endif
+          resolvePendingHello(.failure(.connectionClosed))
+          resolvePendingServerResponse(.failure(.connectionClosed))
+          scheduleReconnect(lastErrorCode: wsError.serverErrorCode)
+          return
+        } catch {
+#if DEBUG
+          print("WebSocket keepalive failed: \(error.localizedDescription)")
+#endif
+          resolvePendingHello(.failure(.connectionClosed))
+          resolvePendingServerResponse(.failure(.connectionClosed))
+          scheduleReconnect(lastErrorCode: nil)
+          return
+        }
+      }
+    }
+  }
+
+  private func stopKeepalive() {
+    keepaliveTask?.cancel()
+    keepaliveTask = nil
+  }
+
   private func handleFatalError(_ error: VerifyWebSocketError) {
     Task { @MainActor [onFatalError] in
       onFatalError?(error)
@@ -496,7 +591,7 @@ final class VerifyWebSocketService: NSObject, URLSessionWebSocketDelegate {
         break
       }
 
-      let delayNs = UInt64(attempt) * 500_000_000
+      let delayNs = UInt64(min(attempt, 5)) * 1_000_000_000
       try? await Task.sleep(nanoseconds: delayNs)
 
       do {
@@ -512,6 +607,7 @@ final class VerifyWebSocketService: NSObject, URLSessionWebSocketDelegate {
           isReconnecting = false
           isAuthenticated = true
         }
+        startKeepalive()
 
         return
       } catch let wsError as VerifyWebSocketError {
@@ -527,7 +623,7 @@ final class VerifyWebSocketService: NSObject, URLSessionWebSocketDelegate {
     stateQueue.sync {
       isReconnecting = false
     }
-    handleFatalError(lastError)
+    handleFatalError(resolveReconnectFailure(lastError))
   }
 
   private func send(data: Data) async throws {
@@ -538,7 +634,27 @@ final class VerifyWebSocketService: NSObject, URLSessionWebSocketDelegate {
     try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
       task.send(.data(data)) { error in
         if let error {
-          continuation.resume(throwing: error)
+          if self.isTimedOutError(error) {
+#if DEBUG
+            print("WebSocket send timed out. Reconnecting…")
+#endif
+            self.stopKeepalive()
+            self.closeSocket()
+            self.resolvePendingHello(.failure(.connectionClosed))
+            self.resolvePendingServerResponse(.failure(.connectionClosed))
+            self.scheduleReconnect(lastErrorCode: nil)
+            continuation.resume(throwing: VerifyWebSocketError.connectionClosed)
+            return
+          }
+
+#if DEBUG
+          print("WebSocket send error: \(error.localizedDescription)")
+#endif
+          continuation.resume(
+            throwing: VerifyWebSocketError.sendFailedWithReason(
+              error.localizedDescription
+            )
+          )
         } else {
           continuation.resume()
         }
@@ -546,10 +662,54 @@ final class VerifyWebSocketService: NSObject, URLSessionWebSocketDelegate {
     }
   }
 
-  private func receiveLoop() {
-    guard let task = webSocketTask else { return }
+  private func isTimedOutError(_ error: Error) -> Bool {
+    if let urlError = error as? URLError {
+      return urlError.code == .timedOut
+    }
+
+    let nsError = error as NSError
+    return nsError.domain == NSURLErrorDomain && nsError.code == NSURLErrorTimedOut
+  }
+
+  private func resolveReconnectFailure(
+    _ error: VerifyWebSocketError
+  ) -> VerifyWebSocketError {
+    switch error {
+    case .connectionClosed,
+      .notConnected,
+      .sendFailed,
+      .sendFailedWithReason,
+      .serverResponseTimedOut:
+      return .reconnectFailed
+    default:
+      return error
+    }
+  }
+
+  private func sendPing() async throws {
+    guard let task = webSocketTask else {
+      throw VerifyWebSocketError.notConnected
+    }
+
+    try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+      task.sendPing { error in
+        if let error {
+          continuation.resume(
+            throwing: VerifyWebSocketError.sendFailedWithReason(
+              error.localizedDescription
+            )
+          )
+        } else {
+          continuation.resume()
+        }
+      }
+    }
+  }
+
+  private func receiveLoop(for task: URLSessionWebSocketTask) {
     task.receive { [weak self] result in
       guard let self else { return }
+      guard self.isCurrentTask(task) else { return }
       switch result {
       case .success(let message):
         switch message {
@@ -568,6 +728,7 @@ final class VerifyWebSocketService: NSObject, URLSessionWebSocketDelegate {
                   self.stateQueue.sync {
                     self.reconnectAttempt = 0
                   }
+                  self.startKeepalive()
                   self.resolvePendingHello(.success(()))
                 case .failure(let code, let message):
                   let error = VerifyWebSocketError.serverError(
@@ -579,7 +740,7 @@ final class VerifyWebSocketService: NSObject, URLSessionWebSocketDelegate {
                     self.handleFatalError(error)
                   }
                 }
-                self.receiveLoop()
+                self.receiveLoop(for: task)
                 return
               }
             }
@@ -587,7 +748,7 @@ final class VerifyWebSocketService: NSObject, URLSessionWebSocketDelegate {
             if self.isAwaitingServerResponse() {
               if let shareRequest = serverMessage.shareRequest {
                 self.handleShareRequest(shareRequest)
-                self.receiveLoop()
+                self.receiveLoop(for: task)
                 return
               }
 
@@ -597,7 +758,7 @@ final class VerifyWebSocketService: NSObject, URLSessionWebSocketDelegate {
                   message: serverMessage.errorMessage ?? code
                 )
                 self.resolvePendingServerResponse(.failure(error))
-                self.receiveLoop()
+                self.receiveLoop(for: task)
                 return
               }
 
@@ -606,20 +767,26 @@ final class VerifyWebSocketService: NSObject, URLSessionWebSocketDelegate {
                   self.expectVerdictClose()
                 }
                 self.resolvePendingServerResponse(.success(serverMessage))
-                self.receiveLoop()
+                self.receiveLoop(for: task)
+                return
+              }
+
+              if serverMessage.shareReady != nil {
+                self.resolvePendingServerResponse(.success(serverMessage))
+                self.receiveLoop(for: task)
                 return
               }
 
               if serverMessage.ackMessage != nil {
                 self.resolvePendingServerResponse(.success(serverMessage))
-                self.receiveLoop()
+                self.receiveLoop(for: task)
                 return
               }
             }
 
             if let shareRequest = serverMessage.shareRequest {
               self.handleShareRequest(shareRequest)
-              self.receiveLoop()
+              self.receiveLoop(for: task)
               return
             }
 
@@ -640,6 +807,10 @@ final class VerifyWebSocketService: NSObject, URLSessionWebSocketDelegate {
             } else if let shareRequest = serverMessage.shareRequest {
               print(
                 "WS <- shareRequest fields=\(shareRequest.fields.count)"
+              )
+            } else if let shareReady = serverMessage.shareReady {
+              print(
+                "WS <- shareReady fields=\(shareReady.selectedFieldKeys.count)"
               )
             } else if let errorMessage = serverMessage.errorMessage {
               let code = serverMessage.errorCode ?? "unknown"
@@ -663,12 +834,13 @@ final class VerifyWebSocketService: NSObject, URLSessionWebSocketDelegate {
         if self.consumeExpectedVerdictClose() {
           return
         }
+        self.stopKeepalive()
         self.resolvePendingHello(.failure(.connectionClosed))
         self.resolvePendingServerResponse(.failure(.connectionClosed))
         self.scheduleReconnect(lastErrorCode: nil)
         return
       }
-      self.receiveLoop()
+      self.receiveLoop(for: task)
     }
   }
 
@@ -678,6 +850,10 @@ final class VerifyWebSocketService: NSObject, URLSessionWebSocketDelegate {
     didCloseWith closeCode: URLSessionWebSocketTask.CloseCode,
     reason: Data?
   ) {
+    guard isCurrentTask(webSocketTask) else {
+      return
+    }
+
     if closeCode == .normalClosure || stateQueue.sync(execute: { isClosing }) {
       return
     }
@@ -686,6 +862,7 @@ final class VerifyWebSocketService: NSObject, URLSessionWebSocketDelegate {
       return
     }
 
+    stopKeepalive()
     resolvePendingHello(.failure(.connectionClosed))
     resolvePendingServerResponse(.failure(.connectionClosed))
     scheduleReconnect(lastErrorCode: nil)

@@ -2,6 +2,8 @@ import Foundation
 
 /// API service for communicating with the Kayle verification backend.
 final class APIService: NSObject, URLSessionDelegate, URLSessionTaskDelegate {
+  private static let productionBaseURL = "https://api.kayle.id"
+  private static let developmentBaseURLKey = "KAYLE_DEV_API_BASE_URL"
   private let sessionId: String
   private let attemptId: String
   private let mobileWriteToken: String
@@ -36,13 +38,15 @@ final class APIService: NSObject, URLSessionDelegate, URLSessionTaskDelegate {
   /// Construct base URL from session ID environment prefix.
   static func baseURL(from _: String) -> String {
     #if DEBUG
-    // Local settings for non-App Store builds.
-    return "http://100.98.104.67:8787"
-    #else
-    return "https://api.kayle.id"
+    if let configuredBaseURL = configuredDevelopmentBaseURL() {
+      return configuredBaseURL
+    }
     #endif
+
+    return productionBaseURL
   }
 
+  @MainActor
   static func fetchHandoffPayload(sessionId: String) async throws -> QRCodePayload {
     guard let url = URL(string: "\(baseURL(from: sessionId))/v1/verify/session/\(sessionId)/handoff")
     else {
@@ -85,8 +89,7 @@ final class APIService: NSObject, URLSessionDelegate, URLSessionTaskDelegate {
       throw APIError.invalidResponse
     }
 
-    let formatter = ISO8601DateFormatter()
-    guard let expiresAt = formatter.date(from: expiresAtValue) else {
+    guard let expiresAt = parseQRCodePayloadDate(expiresAtValue) else {
       throw APIError.invalidResponse
     }
 
@@ -213,6 +216,46 @@ final class APIService: NSObject, URLSessionDelegate, URLSessionTaskDelegate {
     }
     #endif
     completionHandler(.performDefaultHandling, nil)
+  }
+
+  #if DEBUG
+  private static func configuredDevelopmentBaseURL() -> String? {
+    let environmentValue = ProcessInfo.processInfo.environment[developmentBaseURLKey]
+    let infoValue = Bundle.main.object(forInfoDictionaryKey: developmentBaseURLKey) as? String
+    let rawValue = environmentValue ?? infoValue
+
+    guard
+      let rawValue,
+      let normalizedValue = normalizeBaseURL(rawValue)
+    else {
+      return nil
+    }
+
+    return normalizedValue
+  }
+  #endif
+
+  private static func normalizeBaseURL(_ rawValue: String) -> String? {
+    let trimmedValue = rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !trimmedValue.isEmpty else {
+      return nil
+    }
+
+    guard
+      let url = URL(string: trimmedValue),
+      let scheme = url.scheme?.lowercased(),
+      let host = url.host,
+      !host.isEmpty,
+      scheme == "http" || scheme == "https"
+    else {
+      return nil
+    }
+
+    var components = URLComponents()
+    components.scheme = scheme
+    components.host = host
+    components.port = url.port
+    return components.string
   }
 }
 

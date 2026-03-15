@@ -1,18 +1,38 @@
 import { describe, expect, test } from "bun:test";
 import {
-  computeFaceScore,
-  evaluateFaceMatch,
   extractDg2FaceImage,
   validateAuthenticity,
 } from "@/v1/verify/validation";
 import {
   createDg2Artifact,
-  createLowSimilaritySelfies,
   createMalformedDg2Artifact,
   createSodArtifact,
   createValidNfcArtifacts,
   loadVerifyFixtureBytes,
 } from "../helpers/verify-artifacts";
+
+function wrapSodAsEfSod(contentInfo: Uint8Array): Uint8Array {
+  const length = contentInfo.length;
+
+  if (length < 0x80) {
+    return Uint8Array.from([0x77, length, ...contentInfo]);
+  }
+
+  const lengthBytes: number[] = [];
+  let remaining = length;
+
+  while (remaining > 0) {
+    lengthBytes.unshift(remaining % 0x1_00);
+    remaining = Math.floor(remaining / 0x1_00);
+  }
+
+  return Uint8Array.from([
+    0x77,
+    0x80 + lengthBytes.length,
+    ...lengthBytes,
+    ...contentInfo,
+  ]);
+}
 
 describe("verify validation engine", () => {
   test("passes authenticity when CMS SOD hash values match DG1 and DG2", async () => {
@@ -93,6 +113,21 @@ describe("verify validation engine", () => {
     }
   });
 
+  test("passes authenticity when SOD is wrapped as EF.SOD data group bytes", async () => {
+    const artifacts = await createValidNfcArtifacts();
+
+    const result = await validateAuthenticity({
+      ...artifacts,
+      sod: wrapSodAsEfSod(artifacts.sod),
+    });
+
+    expect(result.ok).toBeTrue();
+    if (result.ok) {
+      expect(result.algorithm).toBe("SHA-256");
+      expect(result.source).toBe("cms_signed_data");
+    }
+  });
+
   test("extracts a JPEG portrait image from DG2", async () => {
     const jpegBytes = await loadVerifyFixtureBytes("icon.jpg");
     const dg2 = createDg2Artifact({
@@ -123,96 +158,23 @@ describe("verify validation engine", () => {
     expect(result.imageData.length).toBe(jp2Bytes.length);
   });
 
+  test("extracts a JPEG portrait image from EF.DG2-wrapped payloads", async () => {
+    const jpegBytes = await loadVerifyFixtureBytes("icon.jpg");
+    const dg2 = createDg2Artifact({
+      imageData: jpegBytes,
+      imageFormat: "jpeg",
+      wrapWithEfTag: true,
+    });
+
+    const result = extractDg2FaceImage(dg2);
+
+    expect(result.imageFormat).toBe("jpeg");
+    expect(result.imageWidth).toBe(32);
+    expect(result.imageHeight).toBe(32);
+    expect(result.imageData.length).toBe(jpegBytes.length);
+  });
+
   test("rejects malformed DG2 payloads", () => {
     expect(() => extractDg2FaceImage(createMalformedDg2Artifact())).toThrow();
-  });
-
-  test("face score threshold checks remain deterministic at 0.79, 0.80 and 0.81", () => {
-    const low = evaluateFaceMatch({
-      faceScore: 0.79,
-      threshold: 0.8,
-    });
-    const edge = evaluateFaceMatch({
-      faceScore: 0.8,
-      threshold: 0.8,
-    });
-    const high = evaluateFaceMatch({
-      faceScore: 0.81,
-      threshold: 0.8,
-    });
-
-    expect(low.faceScore).toBeCloseTo(0.79, 5);
-    expect(low.passed).toBeFalse();
-    expect(edge.faceScore).toBeCloseTo(0.8, 5);
-    expect(edge.passed).toBeTrue();
-    expect(high.faceScore).toBeCloseTo(0.81, 5);
-    expect(high.passed).toBeTrue();
-  });
-
-  test("computes a passing face score for matching passport/selfie images", async () => {
-    const iconJpeg = await loadVerifyFixtureBytes("icon.jpg");
-    const dg2 = createDg2Artifact({
-      imageData: iconJpeg,
-      imageFormat: "jpeg",
-    });
-
-    const result = await computeFaceScore({
-      dg2Image: dg2,
-      selfies: [iconJpeg],
-      threshold: 0.8,
-    });
-
-    expect(result.usedFallback).toBeFalse();
-    expect(result.passed).toBeTrue();
-    expect((result.faceScore ?? 0) > 0.95).toBeTrue();
-  });
-
-  test("computes a failing face score for mismatched selfies", async () => {
-    const iconJpeg = await loadVerifyFixtureBytes("icon.jpg");
-    const dg2 = createDg2Artifact({
-      imageData: iconJpeg,
-      imageFormat: "jpeg",
-    });
-
-    const result = await computeFaceScore({
-      dg2Image: dg2,
-      selfies: createLowSimilaritySelfies(),
-      threshold: 0.8,
-    });
-
-    expect(result.usedFallback).toBeFalse();
-    expect(result.passed).toBeFalse();
-    expect((result.faceScore ?? 1) < 0.8).toBeTrue();
-  });
-
-  test("uses the max score across three selfies", async () => {
-    const iconJpeg = await loadVerifyFixtureBytes("icon.jpg");
-    const dg2 = createDg2Artifact({
-      imageData: iconJpeg,
-      imageFormat: "jpeg",
-    });
-
-    const result = await computeFaceScore({
-      dg2Image: dg2,
-      selfies: [...createLowSimilaritySelfies(), iconJpeg],
-      threshold: 0.8,
-    });
-
-    expect(result.usedFallback).toBeFalse();
-    expect(result.passed).toBeTrue();
-    expect((result.faceScore ?? 0) > 0.95).toBeTrue();
-  });
-
-  test("face score fail-open is used when similarity cannot be computed", async () => {
-    const result = await computeFaceScore({
-      dg2Image: createMalformedDg2Artifact(),
-      selfies: [new Uint8Array([0x00, 0x01, 0x02])],
-      threshold: 0.8,
-    });
-
-    expect(result.usedFallback).toBeTrue();
-    expect(result.passed).toBeTrue();
-    expect(result.faceScore).toBeNull();
-    expect(result.reason).toBe("face_score_unavailable");
   });
 });

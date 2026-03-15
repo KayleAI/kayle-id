@@ -62,19 +62,19 @@ afterEach(() => {
 });
 
 describe("useDevice", () => {
-  test("iPhone iOS 16+ is supported", () => {
+  test("iPhone browsers are routed to handoff UI", () => {
     setNavigator({
       userAgent:
         "Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.0 Mobile/15E148 Safari/604.1",
     });
 
     expect(useDevice()).toEqual({
-      supported: true,
+      supported: false,
       os: "ios",
     });
   });
 
-  test("iPhone below iOS 16 is unsupported", () => {
+  test("older iPhone browsers are also routed to handoff UI", () => {
     setNavigator({
       userAgent:
         "Mozilla/5.0 (iPhone; CPU iPhone OS 15_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/15.0 Mobile/15E148 Safari/604.1",

@@ -153,6 +153,12 @@ final class VerifyWebSocketAuthPolicyTests: XCTestCase {
     )
   }
 
+  func testMatchesExpectedPhaseAck() {
+    XCTAssertTrue(isExpectedPhaseAck("phase_ok"))
+    XCTAssertFalse(isExpectedPhaseAck("data_ok_1_0"))
+    XCTAssertFalse(isExpectedPhaseAck(nil))
+  }
+
   func testAcceptedVerdictHelpers() {
     let verdict = VerifyServerVerdict(
       outcome: .accepted,
@@ -211,8 +217,126 @@ final class VerifyWebSocketAuthPolicyTests: XCTestCase {
       "Kayle Document ID"
     )
     XCTAssertEqual(
+      displayNameForShareField("dg1_date_of_birth"),
+      "Date of Birth"
+    )
+    XCTAssertEqual(
+      displayNameForShareField("dg2_face_image"),
+      "Document Photo"
+    )
+    XCTAssertEqual(
       displayNameForShareField("age_over_18"),
-      "Age Over 18"
+      "Over 18"
+    )
+  }
+
+  func testShareRequestFieldsAreGroupedIntoKayleRequiredAndOptionalSections() {
+    let shareRequest = VerifyShareRequest(
+      contractVersion: 1,
+      sessionId: "vs_test_123",
+      fields: [
+        VerifyShareRequestField(
+          key: "kayle_document_id",
+          reason: "Kayle document identifier.",
+          required: true
+        ),
+        VerifyShareRequestField(
+          key: "kayle_human_id",
+          reason: "Kayle human identifier.",
+          required: true
+        ),
+        VerifyShareRequestField(
+          key: "dg1_nationality",
+          reason: "Nationality is required.",
+          required: true
+        ),
+        VerifyShareRequestField(
+          key: "dg2_face_image",
+          reason: "Photo is optional.",
+          required: false
+        ),
+      ]
+    )
+
+    XCTAssertEqual(
+      kayleShareRequestFields(shareRequest).map(\.key),
+      ["kayle_document_id", "kayle_human_id"]
+    )
+    XCTAssertEqual(
+      requiredShareRequestFields(shareRequest).map(\.key),
+      ["dg1_nationality"]
+    )
+    XCTAssertEqual(
+      optionalShareRequestFields(shareRequest).map(\.key),
+      ["dg2_face_image"]
+    )
+  }
+
+  func testOrderedSelectedShareFieldKeysFollowShareRequestOrder() {
+    let shareRequest = VerifyShareRequest(
+      contractVersion: 1,
+      sessionId: "vs_test_123",
+      fields: [
+        VerifyShareRequestField(
+          key: "kayle_document_id",
+          reason: "Document ID is required.",
+          required: true
+        ),
+        VerifyShareRequestField(
+          key: "dg1_nationality",
+          reason: "Nationality is optional.",
+          required: false
+        ),
+        VerifyShareRequestField(
+          key: "kayle_human_id",
+          reason: "Human ID is optional.",
+          required: false
+        ),
+      ]
+    )
+
+    XCTAssertEqual(
+      orderedSelectedShareFieldKeys(
+        shareRequest: shareRequest,
+        selectedShareFieldKeys: Set([
+          "kayle_human_id",
+          "kayle_document_id",
+        ])
+      ),
+      ["kayle_document_id", "kayle_human_id"]
+    )
+  }
+
+  func testShareSelectionIsOnlySubmittableWhenRequiredFieldsRemainSelected() {
+    let shareRequest = VerifyShareRequest(
+      contractVersion: 1,
+      sessionId: "vs_test_123",
+      fields: [
+        VerifyShareRequestField(
+          key: "kayle_document_id",
+          reason: "Document ID is required.",
+          required: true
+        ),
+        VerifyShareRequestField(
+          key: "dg1_nationality",
+          reason: "Nationality is optional.",
+          required: false
+        ),
+      ]
+    )
+
+    XCTAssertTrue(
+      isShareSelectionSubmittable(
+        shareRequest: shareRequest,
+        selectedShareFieldKeys: Set(["kayle_document_id"])
+      )
+    )
+
+    XCTAssertFalse(
+      isShareSelectionSubmittable(
+        shareRequest: shareRequest,
+        selectedShareFieldKeys: []
+      )
     )
   }
 }

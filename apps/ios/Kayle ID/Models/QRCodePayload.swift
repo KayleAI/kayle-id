@@ -1,7 +1,30 @@
 import Foundation
 
+private let qrCodePayloadISO8601WithFractionalSecondsFormatter = {
+  let formatter = ISO8601DateFormatter()
+  formatter.formatOptions = [
+    .withInternetDateTime,
+    .withFractionalSeconds,
+  ]
+  return formatter
+}()
+
+private let qrCodePayloadISO8601Formatter = ISO8601DateFormatter()
+
+func parseQRCodePayloadDate(_ value: String) -> Date? {
+  qrCodePayloadISO8601WithFractionalSecondsFormatter.date(from: value) ??
+    qrCodePayloadISO8601Formatter.date(from: value)
+}
+
 /// QR code payload parsed from the `kayle-id://` URL scheme.
 struct QRCodePayload: Codable {
+  private static let supportedSchemePrefixes = [
+    "kayle-id://",
+    "kayle://",
+    "kayle-id:",
+    "kayle:",
+  ]
+
   let v: Int?
   let sessionId: String
   let attemptId: String
@@ -16,11 +39,44 @@ struct QRCodePayload: Codable {
     case expiresAt = "expires_at"
   }
 
+  init(
+    v: Int?,
+    sessionId: String,
+    attemptId: String,
+    mobileWriteToken: String,
+    expiresAt: Date
+  ) {
+    self.v = v
+    self.sessionId = sessionId
+    self.attemptId = attemptId
+    self.mobileWriteToken = mobileWriteToken
+    self.expiresAt = expiresAt
+  }
+
+  init(from decoder: Decoder) throws {
+    let container = try decoder.container(keyedBy: CodingKeys.self)
+    v = try container.decodeIfPresent(Int.self, forKey: .v)
+    sessionId = try container.decode(String.self, forKey: .sessionId)
+    attemptId = try container.decode(String.self, forKey: .attemptId)
+    mobileWriteToken = try container.decode(String.self, forKey: .mobileWriteToken)
+    let expiresAtValue = try container.decode(String.self, forKey: .expiresAt)
+
+    guard let parsedExpiresAt = parseQRCodePayloadDate(expiresAtValue) else {
+      throw DecodingError.dataCorruptedError(
+        forKey: .expiresAt,
+        in: container,
+        debugDescription: "expires_at must be a valid ISO-8601 timestamp."
+      )
+    }
+
+    expiresAt = parsedExpiresAt
+  }
+
   /// Parse a QR code payload from a `kayle-id://` URL.
   static func parse(from urlString: String) throws -> QRCodePayload {
-    // Remove the scheme prefix.
-    let schemePrefixes = ["kayle-id://", "kayle://"]
-    guard let prefix = schemePrefixes.first(where: { urlString.hasPrefix($0) }) else {
+    guard
+      let prefix = supportedSchemePrefixes.first(where: { urlString.hasPrefix($0) })
+    else {
       throw QRCodePayloadError.invalidScheme
     }
 
@@ -41,9 +97,7 @@ struct QRCodePayload: Codable {
     }
 
     do {
-      let decoder = JSONDecoder()
-      decoder.dateDecodingStrategy = .iso8601
-      return try decoder.decode(QRCodePayload.self, from: data)
+      return try JSONDecoder().decode(QRCodePayload.self, from: data)
     } catch {
       throw QRCodePayloadError.decodingFailed(error)
     }

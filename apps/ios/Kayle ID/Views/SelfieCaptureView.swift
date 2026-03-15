@@ -1,4 +1,6 @@
 import AVFoundation
+import CoreImage
+import ImageIO
 import SwiftUI
 import UIKit
 import Vision
@@ -638,6 +640,151 @@ nonisolated private enum SelfieQuality {
   }
 }
 
+nonisolated private enum SelfieUploadImageProcessor {
+  private static let cropScale: CGFloat = 1.9
+  private static let maxDimension: CGFloat = 640
+  private static let ciContext = CIContext(options: nil)
+
+  static func prepare(_ image: UIImage) -> UIImage {
+    guard let normalized = normalizedCGImage(from: image) else {
+      return image
+    }
+
+    let cropped = cropToPrimaryFace(normalized) ?? normalized
+    let resized = resizeIfNeeded(cropped, maxDimension: maxDimension) ?? cropped
+    return UIImage(cgImage: resized)
+  }
+
+  private static func normalizedCGImage(from image: UIImage) -> CGImage? {
+    guard let cgImage = image.cgImage else {
+      return nil
+    }
+
+    let ciImage = CIImage(cgImage: cgImage).oriented(
+      CGImagePropertyOrientation(image.imageOrientation)
+    )
+
+    return ciContext.createCGImage(ciImage, from: ciImage.extent.integral)
+  }
+
+  private static func cropToPrimaryFace(_ image: CGImage) -> CGImage? {
+    let request = VNDetectFaceRectanglesRequest()
+    let handler = VNImageRequestHandler(cgImage: image)
+
+    do {
+      try handler.perform([request])
+    } catch {
+      return nil
+    }
+
+    guard
+      let face = request.results?.max(by: {
+        $0.boundingBox.width * $0.boundingBox.height
+          < $1.boundingBox.width * $1.boundingBox.height
+      })
+    else {
+      return nil
+    }
+
+    let faceRect = denormalizeFaceRect(face.boundingBox, image: image)
+    let cropRect = expandedSquareCropRect(for: faceRect, image: image)
+    return image.cropping(to: cropRect)
+  }
+
+  private static func denormalizeFaceRect(
+    _ normalizedRect: CGRect,
+    image: CGImage
+  ) -> CGRect {
+    let width = CGFloat(image.width)
+    let height = CGFloat(image.height)
+
+    return CGRect(
+      x: normalizedRect.origin.x * width,
+      y: (1 - normalizedRect.origin.y - normalizedRect.height) * height,
+      width: normalizedRect.width * width,
+      height: normalizedRect.height * height
+    )
+  }
+
+  private static func expandedSquareCropRect(
+    for faceRect: CGRect,
+    image: CGImage
+  ) -> CGRect {
+    let width = CGFloat(image.width)
+    let height = CGFloat(image.height)
+    let side = min(max(faceRect.width, faceRect.height) * cropScale, min(width, height))
+    let originX = min(max(faceRect.midX - side / 2, 0), width - side)
+    let originY = min(max(faceRect.midY - side / 2, 0), height - side)
+
+    return CGRect(
+      x: originX,
+      y: originY,
+      width: side,
+      height: side
+    ).integral
+  }
+
+  private static func resizeIfNeeded(
+    _ image: CGImage,
+    maxDimension: CGFloat
+  ) -> CGImage? {
+    let width = CGFloat(image.width)
+    let height = CGFloat(image.height)
+    let currentMaxDimension = max(width, height)
+
+    guard currentMaxDimension > maxDimension else {
+      return image
+    }
+
+    let scale = maxDimension / currentMaxDimension
+    let targetWidth = max(Int(round(width * scale)), 1)
+    let targetHeight = max(Int(round(height * scale)), 1)
+
+    guard
+      let context = CGContext(
+        data: nil,
+        width: targetWidth,
+        height: targetHeight,
+        bitsPerComponent: 8,
+        bytesPerRow: 0,
+        space: CGColorSpaceCreateDeviceRGB(),
+        bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+      )
+    else {
+      return nil
+    }
+
+    context.interpolationQuality = .high
+    context.draw(image, in: CGRect(x: 0, y: 0, width: targetWidth, height: targetHeight))
+    return context.makeImage()
+  }
+}
+
+nonisolated private extension CGImagePropertyOrientation {
+  init(_ orientation: UIImage.Orientation) {
+    switch orientation {
+    case .up:
+      self = .up
+    case .down:
+      self = .down
+    case .left:
+      self = .left
+    case .right:
+      self = .right
+    case .upMirrored:
+      self = .upMirrored
+    case .downMirrored:
+      self = .downMirrored
+    case .leftMirrored:
+      self = .leftMirrored
+    case .rightMirrored:
+      self = .rightMirrored
+    @unknown default:
+      self = .up
+    }
+  }
+}
+
 extension SelfieCameraViewController: AVCapturePhotoCaptureDelegate {
   nonisolated func photoOutput(
     _ output: AVCapturePhotoOutput,
@@ -651,14 +798,15 @@ extension SelfieCameraViewController: AVCapturePhotoCaptureDelegate {
 
     // Mirror the image since we're using front camera
     let mirrored = UIImage(cgImage: image.cgImage!, scale: image.scale, orientation: .leftMirrored)
+    let preparedImage = SelfieUploadImageProcessor.prepare(mirrored)
     
     Task { @MainActor [weak self] in
       guard let self else { return }
       
       let currentIndex = self.pendingCaptureCount
-      self.capturedPhotos.append(mirrored)
+      self.capturedPhotos.append(preparedImage)
       self.pendingCaptureCount += 1
-      self.delegate?.didCapturePhoto(mirrored, index: currentIndex)
+      self.delegate?.didCapturePhoto(preparedImage, index: currentIndex)
 
       // Schedule next capture after delay
       if self.pendingCaptureCount < SelfieCaptureConstants.captureCount {
@@ -735,7 +883,7 @@ struct SelfieData {
     var imageDataArray: [[String: Any]] = []
     
     for image in images {
-      guard let jpeg = image.jpegData(compressionQuality: 0.8) else {
+      guard let jpeg = image.jpegData(compressionQuality: 0.72) else {
         throw SelfieError.compressionFailed
       }
       

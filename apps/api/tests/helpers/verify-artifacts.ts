@@ -18,9 +18,12 @@ const ONE_BYTE = 0x1_00;
 const SHORT_LENGTH_MAX = 0x80;
 const LONG_LENGTH_PREFIX = 0x80;
 const ISO_19794_5_VERSION = 0x30_31_30_00;
+const DG2_FILE_TAG = 0x75;
 const DG2_ROOT_TAG = 0x7f_61;
 const DG2_BIOMETRIC_GROUP_TAG = 0x7f_60;
 const DG2_BIOMETRIC_DATA_TAG = 0x5f_2e;
+const DG1_ROOT_TAG = 0x61;
+const DG1_MRZ_TAG = 0x5f_1f;
 
 type SupportedHashAlgorithm = "SHA-256" | "SHA-384" | "SHA-512" | "SHA-1";
 type SupportedImageFormat = "jpeg" | "jpeg2000";
@@ -159,10 +162,29 @@ export function createLowSimilaritySelfies(): Uint8Array[] {
   ];
 }
 
+export function createTd3MrzText(): string {
+  return [
+    "P<UTOERIKSSON<<ANNA<MARIA<<<<<<<<<<<<<<<<<<<",
+    "L898902C36UTO7408122F1204159ZE184226B<<<<<10",
+  ].join("\n");
+}
+
+export function createDg1Artifact(mrzText: string): Uint8Array {
+  const mrzBytes = new TextEncoder().encode(mrzText);
+  return encodeTlv(DG1_ROOT_TAG, encodeTlv(DG1_MRZ_TAG, mrzBytes));
+}
+
 export async function createMismatchValidationSelfies(): Promise<Uint8Array[]> {
   return [
     ...createLowSimilaritySelfies(),
     await loadVerifyFixtureBytes("black.jpg"),
+  ];
+}
+
+export async function createMatchingValidationSelfies(): Promise<Uint8Array[]> {
+  return [
+    await loadVerifyFixtureBytes("icon.jpg"),
+    ...createLowSimilaritySelfies(),
   ];
 }
 
@@ -171,11 +193,13 @@ export function createDg2Artifact({
   imageFormat,
   imageHeight = 32,
   imageWidth = 32,
+  wrapWithEfTag = false,
 }: {
   imageData: Uint8Array;
   imageFormat: SupportedImageFormat;
   imageWidth?: number;
   imageHeight?: number;
+  wrapWithEfTag?: boolean;
 }): Uint8Array {
   const facialRecordLength = 42 + imageData.length;
   const iso197945Record = Uint8Array.from([
@@ -210,10 +234,12 @@ export function createDg2Artifact({
     Uint8Array.from([...biometricHeader, ...biometricData])
   );
 
-  return encodeTlv(
+  const biometricRoot = encodeTlv(
     DG2_ROOT_TAG,
     Uint8Array.from([...encodeTlv(0x02, Uint8Array.of(1)), ...biometricGroup])
   );
+
+  return wrapWithEfTag ? encodeTlv(DG2_FILE_TAG, biometricRoot) : biometricRoot;
 }
 
 export function createMalformedDg2Artifact(): Uint8Array {
@@ -357,9 +383,7 @@ export async function createSodArtifact({
 }
 
 export async function createValidNfcArtifacts({
-  dg1 = new TextEncoder().encode(
-    "P<UTOERIKSSON<<ANNA<MARIA<<<<<<<<<<<<<<<<<<<"
-  ),
+  dg1 = createDg1Artifact(createTd3MrzText()),
   dg2,
   dg2ImageData,
   dg2ImageFormat = "jpeg",
@@ -395,9 +419,7 @@ export async function createInvalidAuthenticityArtifacts(): Promise<{
   dg2: Uint8Array;
   sod: Uint8Array;
 }> {
-  const dg1 = new TextEncoder().encode(
-    "P<UTOERIKSSON<<ANNA<MARIA<<<<<<<<<<<<<<<<<<<"
-  );
+  const dg1 = createDg1Artifact(createTd3MrzText());
   const dg2 = createDg2Artifact({
     imageData: await loadVerifyFixtureBytes("icon.jpg"),
     imageFormat: "jpeg",

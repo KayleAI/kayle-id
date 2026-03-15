@@ -28,11 +28,17 @@ struct DataPayload {
   chunkTotal @5 :UInt32;
 }
 
+struct ShareSelection {
+  sessionId @0 :Text;
+  selectedFieldKeys @1 :List(Text);
+}
+
 struct ClientMessage {
   union {
     hello @0 :ClientHello;
     phase @1 :PhaseUpdate;
     data @2 :DataPayload;
+    shareSelection @3 :ShareSelection;
   }
 }
 
@@ -70,11 +76,17 @@ struct ShareRequest {
   fields @2 :List(ShareRequestField);
 }
 
+struct ShareReady {
+  sessionId @0 :Text;
+  selectedFieldKeys @1 :List(Text);
+}
+
 struct ServerMessage {
   union {
     ack @0 :ServerAck;
     error @1 :ServerError;
     verdict @2 :ServerVerdict;
     shareRequest @3 :ShareRequest;
+    shareReady @4 :ShareReady;
   }
 }

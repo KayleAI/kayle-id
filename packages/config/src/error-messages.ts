@@ -107,6 +107,23 @@ export const ERROR_MESSAGES = {
       "Required selfie data is still missing. Continue the selfie upload before finishing this step.",
   },
 
+  SHARE_SELECTION_REQUIRED: {
+    title: "Select details to share",
+    description: "Choose at least one verification detail before continuing.",
+  },
+
+  SHARE_SELECTION_INVALID_FIELD: {
+    title: "Invalid detail selected",
+    description:
+      "One or more selected details are not available for this verification. Review the requested details and try again.",
+  },
+
+  SHARE_SELECTION_MISSING_REQUIRED: {
+    title: "Required details must stay selected",
+    description:
+      "Required verification details must stay selected before you can continue.",
+  },
+
   passport_authenticity_failed: {
     title: "Passport authenticity failed",
     description:

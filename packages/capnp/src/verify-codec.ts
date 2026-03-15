@@ -27,10 +27,16 @@ export type VerifyDataPayload = {
   chunkTotal?: number;
 };
 
+export type VerifyShareSelection = {
+  sessionId?: string;
+  selectedFieldKeys?: string[];
+};
+
 export type VerifyClientMessage = {
   hello?: VerifyClientHello;
   phase?: VerifyPhaseUpdate;
   data?: VerifyDataPayload;
+  shareSelection?: VerifyShareSelection;
 };
 
 export type VerifyServerMessage = {
@@ -57,12 +63,17 @@ export type VerifyServerMessage = {
       required: boolean;
     }>;
   };
+  shareReady?: {
+    sessionId: string;
+    selectedFieldKeys: string[];
+  };
 };
 
 export type VerifyServerVerdict = NonNullable<VerifyServerMessage["verdict"]>;
 export type VerifyShareRequest = NonNullable<
   VerifyServerMessage["shareRequest"]
 >;
+export type VerifyShareReady = NonNullable<VerifyServerMessage["shareReady"]>;
 
 function toVerifyVerdictOutcome(
   outcome:
@@ -139,6 +150,24 @@ export function encodeServerShareRequest(
   return new Uint8Array(packet.toArrayBuffer());
 }
 
+export function encodeServerShareReady(
+  shareReady: VerifyShareReady
+): Uint8Array {
+  const packet = new Message();
+  const root = packet.initRoot(CapnpServerMessage);
+  const next = root._initShareReady();
+  next.sessionId = shareReady.sessionId;
+  const selectedFieldKeys = next._initSelectedFieldKeys(
+    shareReady.selectedFieldKeys.length
+  );
+
+  for (const [index, key] of shareReady.selectedFieldKeys.entries()) {
+    selectedFieldKeys.set(index, key);
+  }
+
+  return new Uint8Array(packet.toArrayBuffer());
+}
+
 export function decodeServerMessage(
   bytes: Uint8Array
 ): VerifyServerMessage | null {
@@ -191,6 +220,21 @@ export function decodeServerMessage(
           },
         };
       }
+      case CapnpServerMessage.SHARE_READY: {
+        const selectedFieldKeys = root.shareReady.selectedFieldKeys;
+        const decodedKeys: string[] = [];
+
+        for (let index = 0; index < selectedFieldKeys.length; index += 1) {
+          decodedKeys.push(selectedFieldKeys.get(index));
+        }
+
+        return {
+          shareReady: {
+            sessionId: root.shareReady.sessionId,
+            selectedFieldKeys: decodedKeys,
+          },
+        };
+      }
       default:
         return null;
     }
@@ -233,6 +277,23 @@ export function encodeClientData(data: VerifyDataPayload): Uint8Array {
   return new Uint8Array(packet.toArrayBuffer());
 }
 
+export function encodeClientShareSelection(
+  shareSelection: VerifyShareSelection
+): Uint8Array {
+  const packet = new Message();
+  const root = packet.initRoot(CapnpClientMessage);
+  const next = root._initShareSelection();
+  next.sessionId = shareSelection.sessionId ?? "";
+  const selectedFieldKeys = shareSelection.selectedFieldKeys ?? [];
+  const list = next._initSelectedFieldKeys(selectedFieldKeys.length);
+
+  for (const [index, key] of selectedFieldKeys.entries()) {
+    list.set(index, key);
+  }
+
+  return new Uint8Array(packet.toArrayBuffer());
+}
+
 export function decodeClientMessage(
   bytes: Uint8Array
 ): VerifyClientMessage | null {
@@ -268,6 +329,21 @@ export function decodeClientMessage(
             chunkTotal: root.data.chunkTotal,
           },
         };
+      case CapnpClientMessage.SHARE_SELECTION: {
+        const selectedFieldKeys = root.shareSelection.selectedFieldKeys;
+        const decodedKeys: string[] = [];
+
+        for (let index = 0; index < selectedFieldKeys.length; index += 1) {
+          decodedKeys.push(selectedFieldKeys.get(index));
+        }
+
+        return {
+          shareSelection: {
+            sessionId: root.shareSelection.sessionId,
+            selectedFieldKeys: decodedKeys,
+          },
+        };
+      }
       default:
         return null;
     }

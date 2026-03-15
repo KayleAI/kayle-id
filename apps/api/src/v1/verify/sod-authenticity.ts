@@ -1,5 +1,6 @@
 import { fromBER, Integer, OctetString, Sequence } from "asn1js";
 import { AlgorithmIdentifier, ContentInfo, SignedData, setEngine } from "pkijs";
+import { readTlv } from "./tlv";
 import type {
   AuthenticityValidationResult,
   SupportedHashAlgorithm,
@@ -7,6 +8,7 @@ import type {
 
 const ICAO_LDS_SECURITY_OBJECT_OID = "2.23.136.1.1.1";
 const CMS_SIGNED_DATA_OID = "1.2.840.113549.1.7.2";
+const SOD_ROOT_TAG = 0x77;
 const SHA_1_OID = "1.3.14.3.2.26";
 const SHA_256_OID = "2.16.840.1.101.3.4.2.1";
 const SHA_384_OID = "2.16.840.1.101.3.4.2.2";
@@ -22,6 +24,10 @@ let pkijsConfigured = false;
 
 function exactBytes(bytes: Uint8Array): Uint8Array {
   return new Uint8Array(bytes);
+}
+
+function bufferBytes(bytes: Uint8Array): ArrayBuffer {
+  return bytes.slice().buffer;
 }
 
 function bytesEqual(left: Uint8Array, right: Uint8Array): boolean {
@@ -106,7 +112,7 @@ function parseBer(bytes: Uint8Array, errorCode: string): unknown {
 }
 
 function parseContentInfo(sod: Uint8Array): ContentInfo {
-  const schema = parseBer(sod, "sod_parse_failed");
+  const schema = parseBer(unwrapSodContentInfoBytes(sod), "sod_parse_failed");
 
   try {
     return new ContentInfo({
@@ -115,6 +121,20 @@ function parseContentInfo(sod: Uint8Array): ContentInfo {
   } catch {
     throw new Error("sod_parse_failed");
   }
+}
+
+function unwrapSodContentInfoBytes(sod: Uint8Array): Uint8Array {
+  try {
+    const root = readTlv(sod, 0);
+
+    if (root.tag === SOD_ROOT_TAG && root.nextOffset === sod.length) {
+      return root.value;
+    }
+  } catch {
+    return sod;
+  }
+
+  return sod;
 }
 
 function parseSignedData(contentInfo: ContentInfo): SignedData {
@@ -270,7 +290,9 @@ async function createDigest(
   algorithm: SupportedHashAlgorithm,
   data: Uint8Array
 ): Promise<Uint8Array> {
-  return new Uint8Array(await crypto.subtle.digest(algorithm, data));
+  return new Uint8Array(
+    await crypto.subtle.digest(algorithm, bufferBytes(data))
+  );
 }
 
 export async function validateAuthenticity({

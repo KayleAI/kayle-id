@@ -20,7 +20,8 @@ typedef enum verify_server_message_kind {
   VERIFY_SERVER_MESSAGE_ACK = 1,
   VERIFY_SERVER_MESSAGE_ERROR = 2,
   VERIFY_SERVER_MESSAGE_VERDICT = 3,
-  VERIFY_SERVER_MESSAGE_SHARE_REQUEST = 4
+  VERIFY_SERVER_MESSAGE_SHARE_REQUEST = 4,
+  VERIFY_SERVER_MESSAGE_SHARE_READY = 5
 } verify_server_message_kind_t;
 
 typedef enum verify_server_verdict_outcome {
@@ -55,6 +56,13 @@ int verify_build_data(
   uint32_t total,
   uint32_t chunk_index,
   uint32_t chunk_total
+);
+
+int verify_build_share_selection(
+  void* message_builder,
+  const char* session_id,
+  const char* const* selected_field_keys,
+  size_t selected_field_key_count
 );
 
 verify_server_message_kind_t verify_server_message_kind(void* message_reader);
@@ -100,6 +108,20 @@ int verify_server_message_get_share_request_field(
   char* out_reason,
   size_t out_reason_size,
   int* out_required
+);
+
+int verify_server_message_get_share_ready(
+  void* message_reader,
+  char* out_session_id,
+  size_t out_session_id_size,
+  uint32_t* out_field_count
+);
+
+int verify_server_message_get_share_ready_field(
+  void* message_reader,
+  uint32_t field_index,
+  char* out_key,
+  size_t out_key_size
 );
 
 #ifdef __cplusplus

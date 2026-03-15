@@ -2,6 +2,7 @@ import {
   decodeClientMessage,
   encodeServerAck,
   encodeServerError,
+  encodeServerShareReady,
   encodeServerShareRequest,
   encodeServerVerdict,
   type VerifyServerVerdict,
@@ -15,7 +16,6 @@ import { Hono } from "hono";
 import { validator } from "hono/validator";
 import { z } from "zod";
 import { sessionIdSchema } from "@/shared/validation";
-import { normalizeShareFields } from "@/v1/sessions/domain/share-contract/normalize-share-fields";
 import {
   claimAttemptConnection,
   releaseAttemptConnection,
@@ -29,6 +29,7 @@ import {
   processDataPayload,
   resetTransferState,
 } from "./data-payload";
+import { matchFaces } from "./face-matcher-client";
 import { issueHandoffPayload } from "./handoff";
 import {
   consumeHelloAttempt,
@@ -39,7 +40,7 @@ import {
   resolveHelloAuthState,
 } from "./hello-auth";
 import {
-  emitFaceScoreFallbackEvent,
+  emitFaceScoreUnavailableEvent,
   MAX_FAILED_ATTEMPTS,
   markAttemptFailed,
   markAttemptSucceeded,
@@ -49,74 +50,19 @@ import {
   persistTrackedAttemptPhase,
   validateTrackedPhaseTransition,
 } from "./phase-state";
+import {
+  createShareRequestPayload,
+  type VerifyShareManifest,
+  validateAndBuildShareManifest,
+} from "./share-manifest";
 import { isTerminalSessionStatus } from "./status";
 import { createWebSocketPairTuple, webSocketErrorResponse } from "./utils";
-import {
-  computeFaceScore,
-  configureVerifyAssetFetcher,
-  validateAuthenticity,
-} from "./validation";
+import { validateAuthenticity } from "./validation";
+import type { FaceScoreResult } from "./validation-types";
+import { configureVerifyAssetFetcherFromEnv } from "./verify-assets";
 
 const verify = new Hono<{ Bindings: CloudflareBindings }>();
-type WorkerAssetBinding = {
-  fetch: typeof fetch;
-};
-
 const handoffParamSchema = z.object({ id: sessionIdSchema });
-const defaultNormalizedShareFields = (() => {
-  const normalized = normalizeShareFields(undefined);
-
-  if (!normalized.ok) {
-    throw new Error("Failed to initialize default share fields.");
-  }
-
-  return normalized.shareFields;
-})();
-
-function createShareRequestPayload({
-  contractVersion,
-  sessionId,
-  shareFieldsInput,
-}: {
-  contractVersion: number;
-  sessionId: string;
-  shareFieldsInput: unknown;
-}): VerifyShareRequest {
-  const normalized = normalizeShareFields(shareFieldsInput);
-  const shareFields = normalized.ok
-    ? normalized.shareFields
-    : defaultNormalizedShareFields;
-
-  return {
-    contractVersion,
-    sessionId,
-    fields: Object.entries(shareFields).map(([key, field]) => ({
-      key,
-      reason: field.reason,
-      required: field.required,
-    })),
-  };
-}
-
-function getWorkerAssetBinding(env: unknown): WorkerAssetBinding | null {
-  if (!env || typeof env !== "object") {
-    return null;
-  }
-
-  const candidate = Reflect.get(env, "ASSETS");
-
-  if (!candidate || typeof candidate !== "object") {
-    return null;
-  }
-
-  const fetchBinding = Reflect.get(candidate, "fetch");
-
-  return typeof fetchBinding === "function"
-    ? {
-        fetch: fetchBinding as typeof fetch,
-      }
-    : null;
-}
 
 function resolveErrorMessage(code: keyof typeof ERROR_MESSAGES): string {
   return ERROR_MESSAGES[code]?.description ?? code;
@@ -205,24 +151,7 @@ verify.get(
     return parsed.data;
   }),
   async (c) => {
-    const assetBinding = getWorkerAssetBinding(c.env);
-
-    if (assetBinding) {
-      configureVerifyAssetFetcher(async (pathname) => {
-        const request = new Request(
-          new URL(pathname, "https://assets.kayle.id").toString()
-        );
-        const response = await assetBinding.fetch(request);
-
-        if (!response.ok) {
-          throw new Error(`asset_fetch_failed:${pathname}`);
-        }
-
-        return new Uint8Array(await response.arrayBuffer());
-      });
-    } else {
-      configureVerifyAssetFetcher(null);
-    }
+    configureVerifyAssetFetcherFromEnv(c.env);
 
     const { id } = c.req.valid("param");
 
@@ -288,6 +217,8 @@ verify.get(
       transfer: createTransferState(),
       attemptId: null as string | null,
       currentPhase: null as string | null,
+      shareManifest: null as VerifyShareManifest | null,
+      shareRequestSent: false,
     };
 
     const logDebug = (label: string, details?: Record<string, unknown>) => {
@@ -299,6 +230,25 @@ verify.get(
         JSON.stringify({
           event: `verify.ws.${label}`,
           ...details,
+        })
+      );
+    };
+
+    const logFaceScoreResult = ({
+      attemptId,
+      result,
+    }: {
+      attemptId: string;
+      result: FaceScoreResult;
+    }) => {
+      console.info(
+        JSON.stringify({
+          event: "verify.ws.face_score_evaluated",
+          attempt_id: attemptId,
+          face_score: result.faceScore,
+          passed: result.passed,
+          reason: result.reason ?? null,
+          used_fallback: result.usedFallback,
         })
       );
     };
@@ -324,6 +274,25 @@ verify.get(
         fieldCount: shareRequest.fields.length,
       });
       server.send(encodeServerShareRequest(shareRequest));
+    };
+
+    const sendShareReady = ({
+      selectedFieldKeys,
+      sessionId,
+    }: {
+      sessionId: string;
+      selectedFieldKeys: string[];
+    }) => {
+      logDebug("send_share_ready", {
+        fieldCount: selectedFieldKeys.length,
+        sessionId,
+      });
+      server.send(
+        encodeServerShareReady({
+          sessionId,
+          selectedFieldKeys,
+        })
+      );
     };
 
     const closeAfterVerdict = (code: string) => {
@@ -397,6 +366,8 @@ verify.get(
       });
       state.attemptId = null;
       state.currentPhase = null;
+      state.shareManifest = null;
+      state.shareRequestSent = false;
     };
 
     const persistConnectedPhaseIfMissing = async (attemptId: string) => {
@@ -481,6 +452,8 @@ verify.get(
 
       state.attemptId = attempt.id;
       state.currentPhase = attempt.currentPhase ?? null;
+      state.shareManifest = null;
+      state.shareRequestSent = false;
 
       if (authState.kind === "resume") {
         await persistConnectedPhaseIfMissing(attempt.id);
@@ -662,48 +635,45 @@ verify.get(
       }
 
       const selfies = Array.from(state.transfer.selfies.values());
-      const faceResult = await computeFaceScore({
+      const faceResult = await matchFaces({
         dg2Image: dg2,
         selfies,
+        env: c.env,
+        attemptId,
+      });
+      logFaceScoreResult({
+        attemptId,
+        result: faceResult,
       });
 
       if (faceResult.usedFallback) {
-        await emitFaceScoreFallbackEvent({
+        await emitFaceScoreUnavailableEvent({
           session,
           attemptId,
         });
-
-        await markAttemptSucceeded({
-          session,
-          attemptId,
-          riskScore: 1,
-        });
-
-        return {
-          outcome: "accepted",
-          reasonCode: "",
-          reasonMessage: "",
-          retryAllowed: false,
-          remainingAttempts: 0,
-        };
       }
 
-      const faceScore = faceResult.faceScore ?? 1;
       if (!faceResult.passed) {
         const verdict = await rejectValidationAndClose({
           attemptId,
           code: "selfie_face_mismatch",
-          riskScore: 1 - faceScore,
+          riskScore: faceResult.usedFallback
+            ? 1
+            : 1 - (faceResult.faceScore ?? 0),
         });
         sendVerdict(verdict);
         closeAfterVerdict(verdict.reasonCode);
         return verdict;
       }
 
+      if (typeof faceResult.faceScore !== "number") {
+        throw new Error("face_score_required_for_success");
+      }
+
       await markAttemptSucceeded({
         session,
         attemptId,
-        faceScore,
+        faceScore: faceResult.faceScore,
       });
 
       return {
@@ -806,6 +776,7 @@ verify.get(
       if (context.nextPhase === "selfie_complete" && verdict) {
         sendVerdict(verdict);
         sendShareRequest(shareRequestPayload);
+        state.shareRequestSent = true;
         return;
       }
 
@@ -877,23 +848,55 @@ verify.get(
       acknowledgeDataResult(result);
     };
 
-    const handleMessage = async (event: MessageEvent) => {
-      const bytes = await getBytesFromEvent(event);
+    const handleShareSelection = async (payload: {
+      sessionId?: string;
+      selectedFieldKeys?: string[];
+    }) => {
+      logDebug("recv_share_selection", {
+        selectedFieldCount: payload.selectedFieldKeys?.length ?? 0,
+        sessionIdPresent: Boolean(payload.sessionId),
+      });
 
-      if (!bytes) {
-        logDebug("recv_invalid_message");
-        sendError("INVALID_MESSAGE", "Binary protobuf messages are required.");
+      if (!(state.helloReceived && state.attemptId && state.shareRequestSent)) {
+        sendError(
+          "PHASE_OUT_OF_ORDER",
+          resolveErrorMessage("PHASE_OUT_OF_ORDER")
+        );
         return;
       }
 
-      const decoded = decodeClientMessage(bytes);
-
-      if (!decoded) {
-        logDebug("recv_decode_failed", { size: bytes.length });
-        sendError("DECODE_FAILED", "Failed to decode protobuf message.");
+      const { dg1, dg2 } = state.transfer;
+      if (!(dg1 && dg2)) {
+        sendError(
+          "PHASE_OUT_OF_ORDER",
+          resolveErrorMessage("PHASE_OUT_OF_ORDER")
+        );
         return;
       }
 
+      const result = await validateAndBuildShareManifest({
+        contractVersion: session.contractVersion,
+        dg1,
+        dg2,
+        organizationId: session.organizationId,
+        selectedFieldKeysInput: payload.selectedFieldKeys,
+        sessionId: session.id,
+        submittedSessionId: payload.sessionId,
+        shareFieldsInput: session.shareFields,
+      });
+
+      if (!result.ok) {
+        sendError(result.code, result.message);
+        return;
+      }
+
+      state.shareManifest = result.manifest;
+      sendShareReady(result.shareReady);
+    };
+
+    const handleDecodedMessage = async (
+      decoded: NonNullable<ReturnType<typeof decodeClientMessage>>
+    ) => {
       if (decoded.hello) {
         await handleHello(decoded.hello);
         return;
@@ -911,7 +914,32 @@ verify.get(
 
       if (decoded.data) {
         handleData(decoded.data);
+        return;
       }
+
+      if (decoded.shareSelection) {
+        await handleShareSelection(decoded.shareSelection);
+      }
+    };
+
+    const handleMessage = async (event: MessageEvent) => {
+      const bytes = await getBytesFromEvent(event);
+
+      if (!bytes) {
+        logDebug("recv_invalid_message");
+        sendError("INVALID_MESSAGE", "Binary protobuf messages are required.");
+        return;
+      }
+
+      const decoded = decodeClientMessage(bytes);
+
+      if (!decoded) {
+        logDebug("recv_decode_failed", { size: bytes.length });
+        sendError("DECODE_FAILED", "Failed to decode protobuf message.");
+        return;
+      }
+
+      await handleDecodedMessage(decoded);
     };
 
     const handleMessageFailure = (error: unknown) => {

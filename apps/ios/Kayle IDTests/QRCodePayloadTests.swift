@@ -35,6 +35,26 @@ final class QRCodePayloadTests: XCTestCase {
     XCTAssertTrue(parsed.isValid)
   }
 
+  func testParseSingleColonSchemePayload() throws {
+    let encoded = makeJSON(expiresAt: "2099-01-01T00:00:00.000Z")
+      .addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed)
+    XCTAssertNotNil(encoded)
+
+    let qr = "kayle-id:\(encoded ?? "")"
+    let parsed = try QRCodePayload.parse(from: qr)
+
+    XCTAssertEqual(parsed.sessionId, "vs_test_session123")
+    XCTAssertTrue(parsed.isValid)
+  }
+
+  func testParseFractionalSecondExpiryPayload() throws {
+    let qr = "kayle-id://\(makeJSON(expiresAt: "2099-01-01T00:00:00.000Z"))"
+    let parsed = try QRCodePayload.parse(from: qr)
+
+    XCTAssertEqual(parsed.attemptId, "va_test_attempt123")
+    XCTAssertTrue(parsed.isValid)
+  }
+
   func testMissingAttemptIdIsInvalid() {
     let missingAttemptJSON =
       """

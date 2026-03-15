@@ -93,6 +93,35 @@ int verify_build_data(
   return 1;
 }
 
+int verify_build_share_selection(
+  void* message_builder,
+  const char* session_id,
+  const char* const* selected_field_keys,
+  size_t selected_field_key_count
+) {
+  if (!message_builder || !session_id) {
+    return 0;
+  }
+
+  auto* builder = reinterpret_cast<capnp::MallocMessageBuilder*>(message_builder);
+  auto root = builder->initRoot<ClientMessage>();
+  auto share_selection = root.initShareSelection();
+  share_selection.setSessionId(session_id);
+  auto keys = share_selection.initSelectedFieldKeys(
+    static_cast<uint32_t>(selected_field_key_count)
+  );
+
+  for (size_t index = 0; index < selected_field_key_count; index += 1) {
+    const char* key = selected_field_keys[index];
+    if (!key) {
+      return 0;
+    }
+    keys.set(static_cast<uint32_t>(index), key);
+  }
+
+  return 1;
+}
+
 verify_server_message_kind_t verify_server_message_kind(void* message_reader) {
   if (!message_reader) {
     return VERIFY_SERVER_MESSAGE_NONE;
@@ -108,6 +137,8 @@ verify_server_message_kind_t verify_server_message_kind(void* message_reader) {
       return VERIFY_SERVER_MESSAGE_VERDICT;
     case ServerMessage::SHARE_REQUEST:
       return VERIFY_SERVER_MESSAGE_SHARE_REQUEST;
+    case ServerMessage::SHARE_READY:
+      return VERIFY_SERVER_MESSAGE_SHARE_READY;
     default:
       return VERIFY_SERVER_MESSAGE_NONE;
   }
@@ -283,4 +314,60 @@ int verify_server_message_get_share_request_field(
 
   *out_required = field.getRequired() ? 1 : 0;
   return 1;
+}
+
+int verify_server_message_get_share_ready(
+  void* message_reader,
+  char* out_session_id,
+  size_t out_session_id_size,
+  uint32_t* out_field_count
+) {
+  if (!message_reader || !out_field_count) {
+    return 0;
+  }
+
+  auto* reader = reinterpret_cast<capnp::MessageReader*>(message_reader);
+  auto root = reader->getRoot<ServerMessage>();
+  if (root.which() != ServerMessage::SHARE_READY) {
+    return 0;
+  }
+
+  auto share_ready = root.getShareReady();
+  *out_field_count = static_cast<uint32_t>(share_ready.getSelectedFieldKeys().size());
+
+  if (
+    !copy_text_to_buffer(
+      share_ready.getSessionId(),
+      out_session_id,
+      out_session_id_size
+    )
+  ) {
+    return 0;
+  }
+
+  return 1;
+}
+
+int verify_server_message_get_share_ready_field(
+  void* message_reader,
+  uint32_t field_index,
+  char* out_key,
+  size_t out_key_size
+) {
+  if (!message_reader) {
+    return 0;
+  }
+
+  auto* reader = reinterpret_cast<capnp::MessageReader*>(message_reader);
+  auto root = reader->getRoot<ServerMessage>();
+  if (root.which() != ServerMessage::SHARE_READY) {
+    return 0;
+  }
+
+  auto keys = root.getShareReady().getSelectedFieldKeys();
+  if (field_index >= keys.size()) {
+    return 0;
+  }
+
+  return copy_text_to_buffer(keys[field_index], out_key, out_key_size) ? 1 : 0;
 }

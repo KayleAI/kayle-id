@@ -4,7 +4,7 @@
   "version": "0.0.1",
   "private": true,
   "scripts": {
-    "dev": "turbo run dev --filter=kayle-id-api --filter=kayle-id-platform --filter=kayle-id-verify",
+    "dev": "turbo run dev --filter=kayle-id-api --filter=kayle-id-face-matcher --filter=kayle-id-platform --filter=kayle-id-verify",
     "dev:ios": "turbo run dev --filter=kayle-id-ios",
     "dev:android": "turbo run dev --filter=kayle-id-android",
     "lint": "ultracite check",
@@ -34,6 +34,7 @@
   "packageManager": "bun@1.3.3",
   "workspaces": [
     "apps/*",
+    "infra/*",
     "packages/*"
   ],
   "dependencies": {

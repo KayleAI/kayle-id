@@ -10,7 +10,6 @@ jobs:
   test-api:
     name: Test API
     runs-on: ubuntu-latest
-    container: node:24-slim
     env:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
@@ -49,8 +48,8 @@ jobs:
         uses: actions/checkout@v5
       - name: Install unzip and curl
         run: |
-          apt-get update
-          apt-get install -y unzip curl
+          sudo apt-get update
+          sudo apt-get install -y unzip curl
       - name: Install bun
         uses: oven-sh/setup-bun@v2
         with:
@@ -67,7 +66,14 @@ jobs:
         run: |
           set -u
 
-          cd apps/api
+          cd infra/face-matcher
+          bun run test:dev > /tmp/face-matcher.log 2>&1 &
+          MATCHER_PID=$!
+          echo "Face matcher started with PID $MATCHER_PID"
+
+          sleep 10
+
+          cd ../../apps/api
 
           # Start Wrangler dev (test env) in the background
           bun run test:setup
@@ -78,6 +84,11 @@ jobs:
           sleep 10
 
           bun test
+
+          echo "Stopping face matcher with PID $MATCHER_PID"
+          kill $MATCHER_PID || true
+          wait $MATCHER_PID 2>/dev/null || true
+          echo "Face matcher stopped"
 
           echo "Stopping API server with PID $SERVER_PID"
           kill $SERVER_PID || true

@@ -4,6 +4,9 @@ import { fileURLToPath } from "node:url";
 const OPENJPEG_PUBLIC_ASSET_PATH = "/verify/openjpegwasm_decode.bin";
 
 type BinaryAssetSource = string | ArrayBuffer | Uint8Array;
+export type WorkerAssetBinding = {
+  fetch: typeof fetch;
+};
 
 const binaryAssetCache = new Map<string, Promise<Uint8Array>>();
 let workerAssetFetcher: ((pathname: string) => Promise<Uint8Array>) | null =
@@ -31,6 +34,48 @@ export function configureVerifyAssetFetcher(
   fetcher: ((pathname: string) => Promise<Uint8Array>) | null
 ): void {
   workerAssetFetcher = fetcher;
+}
+
+export function getWorkerAssetBinding(env: unknown): WorkerAssetBinding | null {
+  if (!env || typeof env !== "object") {
+    return null;
+  }
+
+  const candidate = Reflect.get(env, "ASSETS");
+
+  if (!candidate || typeof candidate !== "object") {
+    return null;
+  }
+
+  const fetchBinding = Reflect.get(candidate, "fetch");
+
+  return typeof fetchBinding === "function"
+    ? {
+        fetch: fetchBinding as typeof fetch,
+      }
+    : null;
+}
+
+export function configureVerifyAssetFetcherFromEnv(env: unknown): void {
+  const assetBinding = getWorkerAssetBinding(env);
+
+  if (!assetBinding) {
+    configureVerifyAssetFetcher(null);
+    return;
+  }
+
+  configureVerifyAssetFetcher(async (pathname) => {
+    const request = new Request(
+      new URL(pathname, "https://assets.kayle.id").toString()
+    );
+    const response = await assetBinding.fetch(request);
+
+    if (!response.ok) {
+      throw new Error(`asset_fetch_failed:${pathname}`);
+    }
+
+    return new Uint8Array(await response.arrayBuffer());
+  });
 }
 
 async function loadBinaryAsset(source: BinaryAssetSource): Promise<Uint8Array> {

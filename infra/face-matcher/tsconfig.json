@@ -1,0 +1,15 @@
+{
+  "include": [
+    "cloudflare-env.d.ts",
+    "src/**/*.ts",
+    "../../apps/api/src/types/static-assets.d.ts"
+  ],
+  "compilerOptions": {
+    "target": "ESNext",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "strict": true,
+    "skipLibCheck": true,
+    "lib": ["ESNext", "DOM"]
+  }
+}

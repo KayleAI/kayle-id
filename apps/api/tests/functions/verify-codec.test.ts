@@ -5,8 +5,10 @@ import {
   encodeClientData,
   encodeClientHello,
   encodeClientPhase,
+  encodeClientShareSelection,
   encodeServerAck,
   encodeServerError,
+  encodeServerShareReady,
   encodeServerShareRequest,
   encodeServerVerdict,
 } from "@kayle-id/capnp/verify-codec";
@@ -46,9 +48,19 @@ describe("verify codec", () => {
     const decodedData = decodeClientMessage(dataBytes);
     expect(decodedData?.data?.kind).toBe(3);
     expect(Array.from(decodedData?.data?.raw ?? [])).toEqual([1, 2, 3]);
+
+    const shareSelectionBytes = encodeClientShareSelection({
+      sessionId: "vs_test_123",
+      selectedFieldKeys: ["kayle_document_id", "dg1_nationality"],
+    });
+    const decodedShareSelection = decodeClientMessage(shareSelectionBytes);
+    expect(decodedShareSelection?.shareSelection).toEqual({
+      sessionId: "vs_test_123",
+      selectedFieldKeys: ["kayle_document_id", "dg1_nationality"],
+    });
   });
 
-  test("round-trips server ack, error, verdict, and share request payloads", () => {
+  test("round-trips server ack, error, verdict, share request, and share ready payloads", () => {
     const ackBytes = encodeServerAck("hello_ok");
     const decodedAck = decodeServerMessage(ackBytes);
     expect(decodedAck?.ack?.message).toBe("hello_ok");
@@ -108,6 +120,24 @@ describe("verify codec", () => {
           reason: "Nationality is required for this check.",
           required: false,
         },
+      ],
+    });
+
+    const shareReadyBytes = encodeServerShareReady({
+      sessionId: "vs_test_123",
+      selectedFieldKeys: [
+        "dg1_nationality",
+        "kayle_document_id",
+        "kayle_human_id",
+      ],
+    });
+    const decodedShareReady = decodeServerMessage(shareReadyBytes);
+    expect(decodedShareReady?.shareReady).toEqual({
+      sessionId: "vs_test_123",
+      selectedFieldKeys: [
+        "dg1_nationality",
+        "kayle_document_id",
+        "kayle_human_id",
       ],
     });
   });

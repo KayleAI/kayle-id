@@ -17,6 +17,7 @@ import v1 from "@/v1";
 import {
   createInvalidAuthenticityArtifacts,
   createMalformedDg2Artifact,
+  createMatchingValidationSelfies,
   createMismatchValidationSelfies,
   createSelfieJpeg,
   createValidNfcArtifacts,
@@ -61,6 +62,10 @@ type ServerAckOrError = {
       reason: string;
       required: boolean;
     }>;
+  };
+  shareReady?: {
+    sessionId: string;
+    selectedFieldKeys: string[];
   };
 };
 
@@ -120,6 +125,26 @@ function encodeDataMessage({
   payload.total = total;
   payload.chunkIndex = chunkIndex;
   payload.chunkTotal = chunkTotal;
+  return new Uint8Array(message.toArrayBuffer());
+}
+
+function encodeShareSelectionMessage({
+  selectedFieldKeys,
+  sessionId,
+}: {
+  sessionId: string;
+  selectedFieldKeys: string[];
+}): Uint8Array {
+  const message = new Message();
+  const root = message.initRoot(ClientMessage);
+  const selection = root._initShareSelection();
+  selection.sessionId = sessionId;
+  const keys = selection._initSelectedFieldKeys(selectedFieldKeys.length);
+
+  for (const [index, key] of selectedFieldKeys.entries()) {
+    keys.set(index, key);
+  }
+
   return new Uint8Array(message.toArrayBuffer());
 }
 
@@ -191,6 +216,21 @@ function decodeServerMessage(bytes: Uint8Array): ServerAckOrError | null {
             contractVersion: root.shareRequest.contractVersion,
             sessionId: root.shareRequest.sessionId,
             fields: decodedFields,
+          },
+        };
+      }
+      case ServerMessage.SHARE_READY: {
+        const selectedFieldKeys = root.shareReady.selectedFieldKeys;
+        const decodedKeys: string[] = [];
+
+        for (let index = 0; index < selectedFieldKeys.length; index += 1) {
+          decodedKeys.push(selectedFieldKeys.get(index));
+        }
+
+        return {
+          shareReady: {
+            sessionId: root.shareReady.sessionId,
+            selectedFieldKeys: decodedKeys,
           },
         };
       }
@@ -528,6 +568,103 @@ async function sendSelfies({
       expected: `data_ok_3_${index}`,
     });
   }
+}
+
+async function advanceToShareRequest({
+  sessionId,
+  shareFields,
+}: {
+  sessionId?: string;
+  shareFields?: Record<string, { reason: string; required: boolean }>;
+}) {
+  const resolvedSessionId =
+    sessionId ??
+    (await createSession(
+      shareFields
+        ? {
+            share_fields: shareFields,
+          }
+        : undefined
+    ));
+  const handoff = await createHandoff(resolvedSessionId);
+  const artifacts = await createValidNfcArtifacts();
+  const matchingSelfies = await createMatchingValidationSelfies();
+  const socket = openVerifySocket(resolvedSessionId);
+
+  await awaitSocketOpen(socket);
+  socket.send(
+    encodeHelloMessage({
+      attemptId: handoff.attempt_id,
+      mobileWriteToken: handoff.mobile_write_token,
+      deviceId: "ios-device-a",
+      appVersion: "1.0.0",
+    })
+  );
+  if ((await awaitServerMessage(socket)).ack !== "hello_ok") {
+    throw new Error("Expected hello_ok during share-request setup.");
+  }
+
+  socket.send(encodePhaseMessage("mrz_scanning"));
+  if ((await awaitServerMessage(socket)).ack !== "phase_ok") {
+    throw new Error("Expected phase_ok for mrz_scanning during setup.");
+  }
+
+  socket.send(encodePhaseMessage("mrz_complete"));
+  if ((await awaitServerMessage(socket)).ack !== "phase_ok") {
+    throw new Error("Expected phase_ok for mrz_complete during setup.");
+  }
+
+  socket.send(encodePhaseMessage("nfc_reading"));
+  if ((await awaitServerMessage(socket)).ack !== "phase_ok") {
+    throw new Error("Expected phase_ok for nfc_reading during setup.");
+  }
+
+  await sendNfcArtifacts({
+    socket,
+    artifacts,
+  });
+
+  socket.send(encodePhaseMessage("nfc_complete"));
+  if ((await awaitServerMessage(socket)).ack !== "phase_ok") {
+    throw new Error("Expected phase_ok for nfc_complete during setup.");
+  }
+
+  socket.send(encodePhaseMessage("selfie_capturing"));
+  if ((await awaitServerMessage(socket)).ack !== "phase_ok") {
+    throw new Error("Expected phase_ok for selfie_capturing during setup.");
+  }
+
+  await sendSelfies({
+    socket,
+    selfies: matchingSelfies,
+  });
+
+  socket.send(encodePhaseMessage("selfie_complete"));
+  const verdict = (await awaitServerMessage(socket)).verdict;
+  if (
+    !(
+      verdict?.outcome === "accepted" &&
+      verdict.reasonCode === "" &&
+      verdict.reasonMessage === "" &&
+      verdict.retryAllowed === false &&
+      verdict.remainingAttempts === 0
+    )
+  ) {
+    throw new Error("Expected accepted verdict during share-request setup.");
+  }
+
+  const shareRequest = (await awaitServerMessage(socket)).shareRequest;
+  if (!shareRequest) {
+    throw new Error("Expected shareRequest during setup.");
+  }
+
+  return {
+    artifacts,
+    handoff,
+    sessionId: resolvedSessionId,
+    shareRequest,
+    socket,
+  };
 }
 
 async function sendHello({
@@ -1534,6 +1671,7 @@ describe("Verification Flows", () => {
       });
       const handoff = await createHandoff(sessionId);
       const artifacts = await createValidNfcArtifacts();
+      const matchingSelfies = await createMatchingValidationSelfies();
 
       const socket = openVerifySocket(sessionId);
 
@@ -1569,35 +1707,10 @@ describe("Verification Flows", () => {
         socket.send(encodePhaseMessage("selfie_capturing"));
         expect((await awaitServerMessage(socket)).ack).toBe("phase_ok");
 
-        socket.send(
-          encodeDataMessage({
-            kind: DataKind.SELFIE,
-            raw: artifacts.dg2,
-            index: 0,
-            total: 3,
-          })
-        );
-        expect((await awaitServerMessage(socket)).ack).toBe("data_ok_3_0");
-
-        socket.send(
-          encodeDataMessage({
-            kind: DataKind.SELFIE,
-            raw: new Uint8Array([11]),
-            index: 1,
-            total: 3,
-          })
-        );
-        expect((await awaitServerMessage(socket)).ack).toBe("data_ok_3_1");
-
-        socket.send(
-          encodeDataMessage({
-            kind: DataKind.SELFIE,
-            raw: new Uint8Array([12]),
-            index: 2,
-            total: 3,
-          })
-        );
-        expect((await awaitServerMessage(socket)).ack).toBe("data_ok_3_2");
+        await sendSelfies({
+          socket,
+          selfies: matchingSelfies,
+        });
 
         socket.send(encodePhaseMessage("selfie_complete"));
         expect((await awaitServerMessage(socket)).verdict).toEqual({
@@ -1640,6 +1753,97 @@ describe("Verification Flows", () => {
 
       expect(attempt?.currentPhase).toBe("selfie_complete");
       expect(attempt?.phaseUpdatedAt).not.toBeNull();
+    }
+  );
+
+  test.serial(
+    "Accepts a valid share selection and returns shareReady in canonical field order",
+    async () => {
+      const sessionId = await createSession({
+        share_fields: {
+          kayle_human_id: {
+            required: false,
+            reason: "Human ID is optional.",
+          },
+          dg1_nationality: {
+            required: false,
+            reason: "Nationality is optional.",
+          },
+          kayle_document_id: {
+            required: true,
+            reason: "Document ID is required.",
+          },
+        },
+      });
+
+      const { socket } = await advanceToShareRequest({ sessionId });
+
+      try {
+        socket.send(
+          encodeShareSelectionMessage({
+            sessionId,
+            selectedFieldKeys: ["kayle_human_id", "kayle_document_id"],
+          })
+        );
+
+        expect((await awaitServerMessage(socket)).shareReady).toEqual({
+          sessionId,
+          selectedFieldKeys: ["kayle_document_id", "kayle_human_id"],
+        });
+        expect(socket.readyState).toBe(WebSocket.OPEN);
+      } finally {
+        socket.close();
+      }
+    }
+  );
+
+  test.serial(
+    "Keeps the socket open on invalid share selection and allows resubmission",
+    async () => {
+      const sessionId = await createSession({
+        share_fields: {
+          dg1_nationality: {
+            required: false,
+            reason: "Nationality is optional.",
+          },
+          kayle_document_id: {
+            required: true,
+            reason: "Document ID is required.",
+          },
+        },
+      });
+
+      const { socket } = await advanceToShareRequest({ sessionId });
+
+      try {
+        socket.send(
+          encodeShareSelectionMessage({
+            sessionId,
+            selectedFieldKeys: ["unknown_claim"],
+          })
+        );
+
+        expect((await awaitServerMessage(socket)).error).toEqual({
+          code: "SHARE_SELECTION_INVALID_FIELD",
+          message:
+            "One or more selected details are not available for this verification. Review the requested details and try again.",
+        });
+        expect(socket.readyState).toBe(WebSocket.OPEN);
+
+        socket.send(
+          encodeShareSelectionMessage({
+            sessionId,
+            selectedFieldKeys: ["kayle_document_id"],
+          })
+        );
+
+        expect((await awaitServerMessage(socket)).shareReady).toEqual({
+          sessionId,
+          selectedFieldKeys: ["kayle_document_id"],
+        });
+      } finally {
+        socket.close();
+      }
     }
   );
 
@@ -2029,7 +2233,7 @@ describe("Verification Flows", () => {
   );
 
   test.serial(
-    "Uses fail-open face fallback when similarity cannot be computed and records the fallback event",
+    "Rejects selfie_complete when similarity cannot be computed and records an unavailability event",
     async () => {
       const sessionId = await createSession();
       const handoff = await createHandoff(sessionId);
@@ -2062,11 +2266,12 @@ describe("Verification Flows", () => {
         const response = await awaitServerMessage(socket);
         expect(response.ack).toBeUndefined();
         expect(response.verdict).toEqual({
-          outcome: "accepted",
-          reasonCode: "",
-          reasonMessage: "",
-          retryAllowed: false,
-          remainingAttempts: 0,
+          outcome: "rejected",
+          reasonCode: "selfie_face_mismatch",
+          reasonMessage:
+            "Selfie evidence did not match the passport photo. Please retry with a new verification attempt.",
+          retryAllowed: true,
+          remainingAttempts: 2,
         });
       } finally {
         socket.close();
@@ -2075,6 +2280,7 @@ describe("Verification Flows", () => {
       const [attempt] = await db
         .select({
           status: verification_attempts.status,
+          failureCode: verification_attempts.failureCode,
           riskScore: verification_attempts.riskScore,
         })
         .from(verification_attempts)
@@ -2088,13 +2294,13 @@ describe("Verification Flows", () => {
         .from(events)
         .where(eq(events.triggerId, handoff.attempt_id));
 
-      expect(attempt?.status).toBe("succeeded");
+      expect(attempt?.status).toBe("failed");
+      expect(attempt?.failureCode).toBe("selfie_face_mismatch");
       expect(attempt?.riskScore).toBe(1);
       expect(
         fallbackEvents.some(
           (event) =>
-            event.type ===
-            "verification.attempt.face_score_fallback_v2_followup"
+            event.type === "verification.attempt.face_score_unavailable"
         )
       ).toBeTrue();
     },

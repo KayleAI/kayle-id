@@ -150,7 +150,7 @@ describe("UnsupportedDevice", () => {
 
     await waitFor(() => {
       expect(globalThis.fetch).toHaveBeenCalledWith(
-        "https://api.example.test/v1/verify/session/vs_test_session123/handoff",
+        "/v1/verify/session/vs_test_session123/handoff",
         {
           method: "POST",
         }

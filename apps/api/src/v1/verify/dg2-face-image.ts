@@ -14,6 +14,7 @@ const MULTI_BYTE_TAG_MASK = 0x20;
 const MULTI_BYTE_TAG_SENTINEL = 0x1f;
 const CONTINUATION_BYTE_MIN = 0x80;
 const SHORT_LENGTH_MAX = 0x80;
+const DG2_FILE_TAG = 0x75;
 const DG2_ROOT_TAG = 0x7f_61;
 const DG2_BIOMETRIC_GROUP_TAG = 0x7f_60;
 const DG2_BIOMETRIC_DATA_TAG = 0x7f_2e;
@@ -316,7 +317,8 @@ function decodeJpeg(bytes: Uint8Array): DecodedImage {
 }
 
 export function extractDg2FaceImage(dg2: Uint8Array): Dg2FaceImage {
-  const root = readTlv(dg2, 0);
+  const outer = readTlv(dg2, 0);
+  const root = outer.tag === DG2_FILE_TAG ? readTlv(outer.value, 0) : outer;
 
   if (root.tag !== DG2_ROOT_TAG) {
     throw new Error("dg2_root_tag_invalid");

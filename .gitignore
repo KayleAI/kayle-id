@@ -42,6 +42,9 @@ Carthage/Build/
 *.env
 .DS_Store
 apps/ios/.DS_Store
+infra/face-matcher/models/
+infra/face-matcher/.venv/
+infra/face-matcher/.wrangler/
 
 # Cap'n Proto generated C++
 /packages/capnp/generated/

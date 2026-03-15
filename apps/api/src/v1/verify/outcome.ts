@@ -169,7 +169,7 @@ export async function markAttemptSucceeded({
   session.completedAt = now;
 }
 
-export async function emitFaceScoreFallbackEvent({
+export async function emitFaceScoreUnavailableEvent({
   session,
   attemptId,
 }: {
@@ -180,7 +180,7 @@ export async function emitFaceScoreFallbackEvent({
     id: generateId({ type: "evt", environment: session.environment }),
     organizationId: session.organizationId,
     environment: session.environment,
-    type: "verification.attempt.face_score_fallback_v2_followup",
+    type: "verification.attempt.face_score_unavailable",
     triggerId: attemptId,
     triggerType: "verification_attempt",
   });

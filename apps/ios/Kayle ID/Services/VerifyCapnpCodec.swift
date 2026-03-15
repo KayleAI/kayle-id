@@ -29,6 +29,14 @@ nonisolated private func verify_build_data(
   _ chunkTotal: UInt32
 ) -> Int32
 
+@_silgen_name("verify_build_share_selection")
+nonisolated private func verify_build_share_selection(
+  _ builder: UnsafeMutableRawPointer?,
+  _ sessionId: UnsafePointer<CChar>?,
+  _ selectedFieldKeys: UnsafeMutablePointer<UnsafePointer<CChar>?>?,
+  _ selectedFieldKeyCount: Int
+) -> Int32
+
 @_silgen_name("verify_server_message_kind")
 nonisolated private func verify_server_message_kind(_ reader: UnsafeMutableRawPointer?) -> Int32
 
@@ -80,12 +88,29 @@ nonisolated private func verify_server_message_get_share_request_field(
   _ outRequired: UnsafeMutablePointer<Int32>?
 ) -> Int32
 
+@_silgen_name("verify_server_message_get_share_ready")
+nonisolated private func verify_server_message_get_share_ready(
+  _ reader: UnsafeMutableRawPointer?,
+  _ outSessionId: UnsafeMutablePointer<CChar>?,
+  _ outSessionIdSize: Int,
+  _ outFieldCount: UnsafeMutablePointer<UInt32>?
+) -> Int32
+
+@_silgen_name("verify_server_message_get_share_ready_field")
+nonisolated private func verify_server_message_get_share_ready_field(
+  _ reader: UnsafeMutableRawPointer?,
+  _ fieldIndex: UInt32,
+  _ outKey: UnsafeMutablePointer<CChar>?,
+  _ outKeySize: Int
+) -> Int32
+
 enum VerifyServerMessageKind: Int32 {
   case none = 0
   case ack = 1
   case error = 2
   case verdict = 3
   case shareRequest = 4
+  case shareReady = 5
 }
 
 struct VerifyServerMessage {
@@ -94,6 +119,7 @@ struct VerifyServerMessage {
   let errorMessage: String?
   let verdict: VerifyServerVerdict?
   let shareRequest: VerifyShareRequest?
+  let shareReady: VerifyShareReady?
 }
 
 final class VerifyCapnpCodec {
@@ -199,6 +225,52 @@ final class VerifyCapnpCodec {
     return builder.toBytes()
   }
 
+  nonisolated func encodeShareSelection(
+    sessionId: String,
+    selectedFieldKeys: [String]
+  ) -> Data? {
+    guard let builder = CapnpMessageBuilder() else {
+      return nil
+    }
+
+    let result = sessionId.withCString { sessionCString in
+      let mutableFieldKeyPointers: [UnsafeMutablePointer<CChar>?] = selectedFieldKeys.map {
+        strdup($0)
+      }
+      defer {
+        for pointer in mutableFieldKeyPointers {
+          if let pointer {
+            free(pointer)
+          }
+        }
+      }
+
+      let fieldKeyPointers: [UnsafePointer<CChar>?] = mutableFieldKeyPointers.map {
+        pointer in
+        if let pointer {
+          return UnsafePointer(pointer)
+        }
+        return nil
+      }
+
+      return fieldKeyPointers.withUnsafeBufferPointer { buffer in
+        let mutableBase = UnsafeMutablePointer(mutating: buffer.baseAddress)
+        return verify_build_share_selection(
+          builder.opaque,
+          sessionCString,
+          mutableBase,
+          selectedFieldKeys.count
+        )
+      }
+    }
+
+    guard result == 1 else {
+      return nil
+    }
+
+    return builder.toBytes()
+  }
+
   nonisolated func decodeServerMessage(_ data: Data) -> VerifyServerMessage? {
     guard let reader = CapnpMessageReader(data: data, format: .unpacked) else {
       return nil
@@ -215,7 +287,8 @@ final class VerifyCapnpCodec {
           errorCode: nil,
           errorMessage: nil,
           verdict: nil,
-          shareRequest: nil
+          shareRequest: nil,
+          shareReady: nil
         )
       }
       return VerifyServerMessage(
@@ -223,7 +296,8 @@ final class VerifyCapnpCodec {
         errorCode: nil,
         errorMessage: nil,
         verdict: nil,
-        shareRequest: nil
+        shareRequest: nil,
+        shareReady: nil
       )
     case .error:
       var codeBuffer = [CChar](repeating: 0, count: 128)
@@ -241,7 +315,8 @@ final class VerifyCapnpCodec {
           errorCode: String(cString: codeBuffer),
           errorMessage: String(cString: messageBuffer),
           verdict: nil,
-          shareRequest: nil
+          shareRequest: nil,
+          shareReady: nil
         )
       }
       return VerifyServerMessage(
@@ -249,7 +324,8 @@ final class VerifyCapnpCodec {
         errorCode: nil,
         errorMessage: nil,
         verdict: nil,
-        shareRequest: nil
+        shareRequest: nil,
+        shareReady: nil
       )
     case .verdict:
       var outcome: Int32 = -1
@@ -280,7 +356,8 @@ final class VerifyCapnpCodec {
             retryAllowed: retryAllowed == 1,
             remainingAttempts: Int(remainingAttempts)
           ),
-          shareRequest: nil
+          shareRequest: nil,
+          shareReady: nil
         )
       }
       return VerifyServerMessage(
@@ -288,7 +365,8 @@ final class VerifyCapnpCodec {
         errorCode: nil,
         errorMessage: nil,
         verdict: nil,
-        shareRequest: nil
+        shareRequest: nil,
+        shareReady: nil
       )
     case .shareRequest:
       var contractVersion: UInt32 = 0
@@ -308,7 +386,8 @@ final class VerifyCapnpCodec {
           errorCode: nil,
           errorMessage: nil,
           verdict: nil,
-          shareRequest: nil
+          shareRequest: nil,
+          shareReady: nil
         )
       }
 
@@ -335,7 +414,8 @@ final class VerifyCapnpCodec {
             errorCode: nil,
             errorMessage: nil,
             verdict: nil,
-            shareRequest: nil
+            shareRequest: nil,
+            shareReady: nil
           )
         }
 
@@ -357,6 +437,65 @@ final class VerifyCapnpCodec {
           contractVersion: Int(contractVersion),
           sessionId: String(cString: sessionIdBuffer),
           fields: fields
+        ),
+        shareReady: nil
+      )
+    case .shareReady:
+      var fieldCount: UInt32 = 0
+      var sessionIdBuffer = [CChar](repeating: 0, count: 256)
+      let ok = verify_server_message_get_share_ready(
+        reader.opaque,
+        &sessionIdBuffer,
+        sessionIdBuffer.count,
+        &fieldCount
+      )
+
+      guard ok == 1 else {
+        return VerifyServerMessage(
+          ackMessage: nil,
+          errorCode: nil,
+          errorMessage: nil,
+          verdict: nil,
+          shareRequest: nil,
+          shareReady: nil
+        )
+      }
+
+      var selectedFieldKeys: [String] = []
+      selectedFieldKeys.reserveCapacity(Int(fieldCount))
+
+      for fieldIndex in 0..<fieldCount {
+        var keyBuffer = [CChar](repeating: 0, count: 128)
+        let fieldOk = verify_server_message_get_share_ready_field(
+          reader.opaque,
+          fieldIndex,
+          &keyBuffer,
+          keyBuffer.count
+        )
+
+        guard fieldOk == 1 else {
+          return VerifyServerMessage(
+            ackMessage: nil,
+            errorCode: nil,
+            errorMessage: nil,
+            verdict: nil,
+            shareRequest: nil,
+            shareReady: nil
+          )
+        }
+
+        selectedFieldKeys.append(String(cString: keyBuffer))
+      }
+
+      return VerifyServerMessage(
+        ackMessage: nil,
+        errorCode: nil,
+        errorMessage: nil,
+        verdict: nil,
+        shareRequest: nil,
+        shareReady: VerifyShareReady(
+          sessionId: String(cString: sessionIdBuffer),
+          selectedFieldKeys: selectedFieldKeys
         )
       )
     case .none:

@@ -22,6 +22,7 @@ struct ContentView: View {
   @State private var cameraBlur: CGFloat = 0
   @State private var didTriggerMRZ = false
   @State private var cardAccessNumber: String?
+  @State private var isShareCancelConfirmationPresented = false
 
 
   var body: some View {
@@ -126,6 +127,9 @@ struct ContentView: View {
         nfcReader: nfcReader,
         mrzKey: session.mrzResult?.mrzKey ?? "",
         cardAccessNumber: cardAccessNumber,
+        uploadStatus: session.nfcUploadStatusMessage,
+        uploadProgress: session.nfcUploadProgress,
+        isUploading: session.isUploadingNFC,
         onComplete: { result in
           session.nfcResult = result
           // Upload NFC data immediately
@@ -289,16 +293,8 @@ struct ContentView: View {
             isMRZSheetPresented = false
           }
           DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
-            // Upload MRZ data immediately after scan
-            Task {
-              do {
-                await session.updatePhase(.mrzComplete)
-                try await session.uploadMRZData()
-                session.moveToStep(.rfidCheck)
-              } catch {
-                session.handleError(error)
-              }
-            }
+            session.moveToStep(.rfidCheck)
+            session.syncCompletedMRZScan()
           }
         }
       })
@@ -326,35 +322,87 @@ struct ContentView: View {
   }
 
   private var shareSelectionView: some View {
-    VStack(alignment: .leading, spacing: 20) {
+    let kayleFields = kayleShareRequestFields(session.shareRequest)
+    let requiredFields = requiredShareRequestFields(session.shareRequest)
+    let optionalFields = optionalShareRequestFields(session.shareRequest)
+
+    return VStack(alignment: .leading, spacing: 20) {
       Text("Review requested details")
         .font(.title3).bold()
         .foregroundStyle(.black)
 
-      Text("Required details are locked on. Optional details stay on this device until you choose to share them in the next step.")
+      Text("Review what will be shared before you continue. Required items stay enabled. Optional items stay on this device unless you choose to include them.")
         .font(.subheadline)
         .foregroundStyle(.black.opacity(0.65))
 
       ScrollView {
-        LazyVStack(spacing: 12) {
-          ForEach(session.shareRequest?.fields ?? []) { field in
-            shareFieldRow(field)
-          }
+        LazyVStack(alignment: .leading, spacing: 20) {
+          shareFieldSection(
+            title: "Security Details",
+            description: "These identifiers help protect your verification from misuse and duplicate claims.",
+            fields: kayleFields
+          )
+
+          shareFieldSection(
+            title: "Required Details",
+            description: "These details are required by the relying service to complete verification.",
+            fields: requiredFields
+          )
+
+          shareFieldSection(
+            title: "Optional Details",
+            description: "You can choose whether to include these extra details in the shared result.",
+            fields: optionalFields
+          )
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.vertical, 4)
       }
 
-      VStack(spacing: 12) {
-        PrimaryActionButton(title: "Continue", isDisabled: true) {}
+      if session.isSubmittingShareSelection {
+        HStack(spacing: 10) {
+          ProgressView()
+            .progressViewStyle(.circular)
+            .tint(.black)
 
-        SecondaryActionButton(title: "Done") {
-          session.reset()
+          Text("Submitting your selection…")
+            .font(.subheadline)
+            .foregroundStyle(.black.opacity(0.7))
+        }
+      }
+
+      if let errorMessage = session.shareSelectionErrorMessage {
+        Text(errorMessage)
+          .font(.subheadline)
+          .foregroundStyle(Color.red)
+      }
+
+      VStack(spacing: 12) {
+        PrimaryActionButton(
+          title: session.isSubmittingShareSelection ? "Submitting..." : "Continue",
+          isDisabled: session.isSubmittingShareSelection || !session.canSubmitShareSelection()
+        ) {
+          Task {
+            await session.submitShareSelection()
+          }
+        }
+
+        SecondaryActionButton(title: "Cancel") {
+          isShareCancelConfirmationPresented = true
         }
       }
     }
     .padding(16)
     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     .background(Color.white.ignoresSafeArea())
+    .alert("Cancel verification?", isPresented: $isShareCancelConfirmationPresented) {
+      Button("Keep reviewing", role: .cancel) {}
+      Button("Cancel verification", role: .destructive) {
+        session.reset()
+      }
+    } message: {
+      Text("This will end the current verification flow on this device.")
+    }
   }
 
   private func shareFieldRow(_ field: VerifyShareRequestField) -> some View {
@@ -384,18 +432,40 @@ struct ContentView: View {
           )
         )
         .labelsHidden()
+        .tint(.green)
         .disabled(field.required)
-      }
-
-      if field.required {
-        Text("Required")
-          .font(.caption.weight(.semibold))
-          .foregroundStyle(.black.opacity(0.55))
       }
     }
     .padding(16)
     .background(Color.black.opacity(0.03))
     .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+  }
+
+  @ViewBuilder
+  private func shareFieldSection(
+    title: String,
+    description: String,
+    fields: [VerifyShareRequestField]
+  ) -> some View {
+    if !fields.isEmpty {
+      VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 4) {
+          Text(title)
+            .font(.headline)
+            .foregroundStyle(.black)
+
+          Text(description)
+            .font(.subheadline)
+            .foregroundStyle(.black.opacity(0.6))
+        }
+
+        LazyVStack(spacing: 12) {
+          ForEach(fields) { field in
+            shareFieldRow(field)
+          }
+        }
+      }
+    }
   }
 
   // MARK: - Helpers
