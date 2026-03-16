@@ -54,3 +54,6 @@ docs/*.md
 
 # iOS
 .build/
+
+# Python
+*.pyc
