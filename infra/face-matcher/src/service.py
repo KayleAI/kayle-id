@@ -11,9 +11,12 @@ import numpy as np
 
 MODEL_INPUT_SIZE = (112, 112)
 DETAIL_STDDEV_MIN = 12.0
-FACE_MARGIN_RATIO = 0.2
 DEFAULT_THRESHOLD = 0.8
+DEFAULT_DETECTOR_INPUT_SIZE = (320, 320)
 MODEL_PATH = os.environ.get("FACE_MATCHER_MODEL_PATH", "/app/models/w600k_mbf.onnx")
+DETECTOR_MODEL_PATH = os.environ.get(
+    "FACE_MATCHER_DETECTOR_PATH", "/app/models/face_detection_yunet_2023mar.onnx"
+)
 PORT = int(os.environ.get("PORT", "8080"))
 
 
@@ -46,49 +49,46 @@ def decode_dg2_rgba(image_payload: dict) -> np.ndarray:
     return cv2.cvtColor(rgba_image, cv2.COLOR_RGBA2BGR)
 
 
-def prepare_center_crop(image: np.ndarray) -> np.ndarray:
+def detect_face(
+    detector: cv2.FaceDetectorYN, image: np.ndarray
+) -> Optional[np.ndarray]:
     height, width = image.shape[:2]
-    size = min(height, width)
-    offset_x = max((width - size) // 2, 0)
-    offset_y = max((height - size) // 2, 0)
-    cropped = image[offset_y:offset_y + size, offset_x:offset_x + size]
-    return cv2.resize(cropped, MODEL_INPUT_SIZE)
 
-
-def detect_face_bbox(cascade: cv2.CascadeClassifier, image: np.ndarray):
-    grayscale = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-    faces = cascade.detectMultiScale(
-        grayscale,
-        scaleFactor=1.1,
-        minNeighbors=4,
-        minSize=(20, 20),
-    )
-
-    if len(faces) == 0:
+    if height == 0 or width == 0:
         return None
 
-    return max(faces, key=lambda face: int(face[2]) * int(face[3]))
+    detector.setInputSize((width, height))
+    _, faces = detector.detect(image)
+
+    if faces is None or len(faces) == 0:
+        return None
+
+    best_face = max(
+        faces,
+        key=lambda face: float(face[2]) * float(face[3]) * max(float(face[14]), 0.0),
+    )
+    return best_face
 
 
 def prepare_face_crop(
-    cascade: cv2.CascadeClassifier, image: np.ndarray
+    detector: cv2.FaceDetectorYN,
+    recognizer: cv2.FaceRecognizerSF,
+    image: np.ndarray,
 ) -> Optional[np.ndarray]:
-    face = detect_face_bbox(cascade, image)
+    face = detect_face(detector, image)
 
     if face is None:
-        prepared = prepare_center_crop(image)
-    else:
-        x, y, width, height = face
-        center_x = x + width / 2
-        center_y = y + height / 2
-        size = max(width, height) * (1.0 + FACE_MARGIN_RATIO)
-        half_size = size / 2
-        left = max(int(center_x - half_size), 0)
-        top = max(int(center_y - half_size), 0)
-        right = min(int(center_x + half_size), image.shape[1])
-        bottom = min(int(center_y + half_size), image.shape[0])
-        cropped = image[top:bottom, left:right]
-        prepared = cv2.resize(cropped, MODEL_INPUT_SIZE)
+        return None
+
+    try:
+        prepared = recognizer.alignCrop(image, face)
+    except Exception:
+        return None
+
+    if prepared is None:
+        return None
+
+    prepared = cv2.resize(prepared, MODEL_INPUT_SIZE)
 
     grayscale = cv2.cvtColor(prepared, cv2.COLOR_BGR2GRAY)
 
@@ -99,11 +99,11 @@ def prepare_face_crop(
 
 
 def build_embedding(
-    cascade: cv2.CascadeClassifier,
+    detector: cv2.FaceDetectorYN,
     recognizer: cv2.FaceRecognizerSF,
     image: np.ndarray,
 ):
-    prepared = prepare_face_crop(cascade, image)
+    prepared = prepare_face_crop(detector, recognizer, image)
 
     if prepared is None:
         return None
@@ -112,19 +112,19 @@ def build_embedding(
 
 
 def compare_faces(
-    cascade: cv2.CascadeClassifier,
+    detector: cv2.FaceDetectorYN,
     recognizer: cv2.FaceRecognizerSF,
     dg2_image: np.ndarray,
     selfies_base64: list[str],
     threshold: float,
 ) -> dict:
-    dg2_embedding = build_embedding(cascade, recognizer, dg2_image)
+    dg2_embedding = build_embedding(detector, recognizer, dg2_image)
 
     if dg2_embedding is None:
         return {
             "faceScore": None,
             "passed": False,
-            "reason": "face_score_dg2_detail_insufficient",
+            "reason": "face_score_dg2_face_not_detected",
             "usedFallback": True,
         }
 
@@ -136,7 +136,7 @@ def compare_faces(
         if selfie is None:
             continue
 
-        selfie_embedding = build_embedding(cascade, recognizer, selfie)
+        selfie_embedding = build_embedding(detector, recognizer, selfie)
 
         if selfie_embedding is None:
             continue
@@ -169,31 +169,51 @@ def compare_faces(
 
 
 class MatcherRuntime:
-    def __init__(self, model_path: str):
+    def __init__(self, detector_model_path: str, model_path: str):
+        self.detector_model_path = detector_model_path
         self.model_path = model_path
         self.error: Optional[str] = None
-        self.cascade: Optional[cv2.CascadeClassifier] = None
+        self.detector: Optional[cv2.FaceDetectorYN] = None
         self.recognizer: Optional[cv2.FaceRecognizerSF] = None
         self._load()
 
     def _load(self) -> None:
         try:
-            self.cascade = cv2.CascadeClassifier(
-                cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
+            self.detector = cv2.FaceDetectorYN.create(
+                self.detector_model_path,
+                "",
+                DEFAULT_DETECTOR_INPUT_SIZE,
+                0.85,
+                0.3,
+                5000,
             )
             self.recognizer = cv2.FaceRecognizerSF.create(self.model_path, "")
-            emit_log("container_ready", model_path=self.model_path)
+            emit_log(
+                "container_ready",
+                detector_model_path=self.detector_model_path,
+                model_path=self.model_path,
+            )
         except Exception as error:
             self.error = str(error)
-            emit_log("container_failed", model_path=self.model_path, error=self.error)
+            emit_log(
+                "container_failed",
+                detector_model_path=self.detector_model_path,
+                model_path=self.model_path,
+                error=self.error,
+            )
 
     @property
     def ready(self) -> bool:
-        return self.error is None and self.cascade is not None and self.recognizer is not None
+        return (
+            self.error is None
+            and self.detector is not None
+            and self.recognizer is not None
+        )
 
     def health_payload(self) -> dict:
         return {
             "data": {
+                "detectorModelPath": self.detector_model_path,
                 "modelPath": self.model_path,
                 "ready": self.ready,
                 "status": "healthy" if self.ready else "unhealthy",
@@ -202,18 +222,19 @@ class MatcherRuntime:
         }
 
     def match(self, payload: dict) -> dict:
-        if not self.ready or self.cascade is None or self.recognizer is None:
+        if not self.ready or self.detector is None or self.recognizer is None:
+            reason_suffix = self.error or "unknown"
             return {
                 "faceScore": None,
                 "passed": False,
-                "reason": "face_matcher_unavailable:runtime_not_ready",
+                "reason": f"face_matcher_unavailable:runtime_not_ready:{reason_suffix}",
                 "usedFallback": True,
             }
 
         dg2_image = decode_dg2_rgba(payload["dg2Image"])
         threshold = float(payload.get("threshold") or DEFAULT_THRESHOLD)
         return compare_faces(
-            self.cascade,
+            self.detector,
             self.recognizer,
             dg2_image,
             payload["selfiesBase64"],
@@ -221,7 +242,7 @@ class MatcherRuntime:
         )
 
 
-RUNTIME = MatcherRuntime(MODEL_PATH)
+RUNTIME = MatcherRuntime(DETECTOR_MODEL_PATH, MODEL_PATH)
 
 
 class MatcherHandler(BaseHTTPRequestHandler):
@@ -303,7 +324,12 @@ class MatcherHandler(BaseHTTPRequestHandler):
 
 def main() -> int:
     server = ThreadingHTTPServer(("0.0.0.0", PORT), MatcherHandler)
-    emit_log("container_listening", model_path=MODEL_PATH, port=PORT)
+    emit_log(
+        "container_listening",
+        detector_model_path=DETECTOR_MODEL_PATH,
+        model_path=MODEL_PATH,
+        port=PORT,
+    )
     server.serve_forever()
     return 0
 

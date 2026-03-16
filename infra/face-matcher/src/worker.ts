@@ -9,6 +9,8 @@ import { configureVerifyAssetFetcherFromEnv } from "../../../apps/api/src/v1/ver
 import { matchFacesWithContainer } from "./matcher";
 
 export const FACE_MATCHER_MODEL_PATH = "/app/models/w600k_mbf.onnx";
+export const FACE_MATCHER_DETECTOR_PATH =
+  "/app/models/face_detection_yunet_2023mar.onnx";
 
 export type FetchLike = (
   input: RequestInfo | URL,

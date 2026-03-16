@@ -3,7 +3,7 @@
   "version": "0.0.1",
   "type": "module",
   "scripts": {
-    "dev": "bunx wrangler dev --env-file ../../.env --ip 0.0.0.0 --port 8788 --inspector-port 9230",
+    "dev": "./scripts/dev-with-healthcheck.sh",
     "deploy": "bunx wrangler deploy --minify",
     "cf-typegen": "bunx wrangler types --env-file ../../.env --env-interface FaceMatcherBindings cloudflare-env.d.ts",
     "test:dev": "bunx wrangler dev --env-file ../../.env.test.example --local --ip 127.0.0.1 --port 8788",

@@ -23,7 +23,7 @@ processes:
     restart_when_changed: []
     env: {}
   Face Matcher:
-    command: bun run dev
+    command: ./scripts/dev-with-healthcheck.sh
     working_dir: ./infra/face-matcher
     auto_start: false
     auto_restart: true
