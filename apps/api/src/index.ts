@@ -4,6 +4,7 @@ import { cors } from "hono/cors";
 import { config } from "@/config";
 import v1 from "@/v1";
 import verify from "@/v1/verify";
+import { processDueWebhookDeliveries } from "@/v1/webhooks/deliveries/service";
 import auth from "./auth";
 
 const app = new OpenAPIHono<{ Bindings: CloudflareBindings }>();
@@ -103,4 +104,17 @@ app.doc("/openapi", {
 
 app.get("/reference", Scalar({ url: "/openapi" }));
 
-export default app;
+const worker = Object.assign(app, {
+  fetch: app.fetch.bind(app),
+  scheduled: async (
+    _controller: ScheduledController,
+    env: CloudflareBindings,
+    _executionCtx: ExecutionContext
+  ) => {
+    await processDueWebhookDeliveries({
+      authSecret: env.AUTH_SECRET,
+    });
+  },
+});
+
+export default worker;

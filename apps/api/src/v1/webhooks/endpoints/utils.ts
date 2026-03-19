@@ -1,3 +1,7 @@
+import {
+  SUPPORTED_WEBHOOK_EVENT_TYPES,
+  type SupportedWebhookEventType,
+} from "@kayle-id/config/webhook-events";
 import type {
   webhook_encryption_keys,
   webhook_endpoints,
@@ -28,6 +32,29 @@ export function generateKeyId(environment: Environment): string {
   return `whk_${environment}_${generateRandomString(32)}`;
 }
 
+export function generateSigningSecret(): string {
+  return `whsec_${generateRandomString(48)}`;
+}
+
+function normalizeSubscribedEventTypes(
+  value: unknown
+): SupportedWebhookEventType[] {
+  if (!Array.isArray(value)) {
+    return [...SUPPORTED_WEBHOOK_EVENT_TYPES];
+  }
+
+  const normalized = value.filter(
+    (eventType): eventType is SupportedWebhookEventType =>
+      SUPPORTED_WEBHOOK_EVENT_TYPES.includes(
+        eventType as SupportedWebhookEventType
+      )
+  );
+
+  return normalized.length > 0
+    ? normalized
+    : [...SUPPORTED_WEBHOOK_EVENT_TYPES];
+}
+
 export function mapEndpointRowToResponse(
   row: typeof webhook_endpoints.$inferSelect,
   organizationId: string
@@ -38,6 +65,9 @@ export function mapEndpointRowToResponse(
     environment: row.environment as Environment,
     url: row.url,
     enabled: row.enabled,
+    subscribed_event_types: normalizeSubscribedEventTypes(
+      row.subscribedEventTypes
+    ),
     created_at: row.createdAt.toISOString(),
     updated_at: row.updatedAt.toISOString(),
     disabled_at: row.disabledAt ? row.disabledAt.toISOString() : null,

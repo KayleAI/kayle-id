@@ -1,7 +1,8 @@
 import { createRoute, z } from "@hono/zod-openapi";
+import { webhookEventTypeSchema } from "@kayle-id/config/webhook-events";
 import { ErrorResponse } from "@/openapi/base";
 import { InternalServerErrorResponse } from "@/openapi/errors";
-import { WebhookEndpoint } from "@/openapi/models/webhook";
+import { CreatedWebhookEndpoint } from "@/openapi/models/webhook";
 
 export const createWebhookEndpoint = createRoute({
   method: "post",
@@ -29,6 +30,10 @@ export const createWebhookEndpoint = createRoute({
                 .describe(
                   "Whether the endpoint should be enabled immediately. Defaults to true."
                 ),
+              subscribed_event_types: z
+                .array(webhookEventTypeSchema)
+                .optional()
+                .describe("The event types this endpoint should receive."),
             })
             .openapi("CreateWebhookEndpointRequest"),
         },
@@ -44,7 +49,7 @@ export const createWebhookEndpoint = createRoute({
       content: {
         "application/json": {
           schema: z.object({
-            data: WebhookEndpoint,
+            data: CreatedWebhookEndpoint,
             error: z.null(),
           }),
         },

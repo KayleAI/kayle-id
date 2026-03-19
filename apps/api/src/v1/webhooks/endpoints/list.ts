@@ -1,12 +1,16 @@
 import { OpenAPIHono } from "@hono/zod-openapi";
+import { env } from "@kayle-id/config/env";
+import { SUPPORTED_WEBHOOK_EVENT_TYPES } from "@kayle-id/config/webhook-events";
 import { db } from "@kayle-id/database/drizzle";
 import { webhook_endpoints } from "@kayle-id/database/schema/webhooks";
 import { and, eq, gt } from "drizzle-orm";
 import { createWebhookEndpoint } from "@/openapi/v1/webhooks/endpoints/create";
 import { listWebhookEndpoints } from "@/openapi/v1/webhooks/endpoints/list";
+import { encryptWebhookSigningSecret } from "@/v1/webhooks/signing-secret";
 import {
   type Environment,
   generateEndpointId,
+  generateSigningSecret,
   mapEndpointRowToResponse,
 } from "./utils";
 
@@ -72,8 +76,17 @@ listAndCreateEndpoints.openapi(createWebhookEndpoint, async (c) => {
 
   const environment: Environment = (body.environment as Environment) ?? "live";
   const enabled = body.enabled ?? true;
+  const subscribedEventTypes = body.subscribed_event_types ?? [
+    ...SUPPORTED_WEBHOOK_EVENT_TYPES,
+  ];
 
   const id = generateEndpointId(environment);
+  const signingSecret = generateSigningSecret();
+  const authSecret = c.env?.AUTH_SECRET ?? env.AUTH_SECRET;
+  const signingSecretCiphertext = await encryptWebhookSigningSecret({
+    plaintext: signingSecret,
+    secret: authSecret,
+  });
 
   const [created] = await db
     .insert(webhook_endpoints)
@@ -83,11 +96,16 @@ listAndCreateEndpoints.openapi(createWebhookEndpoint, async (c) => {
       environment,
       url: body.url,
       enabled,
+      subscribedEventTypes,
+      signingSecretCiphertext,
       disabledAt: enabled ? null : new Date(),
     })
     .returning();
 
-  const data = mapEndpointRowToResponse(created, organizationId);
+  const data = {
+    endpoint: mapEndpointRowToResponse(created, organizationId),
+    signing_secret: signingSecret,
+  };
 
   return c.json(
     {

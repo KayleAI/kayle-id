@@ -50,6 +50,13 @@
       "when": 1772739600000,
       "tag": "0007_phase4_attempt_phase_state",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1773919020208,
+      "tag": "0008_slim_toxin",
+      "breakpoints": true
     }
   ]
 }

@@ -7,7 +7,7 @@ const webhookEvents = new OpenAPIHono<{
   Variables: { organizationId: string };
 }>();
 
-webhookEvents.route("/:event_id", getEventById);
+webhookEvents.route("/", getEventById);
 webhookEvents.route("/", listEvents);
 
 export default webhookEvents;

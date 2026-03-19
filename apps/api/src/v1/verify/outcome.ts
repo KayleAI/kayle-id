@@ -120,14 +120,17 @@ export async function markAttemptSucceeded({
       faceScore?: never;
       riskScore: number;
     }
-)): Promise<void> {
+)): Promise<{
+  attemptSucceededEventId: string;
+  sessionCompletedEventId: string;
+}> {
   const now = new Date();
   const riskScore =
     typeof scoreInput.riskScore === "number"
       ? normalizeRiskScore(scoreInput.riskScore)
       : normalizeRiskScore(1 - normalizeRiskScore(scoreInput.faceScore));
 
-  await db.transaction(async (tx) => {
+  const result = await db.transaction(async (tx) => {
     await tx
       .update(verification_attempts)
       .set({
@@ -138,8 +141,13 @@ export async function markAttemptSucceeded({
       })
       .where(eq(verification_attempts.id, attemptId));
 
+    const attemptSucceededEventId = generateId({
+      type: "evt",
+      environment: session.environment,
+    });
+
     await tx.insert(events).values({
-      id: generateId({ type: "evt", environment: session.environment }),
+      id: attemptSucceededEventId,
       organizationId: session.organizationId,
       environment: session.environment,
       type: "verification.attempt.succeeded",
@@ -155,18 +163,30 @@ export async function markAttemptSucceeded({
       })
       .where(eq(verification_sessions.id, session.id));
 
+    const sessionCompletedEventId = generateId({
+      type: "evt",
+      environment: session.environment,
+    });
+
     await tx.insert(events).values({
-      id: generateId({ type: "evt", environment: session.environment }),
+      id: sessionCompletedEventId,
       organizationId: session.organizationId,
       environment: session.environment,
       type: "verification.session.completed",
       triggerId: session.id,
       triggerType: "verification_session",
     });
+
+    return {
+      attemptSucceededEventId,
+      sessionCompletedEventId,
+    };
   });
 
   session.status = "completed";
   session.completedAt = now;
+
+  return result;
 }
 
 export async function emitFaceScoreUnavailableEvent({

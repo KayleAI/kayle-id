@@ -17,6 +17,10 @@ import { validator } from "hono/validator";
 import { z } from "zod";
 import { sessionIdSchema } from "@/shared/validation";
 import {
+  attemptWebhookDelivery,
+  createWebhookDeliveriesForVerificationSucceeded,
+} from "@/v1/webhooks/deliveries/service";
+import {
   claimAttemptConnection,
   releaseAttemptConnection,
 } from "./attempt-connection";
@@ -213,6 +217,7 @@ verify.get(
     const connectionOwnerId = crypto.randomUUID();
 
     const state = {
+      acceptedFaceScore: null as number | null,
       helloReceived: false,
       transfer: createTransferState(),
       attemptId: null as string | null,
@@ -368,6 +373,7 @@ verify.get(
       state.currentPhase = null;
       state.shareManifest = null;
       state.shareRequestSent = false;
+      state.acceptedFaceScore = null;
     };
 
     const persistConnectedPhaseIfMissing = async (attemptId: string) => {
@@ -454,6 +460,7 @@ verify.get(
       state.currentPhase = attempt.currentPhase ?? null;
       state.shareManifest = null;
       state.shareRequestSent = false;
+      state.acceptedFaceScore = null;
 
       if (authState.kind === "resume") {
         await persistConnectedPhaseIfMissing(attempt.id);
@@ -670,11 +677,7 @@ verify.get(
         throw new Error("face_score_required_for_success");
       }
 
-      await markAttemptSucceeded({
-        session,
-        attemptId,
-        faceScore: faceResult.faceScore,
-      });
+      state.acceptedFaceScore = faceResult.faceScore;
 
       return {
         outcome: "accepted",
@@ -874,6 +877,14 @@ verify.get(
         return;
       }
 
+      if (state.shareManifest) {
+        sendShareReady({
+          sessionId: state.shareManifest.sessionId,
+          selectedFieldKeys: state.shareManifest.selectedFieldKeys,
+        });
+        return;
+      }
+
       const result = await validateAndBuildShareManifest({
         contractVersion: session.contractVersion,
         dg1,
@@ -890,8 +901,39 @@ verify.get(
         return;
       }
 
+      if (typeof state.acceptedFaceScore !== "number") {
+        throw new Error("face_score_required_for_share_success");
+      }
+
+      const successResult = await markAttemptSucceeded({
+        session,
+        attemptId: state.attemptId,
+        faceScore: state.acceptedFaceScore,
+      });
+
       state.shareManifest = result.manifest;
+      const deliveryIds = await createWebhookDeliveriesForVerificationSucceeded(
+        {
+          attemptId: state.attemptId,
+          environment: session.environment,
+          eventId: successResult.attemptSucceededEventId,
+          manifest: result.manifest,
+          organizationId: session.organizationId,
+        }
+      );
+
       sendShareReady(result.shareReady);
+
+      const deliveryTask = (async () => {
+        for (const deliveryId of deliveryIds) {
+          await attemptWebhookDelivery({
+            authSecret: c.env.AUTH_SECRET,
+            deliveryId,
+          });
+        }
+      })();
+
+      c.executionCtx?.waitUntil?.(deliveryTask);
     };
 
     const handleDecodedMessage = async (

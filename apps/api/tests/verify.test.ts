@@ -19,7 +19,6 @@ import {
   createMalformedDg2Artifact,
   createMatchingValidationSelfies,
   createMismatchValidationSelfies,
-  createSelfieJpeg,
   createValidationPortraitJpeg,
   createValidNfcArtifacts,
 } from "./helpers/verify-artifacts";
@@ -1745,14 +1744,25 @@ describe("Verification Flows", () => {
       const [attempt] = await db
         .select({
           currentPhase: verification_attempts.currentPhase,
+          status: verification_attempts.status,
           phaseUpdatedAt: verification_attempts.phaseUpdatedAt,
         })
         .from(verification_attempts)
         .where(eq(verification_attempts.id, handoff.attempt_id))
         .limit(1);
 
+      const [session] = await db
+        .select({
+          status: verification_sessions.status,
+        })
+        .from(verification_sessions)
+        .where(eq(verification_sessions.id, sessionId))
+        .limit(1);
+
       expect(attempt?.currentPhase).toBe("selfie_complete");
+      expect(attempt?.status).toBe("in_progress");
       expect(attempt?.phaseUpdatedAt).not.toBeNull();
+      expect(session?.status).toBe("in_progress");
     }
   );
 
@@ -2149,53 +2159,29 @@ describe("Verification Flows", () => {
   );
 
   test.serial(
-    "Marks attempt succeeded and session completed with risk score when selfie validation passes",
+    "Marks attempt succeeded and session completed with risk score after accepted share selection",
     async () => {
-      const sessionId = await createSession();
-      const handoff = await createHandoff(sessionId);
-      const matchingSelfie = await createValidationPortraitJpeg();
-      const artifacts = await createValidNfcArtifacts({
-        dg2ImageData: matchingSelfie,
+      const sessionId = await createSession({
+        share_fields: {
+          kayle_document_id: {
+            required: true,
+            reason: "Document ID is required.",
+          },
+        },
       });
-
-      const socket = openVerifySocket(sessionId);
+      const { handoff, socket } = await advanceToShareRequest({ sessionId });
 
       try {
-        await awaitSocketOpen(socket);
-        await sendHello({
-          socket,
-          handoff,
-        });
-        await advanceToSelfieCapturing({
-          socket,
-          artifacts,
-        });
-        await sendSelfies({
-          socket,
-          selfies: [
-            matchingSelfie,
-            createSelfieJpeg({
-              red: 0,
-              green: 0,
-              blue: 0,
-            }),
-            createSelfieJpeg({
-              red: 255,
-              green: 255,
-              blue: 255,
-            }),
-          ],
-        });
+        socket.send(
+          encodeShareSelectionMessage({
+            sessionId,
+            selectedFieldKeys: ["kayle_document_id"],
+          })
+        );
 
-        socket.send(encodePhaseMessage("selfie_complete"));
-        const response = await awaitServerMessage(socket);
-        expect(response.ack).toBeUndefined();
-        expect(response.verdict).toEqual({
-          outcome: "accepted",
-          reasonCode: "",
-          reasonMessage: "",
-          retryAllowed: false,
-          remainingAttempts: 0,
+        expect((await awaitServerMessage(socket)).shareReady).toEqual({
+          sessionId,
+          selectedFieldKeys: ["kayle_document_id"],
         });
         expect(socket.readyState).toBe(WebSocket.OPEN);
       } finally {
@@ -2228,6 +2214,19 @@ describe("Verification Flows", () => {
       expect((attempt?.riskScore ?? 1) < 0.2).toBeTrue();
       expect(session?.status).toBe("completed");
       expect(session?.completedAt).not.toBeNull();
+
+      const successEvents = await db
+        .select({
+          type: events.type,
+        })
+        .from(events)
+        .where(eq(events.triggerId, handoff.attempt_id));
+
+      expect(
+        successEvents.some(
+          (event) => event.type === "verification.attempt.succeeded"
+        )
+      ).toBeTrue();
     },
     20_000
   );
