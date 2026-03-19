@@ -103,6 +103,7 @@ test("createWebhookDeliveriesForVerificationSucceeded creates a pending encrypte
     manifest: {
       claims: {
         family_name: "DOE",
+        nationality_code: null,
       },
       contractVersion: 1,
       selectedFieldKeys: ["family_name"],
@@ -135,6 +136,7 @@ test("createWebhookDeliveriesForVerificationSucceeded creates a pending encrypte
     data: {
       claims: {
         family_name: string;
+        nationality_code: string | null;
       };
       selected_field_keys: string[];
     };
@@ -149,6 +151,7 @@ test("createWebhookDeliveriesForVerificationSucceeded creates a pending encrypte
 
   expect(decodedPayload.type).toBe("verification.attempt.succeeded");
   expect(decodedPayload.data.claims.family_name).toBe("DOE");
+  expect(decodedPayload.data.claims.nationality_code).toBeNull();
   expect(decodedPayload.data.selected_field_keys).toEqual(["family_name"]);
   expect(decodedPayload.metadata.contract_version).toBe(1);
   expect(decodedPayload.metadata.event_id).toBe(event.id);

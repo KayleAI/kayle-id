@@ -508,18 +508,21 @@ export async function validateAndBuildShareManifest({
   }
 
   const dg1Claims = parseTd3MrzClaims(dg1, now);
+  const selectedFieldKeySet = new Set(selection.selectedFieldKeys);
   const claimEntries = await Promise.all(
-    selection.selectedFieldKeys.map(
-      async (claimKey) =>
+    shareRequest.fields.map(
+      async (field) =>
         [
-          claimKey,
-          await buildShareClaimValue({
-            claimKey,
-            dg1Claims,
-            dg2,
-            now,
-            organizationId,
-          }),
+          field.key,
+          selectedFieldKeySet.has(field.key)
+            ? await buildShareClaimValue({
+                claimKey: field.key,
+                dg1Claims,
+                dg2,
+                now,
+                organizationId,
+              })
+            : null,
         ] as const
     )
   );

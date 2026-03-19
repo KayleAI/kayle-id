@@ -13,24 +13,6 @@ import { eq } from "drizzle-orm";
 import { magic } from "./magic";
 import type { Organization } from "./types";
 
-function maskEmail(email: string): string {
-  const [localPart = "", domain = ""] = email.split("@");
-  if (!domain) {
-    return "***";
-  }
-
-  const prefix = localPart.slice(0, 2);
-  return `${prefix}***@${domain}`;
-}
-
-function safeUrlPath(url: string): string {
-  try {
-    return new URL(url).pathname;
-  } catch {
-    return "/";
-  }
-}
-
 const user = {
   modelName: "auth_users",
   deleteUser: {
@@ -58,17 +40,8 @@ const plugins = [
   }),
   magic({
     expiresIn: 15 * 60, // 15 minutes
-    sendMagicOtpAuth: async ({ email, otp, url, type }) => {
+    sendMagicOtpAuth: async (_payload) => {
       if (process.env.NODE_ENV === "development") {
-        console.info(
-          JSON.stringify({
-            event: "auth.magic_otp.generated",
-            email: maskEmail(email),
-            type,
-            path: safeUrlPath(url),
-            otp,
-          })
-        );
         return;
       }
 

@@ -59,6 +59,8 @@ jobs:
           echo "DATABASE_URL=postgresql://$POSTGRES_USER:$POSTGRES_PASSWORD@$POSTGRES_HOST:$POSTGRES_PORT/$POSTGRES_DB" >> "$GITHUB_ENV"
       - name: Install dependencies
         run: bun install --frozen-lockfile
+      - name: Check runtime logging rules
+        run: bun run lint:runtime-logs
       - name: Migrate + seed database
         run: bun run db:setup
 

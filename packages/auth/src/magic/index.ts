@@ -147,8 +147,8 @@ export const magic = (options: MagicOptions): BetterAuthPlugin => {
 
           try {
             await opts.sendMagicOtpAuth({ email, url, otp, type }, ctx.request);
-          } catch (e) {
-            ctx.context.logger.error("Failed to send magic-otp auth", e);
+          } catch {
+            ctx.context.logger.error("Failed to send magic-otp auth");
             throw new APIError("INTERNAL_SERVER_ERROR", {
               message: "We couldn't send you a magic link. Please try again.",
             });

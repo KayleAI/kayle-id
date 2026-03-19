@@ -95,6 +95,15 @@ export const RotatedWebhookSigningSecret = z
   })
   .openapi("Rotated Webhook Signing Secret");
 
+export const RevealedWebhookSigningSecret = z
+  .object({
+    endpoint_id: z.string().describe("The webhook endpoint ID"),
+    signing_secret: z
+      .string()
+      .describe("The current webhook signing secret for the endpoint."),
+  })
+  .openapi("Revealed Webhook Signing Secret");
+
 export const WebhookEncryptionKey = z
   .object({
     id: z.string().describe("The ID of the webhook encryption key"),

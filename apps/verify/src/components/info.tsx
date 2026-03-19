@@ -2,6 +2,7 @@ import { Button } from "@kayleai/ui/button";
 import { Logo } from "@kayleai/ui/logo";
 import { cn } from "@kayleai/ui/utils/cn";
 import { Link } from "@tanstack/react-router";
+import type { ReactNode } from "react";
 import OctagonCheck from "@/icons/octagon-check";
 import OctagonInfo from "@/icons/octagon-info";
 import OctagonAlert from "@/icons/octagon-warning";
@@ -28,6 +29,7 @@ export default function InfoCard({
     },
   },
   footer = true,
+  children,
 }: {
   colour: "red" | "blue" | "emerald";
   header: {
@@ -56,7 +58,9 @@ export default function InfoCard({
       ({ disabled?: never } | { disabled: boolean });
   };
   footer?: boolean;
+  children?: ReactNode;
 }) {
+  const hasButtons = Boolean(buttons?.primary || buttons?.secondary);
   const icon = {
     red: <OctagonAlert className="size-5 text-red-400" />,
     blue: <OctagonInfo className="size-5 text-blue-800" />,
@@ -117,11 +121,15 @@ export default function InfoCard({
           </div>
         </div>
 
+        {children}
+
         {/* Action Buttons */}
-        <div className="flex flex-col space-y-4">
-          <PrimaryButton button={buttons?.primary} />
-          <SecondaryButton button={buttons?.secondary} />
-        </div>
+        {hasButtons ? (
+          <div className="flex flex-col space-y-4">
+            <PrimaryButton button={buttons?.primary} />
+            <SecondaryButton button={buttons?.secondary} />
+          </div>
+        ) : null}
 
         {/* Footer Links */}
         {footer ? (

@@ -1,12 +1,7 @@
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "@kayleai/ui/dialog";
+import { Button } from "@kayleai/ui/button";
 import { useLoaderData } from "@tanstack/react-router";
 import { QRCodeSVG } from "qrcode.react";
+import type { ReactNode } from "react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import InfoCard from "@/components/info";
 import type {
@@ -17,21 +12,29 @@ import {
   requestHandoffPayload,
   requestVerifySessionStatus,
 } from "@/config/handoff";
+import OctagonWarning from "@/icons/octagon-warning";
+import Spinner from "@/icons/spinner";
 import { redirectToUrl } from "@/utils/navigation";
 import { useDevice } from "@/utils/use-device";
 
 const REDIRECT_COUNTDOWN_SECONDS = 3;
+const HANDOFF_REFRESH_INTERVAL_MS = 60_000;
 const STATUS_POLL_INTERVAL_MS = 2000;
 
-type TerminalContent = {
-  description: string;
-  title: string;
+type CardTone = "blue" | "emerald" | "red";
+
+type ScreenContent = {
+  colour: CardTone;
+  headerDescription: string;
+  headerTitle: string;
+  messageDescription: string;
+  messageTitle: string;
 };
 
-type TerminalStateContentProps = {
-  redirectCountdown: number | null;
-  redirectTargetUrl: string | null;
-  terminalContent: TerminalContent;
+type TerminalContent = {
+  colour: CardTone;
+  description: string;
+  title: string;
 };
 
 type HandoffStateContentProps = {
@@ -44,6 +47,13 @@ type HandoffStateContentProps = {
 
 function buildHandoffUrl(payload: HandoffPayload): string {
   return `kayle-id://${encodeURIComponent(JSON.stringify(payload))}`;
+}
+
+function isHandoffPayloadExpired(
+  payload: HandoffPayload,
+  nowMs: number
+): boolean {
+  return new Date(payload.expires_at).getTime() <= nowMs;
 }
 
 function buildRedirectTargetUrl({
@@ -63,6 +73,7 @@ function buildTerminalContent(
 ): TerminalContent {
   if (sessionStatus.status === "cancelled") {
     return {
+      colour: "red",
       description: "This verification was cancelled before it could finish.",
       title: "Verification cancelled",
     };
@@ -70,6 +81,7 @@ function buildTerminalContent(
 
   if (sessionStatus.status === "expired") {
     return {
+      colour: "red",
       description: "This verification session expired before it could finish.",
       title: "Verification expired",
     };
@@ -79,6 +91,7 @@ function buildTerminalContent(
 
   if (failureCode === "passport_authenticity_failed") {
     return {
+      colour: "red",
       description:
         "The document integrity checks did not pass for the latest attempt.",
       title: "Verification failed",
@@ -87,6 +100,7 @@ function buildTerminalContent(
 
   if (failureCode === "selfie_face_mismatch") {
     return {
+      colour: "red",
       description:
         "The selfie evidence did not match the passport photo on the latest attempt.",
       title: "Verification failed",
@@ -95,71 +109,85 @@ function buildTerminalContent(
 
   if (sessionStatus.latest_attempt?.status === "failed") {
     return {
+      colour: "red",
       description: "The latest verification attempt did not pass.",
       title: "Verification failed",
     };
   }
 
   return {
+    colour: "emerald",
     description:
       "The verification finished successfully on your mobile device.",
     title: "Verification complete",
   };
 }
 
-function buildHeaderDescription({
-  isTerminal,
-  redirectTargetUrl,
-}: {
-  isTerminal: boolean;
-  redirectTargetUrl: string | null;
-}): string {
-  if (!isTerminal) {
-    return "You can scan this QR code with your mobile device to open the verification in the app.";
-  }
-
-  if (redirectTargetUrl) {
-    return "You can continue now or wait for the automatic redirect.";
-  }
-
-  return "This verification has reached a terminal state.";
+function isVerifyRequestError(
+  value: unknown
+): value is Error & { code: string } {
+  return (
+    value instanceof Error &&
+    "code" in value &&
+    typeof (value as { code?: unknown }).code === "string"
+  );
 }
 
-function TerminalStateContent({
+function buildInitialScreenContent({
+  os,
+}: {
+  os: string | null;
+}): ScreenContent {
+  return {
+    colour: "blue",
+    headerDescription:
+      "This verification continues in the Kayle ID mobile app.",
+    headerTitle: "Open Kayle ID on your phone",
+    messageDescription:
+      os === "ios"
+        ? "Open the app directly on this device to continue your verification session."
+        : "Scan the QR code with the phone you want to use for verification.",
+    messageTitle: "Use your mobile device to continue",
+  };
+}
+
+function buildConnectedScreenContent(): ScreenContent {
+  return {
+    colour: "blue",
+    headerDescription:
+      "Your mobile device is now connected to this verification session.",
+    headerTitle: "Continue on your device",
+    messageDescription:
+      "Finish the remaining steps in the Kayle ID app. This page will update automatically when the session concludes.",
+    messageTitle: "Verification is in progress",
+  };
+}
+
+function buildTerminalScreenContent({
   redirectCountdown,
   redirectTargetUrl,
   terminalContent,
-}: TerminalStateContentProps) {
-  return (
-    <div className="space-y-4 py-2 text-center">
-      <p className="text-muted-foreground text-sm">
-        {terminalContent.description}
-      </p>
-      {redirectTargetUrl ? (
-        <div className="space-y-3">
-          <p className="text-muted-foreground text-sm">
-            Redirecting in {redirectCountdown ?? REDIRECT_COUNTDOWN_SECONDS}{" "}
-            second
-            {(redirectCountdown ?? REDIRECT_COUNTDOWN_SECONDS) === 1 ? "" : "s"}
-            .
-          </p>
-          <button
-            className="w-full rounded-md bg-black px-4 py-2 text-sm text-white"
-            onClick={() => {
-              redirectToUrl(redirectTargetUrl);
-            }}
-            type="button"
-          >
-            Continue now
-          </button>
-        </div>
-      ) : (
-        <p className="text-muted-foreground text-sm">
-          You can now close this page.
-        </p>
-      )}
-    </div>
-  );
+}: {
+  redirectCountdown: number | null;
+  redirectTargetUrl: string | null;
+  terminalContent: TerminalContent;
+}): ScreenContent {
+  return {
+    colour: terminalContent.colour,
+    headerDescription: redirectTargetUrl
+      ? "You can continue now or wait for the automatic redirect."
+      : "This verification session has finished.",
+    headerTitle: terminalContent.title,
+    messageDescription: redirectTargetUrl
+      ? `${terminalContent.description} Redirecting in ${
+          redirectCountdown ?? REDIRECT_COUNTDOWN_SECONDS
+        } seconds.`
+      : `${terminalContent.description} You can now close this page.`,
+    messageTitle:
+      terminalContent.colour === "emerald"
+        ? "Finished on your mobile device"
+        : "Verification outcome",
+  };
 }
 
 function HandoffStateContent({
@@ -171,42 +199,51 @@ function HandoffStateContent({
 }: HandoffStateContentProps) {
   if (handoffLoading) {
     return (
-      <p className="py-4 text-center text-muted-foreground text-sm">
-        Generating a secure handoff QR code...
-      </p>
+      <div className="flex items-center gap-3 pt-2 text-muted-foreground text-sm">
+        <Spinner className="size-5" />
+        <p>Preparing a secure handoff for your mobile device.</p>
+      </div>
     );
   }
 
   if (handoffError) {
     return (
-      <div className="space-y-4 py-2">
-        <p className="text-center text-red-600 text-sm">{handoffError}</p>
-        <button
-          className="w-full rounded-md border px-4 py-2 text-sm"
-          onClick={fetchHandoffPayload}
-          type="button"
-        >
+      <div className="space-y-4 pt-2 text-sm">
+        <div className="flex items-center gap-3 text-red-700">
+          <OctagonWarning className="size-5 shrink-0" />
+          <p>{handoffError}</p>
+        </div>
+        <Button className="w-full" onClick={fetchHandoffPayload} type="button">
           Try again
-        </button>
+        </Button>
       </div>
     );
   }
 
   if (!handoffUrl) {
-    return null;
+    return (
+      <div className="flex items-center gap-3 pt-2 text-muted-foreground text-sm">
+        <Spinner className="size-5" />
+        <p>Waiting for your secure handoff details.</p>
+      </div>
+    );
   }
 
   return (
-    <div className="space-y-4 py-2">
+    <div className="space-y-4 pt-2">
       {os === "ios" ? (
-        <a
-          className="block w-full rounded-md bg-black px-4 py-2 text-center text-sm text-white"
-          href={handoffUrl}
+        <Button
+          className="w-full"
+          nativeButton={false}
+          render={<a href={handoffUrl}>Open Kayle ID app</a>}
         >
           Open Kayle ID app
-        </a>
+        </Button>
       ) : null}
-      <div className="flex justify-center">
+      <p className="text-muted-foreground text-sm">
+        The handoff QR refreshes automatically every minute.
+      </p>
+      <div className="flex justify-center rounded-lg border border-blue-200 border-dashed bg-white p-4">
         <QRCodeSVG
           bgColor="transparent"
           fgColor="currentColor"
@@ -245,8 +282,6 @@ export function UnsupportedDevice() {
   const { sessionId } = useLoaderData({
     from: "/$",
   });
-  const [unsupportedDeviceDialogOpen, setUnsupportedDeviceDialogOpen] =
-    useState(false);
   const [handoffPayload, setHandoffPayload] = useState<HandoffPayload | null>(
     null
   );
@@ -280,21 +315,6 @@ export function UnsupportedDevice() {
     [sessionStatus]
   );
 
-  const fetchHandoffPayload = useCallback(async () => {
-    setHandoffLoading(true);
-    setHandoffError(null);
-    setHandoffPayload(null);
-
-    try {
-      const payload = await requestHandoffPayload(sessionId);
-      setHandoffPayload(payload);
-    } catch {
-      setHandoffError("Unable to generate handoff QR code.");
-    } finally {
-      setHandoffLoading(false);
-    }
-  }, [sessionId]);
-
   const pollSessionStatus = useCallback(async () => {
     try {
       const nextStatus = await requestVerifySessionStatus(sessionId);
@@ -307,17 +327,84 @@ export function UnsupportedDevice() {
     }
   }, [sessionId]);
 
+  const fetchHandoffPayload = useCallback(async () => {
+    setHandoffLoading(true);
+    setHandoffError(null);
+    setHandoffPayload(null);
+
+    try {
+      const payload = await requestHandoffPayload(sessionId);
+      setHandoffPayload(payload);
+    } catch (error) {
+      if (
+        isVerifyRequestError(error) &&
+        (error.code === "SESSION_IN_PROGRESS" ||
+          error.code === "SESSION_EXPIRED")
+      ) {
+        await pollSessionStatus();
+        return;
+      }
+
+      setHandoffError("Unable to generate handoff QR code.");
+    } finally {
+      setHandoffLoading(false);
+    }
+  }, [pollSessionStatus, sessionId]);
+
+  const refreshHandoffPayload = useCallback(async () => {
+    try {
+      const payload = await requestHandoffPayload(sessionId);
+      setHandoffPayload(payload);
+      setHandoffError(null);
+    } catch (error) {
+      if (
+        isVerifyRequestError(error) &&
+        (error.code === "SESSION_IN_PROGRESS" ||
+          error.code === "SESSION_EXPIRED")
+      ) {
+        await pollSessionStatus();
+        return;
+      }
+
+      if (
+        handoffPayload &&
+        !isHandoffPayloadExpired(handoffPayload, Date.now())
+      ) {
+        return;
+      }
+
+      setHandoffPayload(null);
+      setHandoffError("Unable to generate handoff QR code.");
+    }
+  }, [handoffPayload, pollSessionStatus, sessionId]);
+
   const isTerminal = sessionStatus?.is_terminal ?? false;
-  const shouldPollStatus = unsupportedDeviceDialogOpen && !isTerminal;
-  const headerTitle =
-    terminalContent?.title ?? "Scan this QR code with your mobile device";
-  const headerDescription = buildHeaderDescription({
+  const isAwaitingCompletion = sessionStatus?.status === "in_progress";
+  const screenContent = useMemo(() => {
+    if (isTerminal && terminalContent) {
+      return buildTerminalScreenContent({
+        redirectCountdown,
+        redirectTargetUrl,
+        terminalContent,
+      });
+    }
+
+    if (isAwaitingCompletion) {
+      return buildConnectedScreenContent();
+    }
+
+    return buildInitialScreenContent({ os });
+  }, [
+    isAwaitingCompletion,
     isTerminal,
+    os,
+    redirectCountdown,
     redirectTargetUrl,
-  });
+    terminalContent,
+  ]);
 
   useEffect(() => {
-    if (!shouldPollStatus) {
+    if (isTerminal) {
       return;
     }
 
@@ -328,7 +415,33 @@ export function UnsupportedDevice() {
     return () => {
       window.clearInterval(intervalId);
     };
-  }, [pollSessionStatus, shouldPollStatus]);
+  }, [isTerminal, pollSessionStatus]);
+
+  useEffect(() => {
+    const initialiseHandoff = async () => {
+      await fetchHandoffPayload();
+    };
+
+    initialiseHandoff().catch(() => {
+      // fetchHandoffPayload already stores the error state that the UI renders.
+    });
+  }, [fetchHandoffPayload]);
+
+  useEffect(() => {
+    if (isTerminal || isAwaitingCompletion) {
+      return;
+    }
+
+    const intervalId = window.setInterval(() => {
+      refreshHandoffPayload().catch(() => {
+        // refreshHandoffPayload already updates the handoff state or syncs terminal status.
+      });
+    }, HANDOFF_REFRESH_INTERVAL_MS);
+
+    return () => {
+      window.clearInterval(intervalId);
+    };
+  }, [isAwaitingCompletion, isTerminal, refreshHandoffPayload]);
 
   useEffect(() => {
     if (!redirectTargetUrl) {
@@ -358,67 +471,74 @@ export function UnsupportedDevice() {
     };
   }, [redirectTargetUrl]);
 
-  const openMobileDialog = () => {
-    setUnsupportedDeviceDialogOpen(true);
-    setSessionStatus(null);
-    setRedirectCountdown(null);
-    fetchHandoffPayload();
-  };
+  let stateContent: ReactNode = null;
+  let buttons:
+    | {
+        primary?: {
+          label: string;
+          onClick: () => void;
+        };
+        secondary?: {
+          label: string;
+          onClick: () => void;
+        };
+      }
+    | undefined;
+
+  if (!(isTerminal || isAwaitingCompletion)) {
+    stateContent = (
+      <HandoffStateContent
+        fetchHandoffPayload={fetchHandoffPayload}
+        handoffError={handoffError}
+        handoffLoading={handoffLoading}
+        handoffUrl={handoffUrl}
+        os={os}
+      />
+    );
+  }
+
+  if (redirectTargetUrl) {
+    buttons = {
+      primary: {
+        label: "Continue now",
+        onClick: () => {
+          redirectToUrl(redirectTargetUrl);
+        },
+      },
+    };
+  } else if (isTerminal) {
+    buttons = {
+      primary: {
+        label: "Close this page",
+        onClick: () => {
+          window.close();
+        },
+      },
+    };
+  } else {
+    buttons = {
+      secondary: {
+        label: "Cancel",
+        onClick: () => window.close(),
+      },
+    };
+  }
 
   return (
-    <>
-      <InfoCard
-        buttons={{
-          primary: {
-            label: "Open on Mobile",
-            onClick: openMobileDialog,
-          },
-          secondary: {
-            label: "Go back to the previous page",
-            onClick: () => window.history.back(),
-          },
-        }}
-        colour="blue"
-        footer={false}
-        header={{
-          title: "Unsupported Device",
-          description: "You cannot use this device to verify your identity.",
-        }}
-        message={{
-          title: "Switch to a Mobile Device",
-          description:
-            "Only mobile devices are supported for identity verification.",
-        }}
-      />
-      <Dialog
-        onOpenChange={setUnsupportedDeviceDialogOpen}
-        open={unsupportedDeviceDialogOpen}
-      >
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>{headerTitle}</DialogTitle>
-            <DialogDescription>{headerDescription}</DialogDescription>
-          </DialogHeader>
-
-          {isTerminal && terminalContent ? (
-            <TerminalStateContent
-              redirectCountdown={redirectCountdown}
-              redirectTargetUrl={redirectTargetUrl}
-              terminalContent={terminalContent}
-            />
-          ) : null}
-
-          {isTerminal ? null : (
-            <HandoffStateContent
-              fetchHandoffPayload={fetchHandoffPayload}
-              handoffError={handoffError}
-              handoffLoading={handoffLoading}
-              handoffUrl={handoffUrl}
-              os={os}
-            />
-          )}
-        </DialogContent>
-      </Dialog>
-    </>
+    <InfoCard
+      buttons={buttons}
+      colour={screenContent.colour}
+      footer={false}
+      header={{
+        title: screenContent.headerTitle,
+        description: screenContent.headerDescription,
+      }}
+      message={{
+        title: screenContent.messageTitle,
+        description: screenContent.messageDescription,
+      }}
+    >
+      {stateContent}
+    </InfoCard>
   );
 }

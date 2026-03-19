@@ -88,6 +88,51 @@ describe("verify share manifest", () => {
     });
   });
 
+  test("returns null for requested optional claims that were not selected", async () => {
+    const organizationId = "11111111-1111-4111-8111-111111111111";
+    const artifacts = await createValidNfcArtifacts();
+
+    const result = await validateAndBuildShareManifest({
+      contractVersion: 1,
+      dg1: artifacts.dg1,
+      dg2: artifacts.dg2,
+      now: new Date("2026-03-09T12:00:00.000Z"),
+      organizationId,
+      selectedFieldKeysInput: ["kayle_document_id"],
+      sessionId: "vs_test_123",
+      submittedSessionId: "vs_test_123",
+      shareFieldsInput: {
+        nationality_code: {
+          required: false,
+          reason: "Nationality code is optional.",
+        },
+        kayle_document_id: {
+          required: true,
+          reason: "Document ID is required.",
+        },
+      },
+    });
+
+    expect(result.ok).toBeTrue();
+    if (!result.ok) {
+      return;
+    }
+
+    expect(result.shareReady).toEqual({
+      sessionId: "vs_test_123",
+      selectedFieldKeys: ["kayle_document_id"],
+    });
+    expect(result.manifest.claims.nationality_code).toBeNull();
+    expect(result.manifest.claims.kayle_document_id).toBe(
+      await createKayleDocumentId({
+        organizationId,
+        countryCode: "UTO",
+        documentNumber: "L898902C3",
+        documentType: "P",
+      })
+    );
+  });
+
   test("rejects unknown selected field keys", async () => {
     const artifacts = await createValidNfcArtifacts();
 

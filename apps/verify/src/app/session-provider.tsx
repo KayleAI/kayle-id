@@ -92,6 +92,19 @@ function closeSessionStub(sessionStubRef: { current: VerifySession | null }) {
   sessionStubRef.current = null;
 }
 
+function reportCallbackErrorDevOnly(error: unknown): void {
+  if (!import.meta.env.DEV) {
+    return;
+  }
+
+  const callbackError =
+    error instanceof Error ? error : new Error("session_error_callback_failed");
+
+  queueMicrotask(() => {
+    throw callbackError;
+  });
+}
+
 async function bootstrapSupportedSession({
   sessionId,
   handleRpcError,
@@ -169,7 +182,7 @@ export function SessionProvider({ sessionId, children }: SessionProviderProps) {
       try {
         callback(sessionError);
       } catch (callbackErr) {
-        console.error("Error callback threw:", callbackErr);
+        reportCallbackErrorDevOnly(callbackErr);
       }
     }
   }, []);

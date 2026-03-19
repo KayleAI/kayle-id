@@ -48,7 +48,7 @@ describe("/v1/sessions share contract age gate validation", () => {
         },
         body: JSON.stringify({
           share_fields: {
-            dg1_date_of_birth: { required: true, reason: "DOB" },
+            date_of_birth: { required: true, reason: "DOB" },
             age_over_18: { required: true, reason: "Age gate" },
           },
         }),
@@ -60,27 +60,24 @@ describe("/v1/sessions share contract age gate validation", () => {
     }
   );
 
-  test.serial(
-    "Invalid age_over threshold returns INVALID_AGE_GATE_KEY",
-    async () => {
-      const response = await v1.request("/sessions", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${TEST_DATA?.apiKey}`,
-          "Content-Type": "application/json",
+  test.serial("Age gates below 12 return INVALID_AGE_GATE_KEY", async () => {
+    const response = await v1.request("/sessions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${TEST_DATA?.apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        share_fields: {
+          age_over_11: { required: true, reason: "Invalid threshold" },
         },
-        body: JSON.stringify({
-          share_fields: {
-            age_over_0: { required: true, reason: "Invalid threshold" },
-          },
-        }),
-      });
+      }),
+    });
 
-      expect(response.status).toBe(400);
-      const payload = (await response.json()) as { error: { code: string } };
-      expect(payload.error.code).toBe("INVALID_AGE_GATE_KEY");
-    }
-  );
+    expect(response.status).toBe(400);
+    const payload = (await response.json()) as { error: { code: string } };
+    expect(payload.error.code).toBe("INVALID_AGE_GATE_KEY");
+  });
 
   test.serial(
     "Invalid age_over format returns INVALID_AGE_GATE_KEY",

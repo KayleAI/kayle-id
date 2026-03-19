@@ -9,12 +9,18 @@ import {
   type VerifyShareRequest,
 } from "@kayle-id/capnp/verify-codec";
 import { ERROR_MESSAGES } from "@kayle-id/config/error-messages";
+import { buildSafeErrorContext } from "@kayle-id/config/logging";
 import { db } from "@kayle-id/database/drizzle";
 import { verification_sessions } from "@kayle-id/database/schema/core";
 import { eq } from "drizzle-orm";
 import { Hono } from "hono";
 import { validator } from "hono/validator";
 import { z } from "zod";
+import {
+  emitRequestLog,
+  getRequestLogger,
+  markRequestLogForManualEmit,
+} from "@/logging";
 import { sessionIdSchema } from "@/shared/validation";
 import { waitUntilIfAvailable } from "@/utils/wait-until";
 import { expireVerificationSessionIfNeeded } from "@/v1/sessions/repo/session-repo";
@@ -270,11 +276,19 @@ verify.get(
       );
     }
 
-    const [client, server] = createWebSocketPairTuple();
-    server.accept();
-
     const debug = c.req.query("debug") === "1";
     const connectionOwnerId = crypto.randomUUID();
+    const log = getRequestLogger(c);
+    const [client, server] = createWebSocketPairTuple();
+    server.accept();
+    markRequestLogForManualEmit(c);
+
+    log.set({
+      event: "verify.ws.opened",
+      organization_id: normalizedSession.organizationId,
+      session_id: normalizedSession.id,
+      websocket_debug: debug,
+    });
 
     const state = {
       acceptedFaceScore: null as number | null,
@@ -291,12 +305,7 @@ verify.get(
         return;
       }
 
-      console.info(
-        JSON.stringify({
-          event: `verify.ws.${label}`,
-          ...details,
-        })
-      );
+      log.info(`verify.ws.${label}`, details);
     };
 
     const logFaceScoreResult = ({
@@ -306,16 +315,13 @@ verify.get(
       attemptId: string;
       result: FaceScoreResult;
     }) => {
-      console.info(
-        JSON.stringify({
-          event: "verify.ws.face_score_evaluated",
-          attempt_id: attemptId,
-          face_score: result.faceScore,
-          passed: result.passed,
-          reason: result.reason ?? null,
-          used_fallback: result.usedFallback,
-        })
-      );
+      log.info("verify.ws.face_score_evaluated", {
+        attempt_id: attemptId,
+        face_score: result.faceScore,
+        passed: result.passed,
+        reason: result.reason ?? null,
+        used_fallback: result.usedFallback,
+      });
     };
 
     const sendAck = (message: string) => {
@@ -368,6 +374,11 @@ verify.get(
 
     const sendAuthErrorAndClose = (code: keyof typeof ERROR_MESSAGES) => {
       const message = resolveErrorMessage(code);
+      log.warn(`verify.ws.auth_error.${code}`, {
+        event: "verify.ws.auth_error",
+        error_code: code,
+        error_message: message,
+      });
       sendError(code, message);
       server.close(1008, code);
     };
@@ -517,6 +528,9 @@ verify.get(
       }
 
       state.attemptId = attempt.id;
+      log.set({
+        attempt_id: attempt.id,
+      });
       state.currentPhase = attempt.currentPhase ?? null;
       state.shareManifest = null;
       state.shareRequestSent = false;
@@ -707,6 +721,7 @@ verify.get(
         selfies,
         env: c.env,
         attemptId,
+        logger: log,
       });
       logFaceScoreResult({
         attemptId,
@@ -727,6 +742,12 @@ verify.get(
           riskScore: faceResult.usedFallback
             ? 1
             : 1 - (faceResult.faceScore ?? 0),
+        });
+        log.set({
+          event: "verify.ws.rejected",
+          failure_code: verdict.reasonCode,
+          remaining_attempts: verdict.remainingAttempts,
+          retry_allowed: verdict.retryAllowed,
         });
         sendVerdict(verdict);
         closeAfterVerdict(verdict.reasonCode);
@@ -983,6 +1004,11 @@ verify.get(
       );
 
       sendShareReady(result.shareReady);
+      log.set({
+        event: "verify.ws.completed",
+        selected_field_count: result.manifest.selectedFieldKeys.length,
+        webhook_delivery_count: deliveryIds.length,
+      });
 
       const deliveryTask = (async () => {
         for (const deliveryId of deliveryIds) {
@@ -1053,6 +1079,15 @@ verify.get(
           ? error.message
           : "Unknown websocket handling error.";
 
+      log.warn("verify.ws.internal_error", {
+        event: "verify.ws.internal_error",
+        ...buildSafeErrorContext({
+          code: "verify_ws_internal_error",
+          error,
+          message: "WebSocket message handling failed.",
+          status: 500,
+        }),
+      });
       sendError("INTERNAL_ERROR", message);
       server.close(1011, "INTERNAL_ERROR");
     };
@@ -1061,7 +1096,18 @@ verify.get(
       handleMessage(event).catch(handleMessageFailure);
     });
 
-    server.addEventListener("close", () => {
+    server.addEventListener("close", (event) => {
+      log.set({
+        socket_close_code: event.code,
+        socket_closed: true,
+      });
+
+      if (log.getContext().event === "verify.ws.opened") {
+        log.set({
+          event: "verify.ws.closed",
+        });
+      }
+
       if (state.attemptId) {
         releaseAttemptConnection({
           attemptId: state.attemptId,
@@ -1069,6 +1115,7 @@ verify.get(
         });
       }
       resetTransferState(state.transfer);
+      emitRequestLog(c, 101);
     });
 
     return new Response(null, {

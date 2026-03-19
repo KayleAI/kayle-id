@@ -2,6 +2,7 @@ import { OpenAPIHono } from "@hono/zod-openapi";
 import { Scalar } from "@scalar/hono-api-reference";
 import { cors } from "hono/cors";
 import { config } from "@/config";
+import { requestLoggingMiddleware } from "@/logging";
 import v1 from "@/v1";
 import verify from "@/v1/verify";
 import { processDueWebhookDeliveries } from "@/v1/webhooks/deliveries/service";
@@ -21,6 +22,7 @@ app.use(
     credentials: true,
   })
 );
+app.use(requestLoggingMiddleware());
 
 app.get("/", (c) => {
   const status: "healthy" | "unhealthy" = "healthy";

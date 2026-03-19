@@ -1,4 +1,5 @@
 import type { RouteHandler } from "@hono/zod-openapi";
+import { getRequestLogger } from "@/logging";
 import type { createSession } from "@/openapi/v1/sessions/create";
 import { generateId } from "@/utils/generate-id";
 import { normalizeShareFields } from "@/v1/sessions/domain/share-contract/normalize-share-fields";
@@ -13,6 +14,7 @@ export const createSessionHandler: RouteHandler<
   SessionsAppEnv
 > = async (c) => {
   const organizationId = c.get("organizationId");
+  const log = getRequestLogger(c);
   const query = c.req.valid("query") ?? {};
   const body = c.req.valid("json");
 
@@ -22,13 +24,12 @@ export const createSessionHandler: RouteHandler<
 
   const normalized = normalizeShareFields(body?.share_fields);
   if (!normalized.ok) {
-    console.warn(
-      JSON.stringify({
-        event: "sessions.create.validation_failed",
-        organization_id: organizationId,
-        code: normalized.error.code,
-      })
-    );
+    log.warn("sessions.create.validation_failed", {
+      event: "sessions.create.validation_failed",
+      organization_id: organizationId,
+      error_code: normalized.error.code,
+      status: normalized.error.status,
+    });
 
     return c.json(
       {
@@ -54,15 +55,13 @@ export const createSessionHandler: RouteHandler<
     contractVersion,
   });
 
-  console.info(
-    JSON.stringify({
-      event: "sessions.create.created",
-      organization_id: organizationId,
-      session_id: created.id,
-      environment: created.environment,
-      share_field_count: Object.keys(normalized.shareFields).length,
-    })
-  );
+  log.set({
+    event: "sessions.create.created",
+    organization_id: organizationId,
+    session_id: created.id,
+    session_environment: created.environment,
+    share_field_count: Object.keys(normalized.shareFields).length,
+  });
 
   const data = mapSessionRowToResponse({
     row: created,

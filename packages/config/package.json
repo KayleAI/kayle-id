@@ -15,5 +15,8 @@
   },
   "exports": {
     "./*": "./src/*.ts"
+  },
+  "dependencies": {
+    "evlog": "2.8.0"
   }
 }

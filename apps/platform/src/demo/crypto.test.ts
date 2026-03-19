@@ -1,4 +1,4 @@
-import { expect, test } from "bun:test";
+import { expect, test } from "vitest";
 import { createJWE } from "../../../api/src/functions/jwe";
 import {
   decryptCompactJwe,
@@ -70,7 +70,7 @@ test("verifyWebhookSignature rejects a tampered payload", async () => {
     signatureHeader,
   });
 
-  expect(result.ok).toBeFalse();
+  expect(result.ok).toBe(false);
   if (result.ok) {
     throw new Error("expected_signature_failure");
   }

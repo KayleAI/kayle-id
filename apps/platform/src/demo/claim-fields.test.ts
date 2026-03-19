@@ -1,5 +1,5 @@
-import { expect, test } from "bun:test";
 import { staticClaims } from "@kayle-id/config/share-claims";
+import { expect, test } from "vitest";
 import { buildRequestedShareFields, getClaimDescription } from "./claim-fields";
 
 test("buildRequestedShareFields omits share_fields when every field is off", () => {
@@ -12,7 +12,7 @@ test("buildRequestedShareFields omits share_fields when every field is off", () 
     },
   });
 
-  expect(result.ok).toBeTrue();
+  expect(result.ok).toBe(true);
   if (!result.ok) {
     throw new Error(result.message);
   }
@@ -41,7 +41,7 @@ test("buildRequestedShareFields creates required and optional claims plus a sing
     },
   });
 
-  expect(result.ok).toBeTrue();
+  expect(result.ok).toBe(true);
   if (!result.ok) {
     throw new Error(result.message);
   }
@@ -78,7 +78,7 @@ test("buildRequestedShareFields rejects DOB plus age gate", () => {
     },
   });
 
-  expect(result.ok).toBeFalse();
+  expect(result.ok).toBe(false);
   if (result.ok) {
     throw new Error("expected_dob_age_gate_conflict");
   }
@@ -94,7 +94,7 @@ test("buildRequestedShareFields rejects age gates below 12", () => {
     },
   });
 
-  expect(result.ok).toBeFalse();
+  expect(result.ok).toBe(false);
   if (result.ok) {
     throw new Error("expected_invalid_min_age_gate");
   }
@@ -104,7 +104,7 @@ test("buildRequestedShareFields rejects age gates below 12", () => {
 
 test("getClaimDescription avoids generic fallback copy for static claims", () => {
   for (const claimKey of staticClaims) {
-    expect(getClaimDescription(claimKey).startsWith("Shares ")).toBeFalse();
+    expect(getClaimDescription(claimKey).startsWith("Shares ")).toBe(false);
   }
 });
 

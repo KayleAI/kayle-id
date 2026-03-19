@@ -47,6 +47,7 @@ import {
   SettingsIcon,
   UserIcon,
   UsersIcon,
+  WebhookIcon,
 } from "lucide-react";
 import { useMemo } from "react";
 import { toast } from "sonner";
@@ -61,6 +62,11 @@ const navItems = [
     title: "API Keys",
     url: "/api-keys",
     icon: Key,
+  },
+  {
+    title: "Webhooks",
+    url: "/webhooks",
+    icon: WebhookIcon,
   },
   {
     title: "Sandbox",
@@ -87,6 +93,7 @@ export function AppSidebar() {
     } finally {
       // Invalidate any queries that depend on the organization
       queryClient.invalidateQueries({ queryKey: ["api-keys"] });
+      queryClient.invalidateQueries({ queryKey: ["webhooks"] });
     }
   };
 
