@@ -115,7 +115,12 @@ export const Session = z
         status: "created",
         contract_version: 1,
         share_fields: {
-          dg1_date_of_birth: {
+          document_type_code: {
+            required: false,
+            reason: "Needed to know the document type code",
+            source: "rc",
+          },
+          date_of_birth: {
             required: true,
             reason: "Needed to verify age eligibility",
             source: "rc",

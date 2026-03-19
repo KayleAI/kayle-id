@@ -33,7 +33,7 @@ describe("/v1/sessions share contract persistence", () => {
       };
     };
 
-    expect(payload.data.share_fields.dg1_document_type.source).toBe("default");
+    expect(payload.data.share_fields.document_type_code.source).toBe("default");
     expect(payload.data.share_fields.kayle_document_id.required).toBe(true);
     expect(payload.data.share_fields.kayle_human_id.source).toBe("default");
     expect(payload.data.share_fields.age_over_18).toBeUndefined();

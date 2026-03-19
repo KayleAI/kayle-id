@@ -22,13 +22,17 @@ const INITIAL_RETRY_DELAY_MS = 60_000;
 type DeliveryStatus = typeof webhook_deliveries.$inferSelect.status;
 
 type VerificationSucceededPayload = {
-  claims: VerifyShareManifest["claims"];
-  contract_version: number;
-  event_id: string;
-  selected_field_keys: string[];
+  data: {
+    claims: VerifyShareManifest["claims"];
+    selected_field_keys: string[];
+  };
+  metadata: {
+    contract_version: number;
+    event_id: string;
+    verification_attempt_id: string;
+    verification_session_id: string;
+  };
   type: SupportedWebhookEventType;
-  verification_attempt_id: string;
-  verification_session_id: string;
 };
 
 type DeliveryRowResponse = {
@@ -55,13 +59,17 @@ function buildVerificationSucceededPayload({
   manifest: VerifyShareManifest;
 }): VerificationSucceededPayload {
   return {
-    claims: manifest.claims,
-    contract_version: manifest.contractVersion,
-    event_id: eventId,
-    selected_field_keys: manifest.selectedFieldKeys,
+    data: {
+      claims: manifest.claims,
+      selected_field_keys: manifest.selectedFieldKeys,
+    },
+    metadata: {
+      contract_version: manifest.contractVersion,
+      event_id: eventId,
+      verification_attempt_id: attemptId,
+      verification_session_id: manifest.sessionId,
+    },
     type: "verification.attempt.succeeded",
-    verification_attempt_id: attemptId,
-    verification_session_id: manifest.sessionId,
   };
 }
 

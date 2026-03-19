@@ -187,7 +187,7 @@ final class VerifyWebSocketAuthPolicyTests: XCTestCase {
     XCTAssertTrue(shouldSuppressReconnectAfterHandledVerdict(verdict))
   }
 
-  func testDefaultSelectedShareFieldKeysOnlyIncludesRequiredFields() {
+  func testDefaultSelectedShareFieldKeysOnlyIncludesAutomaticSecurityFields() {
     let shareRequest = VerifyShareRequest(
       contractVersion: 1,
       sessionId: "vs_test_123",
@@ -198,8 +198,13 @@ final class VerifyWebSocketAuthPolicyTests: XCTestCase {
           required: true
         ),
         VerifyShareRequestField(
-          key: "dg1_nationality",
-          reason: "Nationality is optional.",
+          key: "date_of_birth",
+          reason: "Date of birth is required.",
+          required: true
+        ),
+        VerifyShareRequestField(
+          key: "nationality_code",
+          reason: "Nationality code is optional.",
           required: false
         ),
       ]
@@ -222,8 +227,8 @@ final class VerifyWebSocketAuthPolicyTests: XCTestCase {
           required: false
         ),
         VerifyShareRequestField(
-          key: "dg1_nationality",
-          reason: "Nationality is optional.",
+          key: "nationality_code",
+          reason: "Nationality code is optional.",
           required: false
         ),
       ]
@@ -241,11 +246,11 @@ final class VerifyWebSocketAuthPolicyTests: XCTestCase {
       "Kayle Document ID"
     )
     XCTAssertEqual(
-      displayNameForShareField("dg1_date_of_birth"),
+      displayNameForShareField("date_of_birth"),
       "Date of Birth"
     )
     XCTAssertEqual(
-      displayNameForShareField("dg2_face_image"),
+      displayNameForShareField("document_photo"),
       "Document Photo"
     )
     XCTAssertEqual(
@@ -270,12 +275,12 @@ final class VerifyWebSocketAuthPolicyTests: XCTestCase {
           required: true
         ),
         VerifyShareRequestField(
-          key: "dg1_nationality",
-          reason: "Nationality is required.",
+          key: "nationality_code",
+          reason: "Nationality code is required.",
           required: true
         ),
         VerifyShareRequestField(
-          key: "dg2_face_image",
+          key: "document_photo",
           reason: "Photo is optional.",
           required: false
         ),
@@ -288,17 +293,17 @@ final class VerifyWebSocketAuthPolicyTests: XCTestCase {
     )
     XCTAssertEqual(
       requiredShareRequestFields(shareRequest).map(\.key),
-      ["dg1_nationality"]
+      ["nationality_code"]
     )
     XCTAssertEqual(
       optionalShareRequestFields(shareRequest).map(\.key),
-      ["dg2_face_image"]
+      ["document_photo"]
     )
   }
 
   func testShareFieldDetailTextUsesVerifiedDatePreviewWhenAvailable() {
     let field = VerifyShareRequestField(
-      key: "dg1_date_of_birth",
+      key: "date_of_birth",
       reason: "Sharing Date of Birth",
       required: true
     )
@@ -330,7 +335,7 @@ final class VerifyWebSocketAuthPolicyTests: XCTestCase {
 
     XCTAssertEqual(
       shareFieldDetailText(field, previewContext: nil),
-      "Required security identifier to help prevent duplicate claims."
+      "Reserved placeholder for a future human identifier."
     )
   }
 
@@ -345,8 +350,8 @@ final class VerifyWebSocketAuthPolicyTests: XCTestCase {
           required: true
         ),
         VerifyShareRequestField(
-          key: "dg1_nationality",
-          reason: "Nationality is optional.",
+          key: "nationality_code",
+          reason: "Nationality code is optional.",
           required: false
         ),
         VerifyShareRequestField(
@@ -360,16 +365,13 @@ final class VerifyWebSocketAuthPolicyTests: XCTestCase {
     XCTAssertEqual(
       orderedSelectedShareFieldKeys(
         shareRequest: shareRequest,
-        selectedShareFieldKeys: Set([
-          "kayle_human_id",
-          "kayle_document_id",
-        ])
+        selectedShareFieldKeys: Set(["nationality_code"])
       ),
-      ["kayle_document_id", "kayle_human_id"]
+      ["kayle_document_id", "nationality_code", "kayle_human_id"]
     )
   }
 
-  func testShareSelectionIsOnlySubmittableWhenRequiredFieldsRemainSelected() {
+  func testShareSelectionIsOnlySubmittableWhenRequiredDetailFieldsAreSelected() {
     let shareRequest = VerifyShareRequest(
       contractVersion: 1,
       sessionId: "vs_test_123",
@@ -380,18 +382,11 @@ final class VerifyWebSocketAuthPolicyTests: XCTestCase {
           required: true
         ),
         VerifyShareRequestField(
-          key: "dg1_nationality",
-          reason: "Nationality is optional.",
-          required: false
+          key: "date_of_birth",
+          reason: "Date of birth is required.",
+          required: true
         ),
       ]
-    )
-
-    XCTAssertTrue(
-      isShareSelectionSubmittable(
-        shareRequest: shareRequest,
-        selectedShareFieldKeys: Set(["kayle_document_id"])
-      )
     )
 
     XCTAssertFalse(
@@ -400,15 +395,34 @@ final class VerifyWebSocketAuthPolicyTests: XCTestCase {
         selectedShareFieldKeys: []
       )
     )
+
+    XCTAssertTrue(
+      isShareSelectionSubmittable(
+        shareRequest: shareRequest,
+        selectedShareFieldKeys: Set(["date_of_birth"])
+      )
+    )
   }
 
-  func testKayleHumanIdSelectionIsLockedEvenWhenNotMarkedRequired() {
-    let field = VerifyShareRequestField(
+  func testShareFieldSelectionOnlyLocksKayleSecurityFields() {
+    let kayleHumanField = VerifyShareRequestField(
       key: "kayle_human_id",
       reason: "Human ID supports anti-fraud checks.",
       required: false
     )
+    let kayleDocumentField = VerifyShareRequestField(
+      key: "kayle_document_id",
+      reason: "Document ID supports anti-fraud checks.",
+      required: false
+    )
+    let requiredDetailField = VerifyShareRequestField(
+      key: "nationality_code",
+      reason: "Nationality code is required.",
+      required: true
+    )
 
-    XCTAssertTrue(isShareFieldSelectionLocked(field))
+    XCTAssertTrue(isShareFieldSelectionLocked(kayleHumanField))
+    XCTAssertTrue(isShareFieldSelectionLocked(kayleDocumentField))
+    XCTAssertFalse(isShareFieldSelectionLocked(requiredDetailField))
   }
 }

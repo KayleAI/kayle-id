@@ -33,7 +33,7 @@ const errorConfig = {
   },
   DOB_AND_AGE_GATE_CONFLICT: {
     message: "date_of_birth cannot be combined with age gate claims.",
-    hint: "Use either dg1_date_of_birth or one age_over_X claim, but not both.",
+    hint: "Use either date_of_birth or one age_over_X claim, but not both.",
   },
   REASON_REQUIRED: {
     message: "Each share field requires a reason.",

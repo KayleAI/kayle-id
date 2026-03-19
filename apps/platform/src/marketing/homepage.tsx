@@ -9,6 +9,11 @@ export function Homepage() {
       <PageHeading
         actions={[
           {
+            to: "/demo",
+            label: "View Demo",
+            variant: "outline",
+          },
+          {
             to: status === "authenticated" ? "/dashboard" : "/sign-in",
             label: "Get Started",
           },

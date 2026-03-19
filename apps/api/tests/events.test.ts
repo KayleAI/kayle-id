@@ -118,10 +118,10 @@ async function seedWebhookEvent(): Promise<{
     eventId,
     manifest: {
       claims: {
-        dg1_surname: "DOE",
+        family_name: "DOE",
       },
       contractVersion: 1,
-      selectedFieldKeys: ["dg1_surname"],
+      selectedFieldKeys: ["family_name"],
       sessionId: `vs_test_events_${crypto.randomUUID()}`,
     },
     organizationId: TEST_DATA?.organizationId ?? "",

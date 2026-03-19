@@ -1,6 +1,5 @@
 import { describe, expect, test } from "bun:test";
 import { createKayleDocumentId } from "@/v1/sessions/domain/share-contract/kayle-document-id";
-import { createKayleHumanId } from "@/v1/sessions/domain/share-contract/kayle-human-id";
 import { validateAndBuildShareManifest } from "@/v1/verify/share-manifest";
 import {
   createDg1Artifact,
@@ -24,8 +23,8 @@ describe("verify share manifest", () => {
       organizationId,
       selectedFieldKeysInput: [
         "kayle_human_id",
-        "dg2_face_image",
-        "dg1_nationality",
+        "document_photo",
+        "nationality_code",
         "age_over_18",
         "kayle_document_id",
       ],
@@ -36,13 +35,13 @@ describe("verify share manifest", () => {
           required: false,
           reason: "Human ID is optional.",
         },
-        dg2_face_image: {
+        document_photo: {
           required: false,
-          reason: "Face image is optional.",
+          reason: "Document photo is optional.",
         },
-        dg1_nationality: {
+        nationality_code: {
           required: false,
-          reason: "Nationality is optional.",
+          reason: "Nationality code is optional.",
         },
         age_over_18: {
           required: false,
@@ -64,15 +63,15 @@ describe("verify share manifest", () => {
       sessionId: "vs_test_123",
       selectedFieldKeys: [
         "age_over_18",
-        "dg1_nationality",
-        "dg2_face_image",
+        "document_photo",
         "kayle_document_id",
         "kayle_human_id",
+        "nationality_code",
       ],
     });
 
     expect(result.manifest.claims.age_over_18).toBeTrue();
-    expect(result.manifest.claims.dg1_nationality).toBe("UTO");
+    expect(result.manifest.claims.nationality_code).toBe("UTO");
     expect(result.manifest.claims.kayle_document_id).toBe(
       await createKayleDocumentId({
         organizationId,
@@ -81,17 +80,8 @@ describe("verify share manifest", () => {
         documentType: "P",
       })
     );
-    expect(result.manifest.claims.kayle_human_id).toBe(
-      await createKayleHumanId({
-        organizationId,
-        surname: "ERIKSSON",
-        givenNames: "ANNA MARIA",
-        dateOfBirth: "1974-08-12",
-        nationality: "UTO",
-        sex: "F",
-      })
-    );
-    expect(result.manifest.claims.dg2_face_image).toMatchObject({
+    expect(result.manifest.claims.kayle_human_id).toBeNull();
+    expect(result.manifest.claims.document_photo).toMatchObject({
       format: "jpeg",
       height: 32,
       width: 32,
@@ -128,13 +118,13 @@ describe("verify share manifest", () => {
       dg1: artifacts.dg1,
       dg2: artifacts.dg2,
       organizationId: "11111111-1111-4111-8111-111111111111",
-      selectedFieldKeysInput: ["dg1_nationality"],
+      selectedFieldKeysInput: ["nationality_code"],
       sessionId: "vs_test_123",
       submittedSessionId: "vs_test_123",
       shareFieldsInput: {
-        dg1_nationality: {
+        nationality_code: {
           required: false,
-          reason: "Nationality is optional.",
+          reason: "Nationality code is optional.",
         },
         kayle_document_id: {
           required: true,

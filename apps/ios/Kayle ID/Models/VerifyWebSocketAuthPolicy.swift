@@ -2,27 +2,27 @@ import Foundation
 
 nonisolated private func shareFieldDisplayName(_ key: String) -> String? {
   switch key {
-  case "dg1_document_type":
-    return "Document Type"
-  case "dg1_issuing_country":
-    return "Issuing Country"
-  case "dg1_surname":
-    return "Surname"
-  case "dg1_given_names":
+  case "document_type_code":
+    return "Document Type Code"
+  case "issuing_country_code":
+    return "Issuing Country Code"
+  case "family_name":
+    return "Family Name"
+  case "given_names":
     return "Given Names"
-  case "dg1_document_number":
+  case "document_number":
     return "Document Number"
-  case "dg1_nationality":
-    return "Nationality"
-  case "dg1_date_of_birth":
+  case "nationality_code":
+    return "Nationality Code"
+  case "date_of_birth":
     return "Date of Birth"
-  case "dg1_sex":
-    return "Sex"
-  case "dg1_expiry_date":
+  case "sex_marker":
+    return "Sex Marker"
+  case "document_expiry_date":
     return "Expiry Date"
-  case "dg1_optional_data":
-    return "Additional Document Data"
-  case "dg2_face_image":
+  case "mrz_optional_data":
+    return "MRZ Optional Data"
+  case "document_photo":
     return "Document Photo"
   case "kayle_document_id":
     return "Kayle Document ID"
@@ -331,14 +331,14 @@ nonisolated func isShareSelectionSubmittable(
   }
 
   let requiredKeys = shareRequest.fields.compactMap { field in
-    isShareFieldSelectionLocked(field) ? field.key : nil
+    field.required && !isKayleShareField(field.key) ? field.key : nil
   }
 
   return requiredKeys.allSatisfy(selectedShareFieldKeys.contains)
 }
 
 nonisolated func isShareFieldSelectionLocked(_ field: VerifyShareRequestField) -> Bool {
-  field.required || field.key == "kayle_human_id"
+  isKayleShareField(field.key)
 }
 
 nonisolated func isKayleShareField(_ key: String) -> Bool {
@@ -498,11 +498,11 @@ nonisolated private func formatDisplayDate(_ value: String, key: String) -> Stri
   let parsedDate =
     parseFourDigitYearDate(value)
     ?? {
-      if key == "dg1_date_of_birth" {
+      if key == "date_of_birth" {
         return parseMRZDate(value, yearRange: (nowYear - 130)...nowYear)
       }
 
-      if key == "dg1_expiry_date" {
+      if key == "document_expiry_date" {
         return parseMRZDate(value, yearRange: (nowYear - 50)...(nowYear + 50))
       }
 
@@ -541,19 +541,19 @@ nonisolated func shareFieldDetailText(
   let key = field.key
 
   switch key {
-  case "dg1_document_type":
+  case "document_type_code":
     return previewContext?.documentType ?? "Verified from your document."
-  case "dg1_issuing_country":
+  case "issuing_country_code":
     return previewContext?.issuingCountry ?? "Verified from your document."
-  case "dg1_surname":
+  case "family_name":
     return previewContext?.surname ?? "Verified from your document."
-  case "dg1_given_names":
+  case "given_names":
     return previewContext?.givenNames ?? "Verified from your document."
-  case "dg1_document_number":
+  case "document_number":
     return previewContext?.documentNumber ?? "Verified from your document."
-  case "dg1_nationality":
+  case "nationality_code":
     return previewContext?.nationality ?? "Verified from your document."
-  case "dg1_date_of_birth":
+  case "date_of_birth":
     if
       let birthDate = previewContext?.birthDate,
       let formattedDate = formatDisplayDate(birthDate, key: key)
@@ -561,12 +561,12 @@ nonisolated func shareFieldDetailText(
       return formattedDate
     }
     return previewContext?.birthDate ?? "Verified from your document."
-  case "dg1_sex":
+  case "sex_marker":
     if let sex = previewContext?.sex {
       return formatSex(sex)
     }
     return "Verified from your document."
-  case "dg1_expiry_date":
+  case "document_expiry_date":
     if
       let expiryDate = previewContext?.expiryDate,
       let formattedDate = formatDisplayDate(expiryDate, key: key)
@@ -574,14 +574,14 @@ nonisolated func shareFieldDetailText(
       return formattedDate
     }
     return previewContext?.expiryDate ?? "Verified from your document."
-  case "dg1_optional_data":
+  case "mrz_optional_data":
     return previewContext?.optionalData ?? "Additional machine-readable document data."
-  case "dg2_face_image":
+  case "document_photo":
     return "Photo securely read from your document chip."
   case "kayle_document_id":
     return "Required security identifier for this verified document."
   case "kayle_human_id":
-    return "Required security identifier to help prevent duplicate claims."
+    return "Reserved placeholder for a future human identifier."
   default:
     if let suffix = key.split(separator: "_").last, key.hasPrefix("age_over_") {
       return "Verified as over \(suffix)."

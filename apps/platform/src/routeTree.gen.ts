@@ -13,6 +13,7 @@ import { Route as MarketingRouteImport } from './routes/_marketing'
 import { Route as AuthRouteImport } from './routes/_auth'
 import { Route as AppRouteImport } from './routes/_app'
 import { Route as MarketingIndexRouteImport } from './routes/_marketing/index'
+import { Route as MarketingDemoRouteImport } from './routes/_marketing/demo'
 import { Route as AuthVerifyRouteImport } from './routes/_auth/verify'
 import { Route as AuthSignOutRouteImport } from './routes/_auth/sign-out'
 import { Route as AuthSignInRouteImport } from './routes/_auth/sign-in'
@@ -26,6 +27,7 @@ import { Route as AuthAccountSettingsRouteImport } from './routes/_auth/account/
 import { Route as AppApiKeysKeyRouteImport } from './routes/_app/api-keys/$key'
 import { Route as AuthOrganizationsActiveSettingsRouteImport } from './routes/_auth/organizations/_active/settings'
 import { Route as AuthOrganizationsActiveMembersRouteImport } from './routes/_auth/organizations/_active/members'
+import { Route as ApiApiDemoSplatRouteImport } from './routes/_api/api/demo/$'
 import { Route as ApiApiAuthSplatRouteImport } from './routes/_api/api/auth/$'
 
 const MarketingRoute = MarketingRouteImport.update({
@@ -43,6 +45,11 @@ const AppRoute = AppRouteImport.update({
 const MarketingIndexRoute = MarketingIndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => MarketingRoute,
+} as any)
+const MarketingDemoRoute = MarketingDemoRouteImport.update({
+  id: '/demo',
+  path: '/demo',
   getParentRoute: () => MarketingRoute,
 } as any)
 const AuthVerifyRoute = AuthVerifyRouteImport.update({
@@ -112,6 +119,11 @@ const AuthOrganizationsActiveMembersRoute =
     path: '/organizations/members',
     getParentRoute: () => AuthRoute,
   } as any)
+const ApiApiDemoSplatRoute = ApiApiDemoSplatRouteImport.update({
+  id: '/_api/api/demo/$',
+  path: '/api/demo/$',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiApiAuthSplatRoute = ApiApiAuthSplatRouteImport.update({
   id: '/_api/api/auth/$',
   path: '/api/auth/$',
@@ -123,6 +135,7 @@ export interface FileRoutesByFullPath {
   '/sign-in': typeof AuthSignInRoute
   '/sign-out': typeof AuthSignOutRoute
   '/verify': typeof AuthVerifyRoute
+  '/demo': typeof MarketingDemoRoute
   '/': typeof MarketingIndexRoute
   '/api-keys/$key': typeof AppApiKeysKeyRoute
   '/account/settings': typeof AuthAccountSettingsRoute
@@ -132,6 +145,7 @@ export interface FileRoutesByFullPath {
   '/sandbox': typeof AppSandboxIndexRoute
   '/account': typeof AuthAccountIndexRoute
   '/api/auth/$': typeof ApiApiAuthSplatRoute
+  '/api/demo/$': typeof ApiApiDemoSplatRoute
   '/organizations/members': typeof AuthOrganizationsActiveMembersRoute
   '/organizations/settings': typeof AuthOrganizationsActiveSettingsRoute
 }
@@ -140,6 +154,7 @@ export interface FileRoutesByTo {
   '/sign-in': typeof AuthSignInRoute
   '/sign-out': typeof AuthSignOutRoute
   '/verify': typeof AuthVerifyRoute
+  '/demo': typeof MarketingDemoRoute
   '/': typeof MarketingIndexRoute
   '/api-keys/$key': typeof AppApiKeysKeyRoute
   '/account/settings': typeof AuthAccountSettingsRoute
@@ -149,6 +164,7 @@ export interface FileRoutesByTo {
   '/sandbox': typeof AppSandboxIndexRoute
   '/account': typeof AuthAccountIndexRoute
   '/api/auth/$': typeof ApiApiAuthSplatRoute
+  '/api/demo/$': typeof ApiApiDemoSplatRoute
   '/organizations/members': typeof AuthOrganizationsActiveMembersRoute
   '/organizations/settings': typeof AuthOrganizationsActiveSettingsRoute
 }
@@ -161,6 +177,7 @@ export interface FileRoutesById {
   '/_auth/sign-in': typeof AuthSignInRoute
   '/_auth/sign-out': typeof AuthSignOutRoute
   '/_auth/verify': typeof AuthVerifyRoute
+  '/_marketing/demo': typeof MarketingDemoRoute
   '/_marketing/': typeof MarketingIndexRoute
   '/_app/api-keys/$key': typeof AppApiKeysKeyRoute
   '/_auth/account/settings': typeof AuthAccountSettingsRoute
@@ -170,6 +187,7 @@ export interface FileRoutesById {
   '/_app/sandbox/': typeof AppSandboxIndexRoute
   '/_auth/account/': typeof AuthAccountIndexRoute
   '/_api/api/auth/$': typeof ApiApiAuthSplatRoute
+  '/_api/api/demo/$': typeof ApiApiDemoSplatRoute
   '/_auth/organizations/_active/members': typeof AuthOrganizationsActiveMembersRoute
   '/_auth/organizations/_active/settings': typeof AuthOrganizationsActiveSettingsRoute
 }
@@ -180,6 +198,7 @@ export interface FileRouteTypes {
     | '/sign-in'
     | '/sign-out'
     | '/verify'
+    | '/demo'
     | '/'
     | '/api-keys/$key'
     | '/account/settings'
@@ -189,6 +208,7 @@ export interface FileRouteTypes {
     | '/sandbox'
     | '/account'
     | '/api/auth/$'
+    | '/api/demo/$'
     | '/organizations/members'
     | '/organizations/settings'
   fileRoutesByTo: FileRoutesByTo
@@ -197,6 +217,7 @@ export interface FileRouteTypes {
     | '/sign-in'
     | '/sign-out'
     | '/verify'
+    | '/demo'
     | '/'
     | '/api-keys/$key'
     | '/account/settings'
@@ -206,6 +227,7 @@ export interface FileRouteTypes {
     | '/sandbox'
     | '/account'
     | '/api/auth/$'
+    | '/api/demo/$'
     | '/organizations/members'
     | '/organizations/settings'
   id:
@@ -217,6 +239,7 @@ export interface FileRouteTypes {
     | '/_auth/sign-in'
     | '/_auth/sign-out'
     | '/_auth/verify'
+    | '/_marketing/demo'
     | '/_marketing/'
     | '/_app/api-keys/$key'
     | '/_auth/account/settings'
@@ -226,6 +249,7 @@ export interface FileRouteTypes {
     | '/_app/sandbox/'
     | '/_auth/account/'
     | '/_api/api/auth/$'
+    | '/_api/api/demo/$'
     | '/_auth/organizations/_active/members'
     | '/_auth/organizations/_active/settings'
   fileRoutesById: FileRoutesById
@@ -235,6 +259,7 @@ export interface RootRouteChildren {
   AuthRoute: typeof AuthRouteWithChildren
   MarketingRoute: typeof MarketingRouteWithChildren
   ApiApiAuthSplatRoute: typeof ApiApiAuthSplatRoute
+  ApiApiDemoSplatRoute: typeof ApiApiDemoSplatRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -265,6 +290,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof MarketingIndexRouteImport
+      parentRoute: typeof MarketingRoute
+    }
+    '/_marketing/demo': {
+      id: '/_marketing/demo'
+      path: '/demo'
+      fullPath: '/demo'
+      preLoaderRoute: typeof MarketingDemoRouteImport
       parentRoute: typeof MarketingRoute
     }
     '/_auth/verify': {
@@ -358,6 +390,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthOrganizationsActiveMembersRouteImport
       parentRoute: typeof AuthRoute
     }
+    '/_api/api/demo/$': {
+      id: '/_api/api/demo/$'
+      path: '/api/demo/$'
+      fullPath: '/api/demo/$'
+      preLoaderRoute: typeof ApiApiDemoSplatRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/_api/api/auth/$': {
       id: '/_api/api/auth/$'
       path: '/api/auth/$'
@@ -411,10 +450,12 @@ const AuthRouteChildren: AuthRouteChildren = {
 const AuthRouteWithChildren = AuthRoute._addFileChildren(AuthRouteChildren)
 
 interface MarketingRouteChildren {
+  MarketingDemoRoute: typeof MarketingDemoRoute
   MarketingIndexRoute: typeof MarketingIndexRoute
 }
 
 const MarketingRouteChildren: MarketingRouteChildren = {
+  MarketingDemoRoute: MarketingDemoRoute,
   MarketingIndexRoute: MarketingIndexRoute,
 }
 
@@ -427,6 +468,7 @@ const rootRouteChildren: RootRouteChildren = {
   AuthRoute: AuthRouteWithChildren,
   MarketingRoute: MarketingRouteWithChildren,
   ApiApiAuthSplatRoute: ApiApiAuthSplatRoute,
+  ApiApiDemoSplatRoute: ApiApiDemoSplatRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

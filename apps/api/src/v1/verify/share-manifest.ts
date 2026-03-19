@@ -8,7 +8,6 @@ import {
   parseAgeOverThreshold,
 } from "@/v1/sessions/domain/share-contract/claim-catalog";
 import { createKayleDocumentId } from "@/v1/sessions/domain/share-contract/kayle-document-id";
-import { createKayleHumanId } from "@/v1/sessions/domain/share-contract/kayle-human-id";
 import { normalizeShareFields } from "@/v1/sessions/domain/share-contract/normalize-share-fields";
 import type { ShareFields } from "@/v1/sessions/domain/share-contract/types";
 import { extractDg2FaceImage } from "./dg2-face-image";
@@ -35,7 +34,7 @@ type ShareClaimImage = {
   width: number;
 };
 
-export type VerifyShareClaimValue = boolean | string | ShareClaimImage;
+export type VerifyShareClaimValue = boolean | string | ShareClaimImage | null;
 
 export type VerifyShareManifest = {
   contractVersion: number;
@@ -292,27 +291,27 @@ async function buildShareClaimValue({
   organizationId: string;
 }): Promise<VerifyShareClaimValue> {
   switch (claimKey) {
-    case "dg1_document_type":
+    case "document_type_code":
       return dg1Claims.documentType;
-    case "dg1_issuing_country":
+    case "issuing_country_code":
       return dg1Claims.issuingCountry;
-    case "dg1_surname":
+    case "family_name":
       return dg1Claims.surname;
-    case "dg1_given_names":
+    case "given_names":
       return dg1Claims.givenNames;
-    case "dg1_document_number":
+    case "document_number":
       return dg1Claims.documentNumber;
-    case "dg1_nationality":
+    case "nationality_code":
       return dg1Claims.nationality;
-    case "dg1_date_of_birth":
+    case "date_of_birth":
       return dg1Claims.birthDateIso;
-    case "dg1_sex":
+    case "sex_marker":
       return dg1Claims.sex;
-    case "dg1_expiry_date":
+    case "document_expiry_date":
       return dg1Claims.expiryDateIso;
-    case "dg1_optional_data":
+    case "mrz_optional_data":
       return dg1Claims.optionalData;
-    case "dg2_face_image": {
+    case "document_photo": {
       const faceImage = extractDg2FaceImage(dg2);
 
       return {
@@ -330,14 +329,7 @@ async function buildShareClaimValue({
         documentType: dg1Claims.documentType,
       });
     case "kayle_human_id":
-      return await createKayleHumanId({
-        organizationId,
-        surname: dg1Claims.surname,
-        givenNames: dg1Claims.givenNames,
-        dateOfBirth: dg1Claims.birthDateIso,
-        nationality: dg1Claims.nationality,
-        sex: dg1Claims.sex,
-      });
+      return null;
     default: {
       if (!isAgeOverClaim(claimKey)) {
         throw new Error(`unsupported_share_claim:${claimKey}`);

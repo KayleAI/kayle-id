@@ -1661,9 +1661,9 @@ describe("Verification Flows", () => {
     async () => {
       const sessionId = await createSession({
         share_fields: {
-          dg1_nationality: {
+          nationality_code: {
             required: false,
-            reason: "Nationality is optional for this flow.",
+            reason: "Nationality code is optional for this flow.",
           },
           kayle_document_id: {
             required: true,
@@ -1728,14 +1728,14 @@ describe("Verification Flows", () => {
           sessionId,
           fields: [
             {
-              key: "dg1_nationality",
-              reason: "Nationality is optional for this flow.",
-              required: false,
-            },
-            {
               key: "kayle_document_id",
               reason: "Document ID is required for delivery.",
               required: true,
+            },
+            {
+              key: "nationality_code",
+              reason: "Nationality code is optional for this flow.",
+              required: false,
             },
           ],
         });
@@ -1779,9 +1779,9 @@ describe("Verification Flows", () => {
             required: false,
             reason: "Human ID is optional.",
           },
-          dg1_nationality: {
+          nationality_code: {
             required: false,
-            reason: "Nationality is optional.",
+            reason: "Nationality code is optional.",
           },
           kayle_document_id: {
             required: true,
@@ -1817,9 +1817,9 @@ describe("Verification Flows", () => {
     async () => {
       const sessionId = await createSession({
         share_fields: {
-          dg1_nationality: {
+          nationality_code: {
             required: false,
-            reason: "Nationality is optional.",
+            reason: "Nationality code is optional.",
           },
           kayle_document_id: {
             required: true,

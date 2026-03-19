@@ -102,10 +102,10 @@ test("createWebhookDeliveriesForVerificationSucceeded creates a pending encrypte
     eventId: event.id,
     manifest: {
       claims: {
-        dg1_surname: "DOE",
+        family_name: "DOE",
       },
       contractVersion: 1,
-      selectedFieldKeys: ["dg1_surname"],
+      selectedFieldKeys: ["family_name"],
       sessionId: "vs_test_delivery_pending",
     },
     organizationId: TEST_DATA?.organizationId ?? "",
@@ -132,14 +132,32 @@ test("createWebhookDeliveriesForVerificationSucceeded creates a pending encrypte
     await importPKCS8(privateKeyText, "RSA-OAEP-256")
   );
   const decodedPayload = JSON.parse(new TextDecoder().decode(plaintext)) as {
-    claims: {
-      dg1_surname: string;
+    data: {
+      claims: {
+        family_name: string;
+      };
+      selected_field_keys: string[];
+    };
+    metadata: {
+      contract_version: number;
+      event_id: string;
+      verification_attempt_id: string;
+      verification_session_id: string;
     };
     type: string;
   };
 
   expect(decodedPayload.type).toBe("verification.attempt.succeeded");
-  expect(decodedPayload.claims.dg1_surname).toBe("DOE");
+  expect(decodedPayload.data.claims.family_name).toBe("DOE");
+  expect(decodedPayload.data.selected_field_keys).toEqual(["family_name"]);
+  expect(decodedPayload.metadata.contract_version).toBe(1);
+  expect(decodedPayload.metadata.event_id).toBe(event.id);
+  expect(decodedPayload.metadata.verification_attempt_id).toBe(
+    "va_test_delivery_pending"
+  );
+  expect(decodedPayload.metadata.verification_session_id).toBe(
+    "vs_test_delivery_pending"
+  );
 });
 
 test("attemptWebhookDelivery signs and delivers the encrypted payload", async () => {
@@ -191,10 +209,10 @@ test("attemptWebhookDelivery signs and delivers the encrypted payload", async ()
     eventId: event.id,
     manifest: {
       claims: {
-        dg1_document_number: "123456789",
+        document_number: "123456789",
       },
       contractVersion: 1,
-      selectedFieldKeys: ["dg1_document_number"],
+      selectedFieldKeys: ["document_number"],
       sessionId: "vs_test_delivery_send",
     },
     organizationId: TEST_DATA?.organizationId ?? "",

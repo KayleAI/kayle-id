@@ -335,13 +335,13 @@ struct ContentView: View {
         LazyVStack(alignment: .leading, spacing: 20) {
           shareFieldSection(
             title: "Security Details",
-            description: "These details are used to protect services from abuse.",
+            description: "These identifiers are always included to protect services from abuse.",
             fields: kayleFields
           )
 
           shareFieldSection(
             title: "Required Details",
-            description: "These details are required to complete verification.",
+            description: "Review the details requested for this verification.",
             fields: requiredFields
           )
 

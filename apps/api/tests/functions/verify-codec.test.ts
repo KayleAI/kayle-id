@@ -51,12 +51,12 @@ describe("verify codec", () => {
 
     const shareSelectionBytes = encodeClientShareSelection({
       sessionId: "vs_test_123",
-      selectedFieldKeys: ["kayle_document_id", "dg1_nationality"],
+      selectedFieldKeys: ["kayle_document_id", "nationality_code"],
     });
     const decodedShareSelection = decodeClientMessage(shareSelectionBytes);
     expect(decodedShareSelection?.shareSelection).toEqual({
       sessionId: "vs_test_123",
-      selectedFieldKeys: ["kayle_document_id", "dg1_nationality"],
+      selectedFieldKeys: ["kayle_document_id", "nationality_code"],
     });
   });
 
@@ -99,8 +99,8 @@ describe("verify codec", () => {
           required: true,
         },
         {
-          key: "dg1_nationality",
-          reason: "Nationality is required for this check.",
+          key: "nationality_code",
+          reason: "Nationality code is required for this check.",
           required: false,
         },
       ],
@@ -116,8 +116,8 @@ describe("verify codec", () => {
           required: true,
         },
         {
-          key: "dg1_nationality",
-          reason: "Nationality is required for this check.",
+          key: "nationality_code",
+          reason: "Nationality code is required for this check.",
           required: false,
         },
       ],
@@ -126,7 +126,7 @@ describe("verify codec", () => {
     const shareReadyBytes = encodeServerShareReady({
       sessionId: "vs_test_123",
       selectedFieldKeys: [
-        "dg1_nationality",
+        "nationality_code",
         "kayle_document_id",
         "kayle_human_id",
       ],
@@ -135,7 +135,7 @@ describe("verify codec", () => {
     expect(decodedShareReady?.shareReady).toEqual({
       sessionId: "vs_test_123",
       selectedFieldKeys: [
-        "dg1_nationality",
+        "nationality_code",
         "kayle_document_id",
         "kayle_human_id",
       ],

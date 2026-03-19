@@ -35,7 +35,7 @@ describe("/v1/sessions share contract validation", () => {
             required: true,
             reason: "Needed to verify legal age",
           },
-          dg1_nationality: {
+          nationality_code: {
             required: false,
             reason: "Needed for regional policy checks",
           },
@@ -50,7 +50,7 @@ describe("/v1/sessions share contract validation", () => {
       };
     };
     expect(payload.data.share_fields.age_over_18.source).toBe("rc");
-    expect(payload.data.share_fields.dg1_nationality.source).toBe("rc");
+    expect(payload.data.share_fields.nationality_code.source).toBe("rc");
     expect(payload.data.share_fields.kayle_document_id.required).toBe(true);
   });
 
@@ -63,7 +63,7 @@ describe("/v1/sessions share contract validation", () => {
       },
       body: JSON.stringify({
         share_fields: {
-          dg1_nationality: {
+          nationality_code: {
             required: true,
           },
         },
@@ -84,7 +84,7 @@ describe("/v1/sessions share contract validation", () => {
       },
       body: JSON.stringify({
         share_fields: {
-          dg1_nationality: {
+          nationality_code: {
             required: true,
             reason: "   ",
           },
@@ -106,7 +106,7 @@ describe("/v1/sessions share contract validation", () => {
       },
       body: JSON.stringify({
         share_fields: {
-          dg1_nationality: {
+          nationality_code: {
             required: true,
             reason: "x".repeat(201),
           },
@@ -151,7 +151,7 @@ describe("/v1/sessions share contract validation", () => {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          share_fields: ["dg1_nationality"],
+          share_fields: ["nationality_code"],
         }),
       });
 
