@@ -6,10 +6,10 @@ import {
   FACE_MATCHER_MODEL_PATH,
 } from "./worker";
 
-const FACE_MATCHER_CONTAINER_COUNT = 2;
+const FACE_MATCHER_CONTAINER_COUNT = 1;
 const CONTAINER_HEALTH_ATTEMPTS = 3;
 const CONTAINER_HEALTH_RETRY_DELAY_MS = 250;
-const FACE_MATCHER_CONTAINER_NAME_PREFIX = "face-matcher";
+const FACE_MATCHER_CONTAINER_NAME_PREFIX = "face-matcher-v2";
 
 function resolveContainerBinding(
   env: unknown

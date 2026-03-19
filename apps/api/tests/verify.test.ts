@@ -20,8 +20,8 @@ import {
   createMatchingValidationSelfies,
   createMismatchValidationSelfies,
   createSelfieJpeg,
+  createValidationPortraitJpeg,
   createValidNfcArtifacts,
-  loadVerifyFixtureBytes,
 } from "./helpers/verify-artifacts";
 import { setup, TEST_DATA, teardown } from "./setup";
 
@@ -1997,7 +1997,7 @@ describe("Verification Flows", () => {
       const sessionId = await createSession();
       const handoff = await createHandoff(sessionId);
       const artifacts = await createValidNfcArtifacts({
-        dg2ImageData: await loadVerifyFixtureBytes("icon.jpg"),
+        dg2ImageData: await createValidationPortraitJpeg(),
       });
       const mismatchingSelfies = await createMismatchValidationSelfies();
 
@@ -2068,7 +2068,7 @@ describe("Verification Flows", () => {
     async () => {
       const sessionId = await createSession();
       const artifacts = await createValidNfcArtifacts({
-        dg2ImageData: await loadVerifyFixtureBytes("icon.jpg"),
+        dg2ImageData: await createValidationPortraitJpeg(),
       });
       const mismatchingSelfies = await createMismatchValidationSelfies();
 
@@ -2153,7 +2153,7 @@ describe("Verification Flows", () => {
     async () => {
       const sessionId = await createSession();
       const handoff = await createHandoff(sessionId);
-      const matchingSelfie = await loadVerifyFixtureBytes("icon.jpg");
+      const matchingSelfie = await createValidationPortraitJpeg();
       const artifacts = await createValidNfcArtifacts({
         dg2ImageData: matchingSelfie,
       });

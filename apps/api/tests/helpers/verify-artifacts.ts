@@ -28,9 +28,11 @@ const DG1_MRZ_TAG = 0x5f_1f;
 type SupportedHashAlgorithm = "SHA-256" | "SHA-384" | "SHA-512" | "SHA-1";
 type SupportedImageFormat = "jpeg" | "jpeg2000";
 type FixtureName = "icon.jpg" | "icon.jp2" | "black.jpg";
+const DEFAULT_VALIDATION_PORTRAIT_SIZE = 160;
 
 const verifyFixtureBaseUrl = new URL("../fixtures/verify/", import.meta.url);
 const fixtureCache = new Map<FixtureName, Promise<Uint8Array>>();
+const validationPortraitCache = new Map<string, Promise<Uint8Array>>();
 
 type BunFileRuntime = {
   file(path: URL): {
@@ -183,7 +185,7 @@ export async function createMismatchValidationSelfies(): Promise<Uint8Array[]> {
 
 export async function createMatchingValidationSelfies(): Promise<Uint8Array[]> {
   return [
-    await loadVerifyFixtureBytes("icon.jpg"),
+    await createValidationPortraitJpeg(),
     ...createLowSimilaritySelfies(),
   ];
 }
@@ -297,6 +299,92 @@ function exactBytes(bytes: Uint8Array): Uint8Array {
   return new Uint8Array(bytes);
 }
 
+function resizeRgbaNearestNeighbor({
+  data,
+  sourceHeight,
+  sourceWidth,
+  targetHeight,
+  targetWidth,
+}: {
+  data: Uint8Array;
+  sourceWidth: number;
+  sourceHeight: number;
+  targetWidth: number;
+  targetHeight: number;
+}): Uint8Array {
+  const resized = new Uint8Array(targetWidth * targetHeight * 4);
+
+  for (let targetY = 0; targetY < targetHeight; targetY += 1) {
+    const sourceY = Math.min(
+      sourceHeight - 1,
+      Math.floor((targetY * sourceHeight) / targetHeight)
+    );
+
+    for (let targetX = 0; targetX < targetWidth; targetX += 1) {
+      const sourceX = Math.min(
+        sourceWidth - 1,
+        Math.floor((targetX * sourceWidth) / targetWidth)
+      );
+      const sourceOffset = (sourceY * sourceWidth + sourceX) * 4;
+      const targetOffset = (targetY * targetWidth + targetX) * 4;
+
+      resized[targetOffset] = data[sourceOffset] ?? 0;
+      resized[targetOffset + 1] = data[sourceOffset + 1] ?? 0;
+      resized[targetOffset + 2] = data[sourceOffset + 2] ?? 0;
+      resized[targetOffset + 3] = data[sourceOffset + 3] ?? 255;
+    }
+  }
+
+  return resized;
+}
+
+export async function createValidationPortraitJpeg({
+  height = DEFAULT_VALIDATION_PORTRAIT_SIZE,
+  width = DEFAULT_VALIDATION_PORTRAIT_SIZE,
+}: {
+  width?: number;
+  height?: number;
+} = {}): Promise<Uint8Array> {
+  const cacheKey = `${width}x${height}`;
+  const cached = validationPortraitCache.get(cacheKey);
+
+  if (cached) {
+    return exactBytes(await cached);
+  }
+
+  const promise = loadVerifyFixtureBytes("icon.jpg").then((sourceBytes) => {
+    const decoded = jpeg.decode(sourceBytes, {
+      useTArray: true,
+    });
+
+    if (decoded.width === width && decoded.height === height) {
+      return exactBytes(sourceBytes);
+    }
+
+    const resized = resizeRgbaNearestNeighbor({
+      data: decoded.data,
+      sourceWidth: decoded.width,
+      sourceHeight: decoded.height,
+      targetWidth: width,
+      targetHeight: height,
+    });
+
+    return Uint8Array.from(
+      jpeg.encode(
+        {
+          data: resized,
+          width,
+          height,
+        },
+        90
+      ).data
+    );
+  });
+
+  validationPortraitCache.set(cacheKey, promise);
+  return exactBytes(await promise);
+}
+
 export async function createSodArtifact({
   algorithm = "SHA-256",
   dg1,
@@ -400,7 +488,7 @@ export async function createValidNfcArtifacts({
   const resolvedDg2 =
     dg2 ??
     createDg2Artifact({
-      imageData: dg2ImageData ?? (await loadVerifyFixtureBytes("icon.jpg")),
+      imageData: dg2ImageData ?? (await createValidationPortraitJpeg()),
       imageFormat: dg2ImageFormat,
     });
 
