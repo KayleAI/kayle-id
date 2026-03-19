@@ -8,14 +8,17 @@ import {
 import { and, eq } from "drizzle-orm";
 import { generateId } from "@/utils/generate-id";
 import v1 from "@/v1";
-import { setup, TEST_DATA, teardown } from "./setup";
+import { setup, type TestData, teardown } from "./setup";
+
+let TEST_DATA: TestData | undefined;
 
 beforeAll(async () => {
-  await setup();
+  TEST_DATA = await setup();
 });
 
 afterAll(async () => {
-  await teardown();
+  await teardown(TEST_DATA);
+  TEST_DATA = undefined;
 });
 
 describe("/v1/sessions cancel terminal states", () => {

@@ -2,7 +2,7 @@ import { OpenAPIHono } from "@hono/zod-openapi";
 import { db } from "@kayle-id/database/drizzle";
 import { events } from "@kayle-id/database/schema/core";
 import { webhook_deliveries } from "@kayle-id/database/schema/webhooks";
-import { and, eq, gt, gte, lte, sql } from "drizzle-orm";
+import { and, eq, gt, gte, inArray, lte } from "drizzle-orm";
 import type { WebhookEvent } from "@/openapi/models/webhook";
 import { listWebhookEvents } from "@/openapi/v1/webhooks/events/list";
 
@@ -81,7 +81,7 @@ listEvents.openapi(listWebhookEvents, async (c) => {
             last_attempt_at: webhook_deliveries.lastAttemptAt,
           })
           .from(webhook_deliveries)
-          .where(sql`${webhook_deliveries.eventId} = ANY(${eventIds})`);
+          .where(inArray(webhook_deliveries.eventId, eventIds));
 
   const deliveriesByEvent = new Map<
     string,

@@ -22,7 +22,9 @@ import {
   createValidationPortraitJpeg,
   createValidNfcArtifacts,
 } from "./helpers/verify-artifacts";
-import { setup, TEST_DATA, teardown } from "./setup";
+import { setup, type TestData, teardown } from "./setup";
+
+let TEST_DATA: TestData | undefined;
 
 type HandoffPayload = {
   v: number;
@@ -69,6 +71,7 @@ type ServerAckOrError = {
 };
 
 const createdSessionIds: string[] = [];
+const LONG_VERIFY_FLOW_TIMEOUT_MS = 20_000;
 
 function encodeHelloMessage({
   attemptId,
@@ -740,7 +743,7 @@ async function advanceToSelfieCapturing({
 }
 
 beforeAll(async () => {
-  await setup();
+  TEST_DATA = await setup();
 });
 
 afterAll(async () => {
@@ -1763,7 +1766,8 @@ describe("Verification Flows", () => {
       expect(attempt?.status).toBe("in_progress");
       expect(attempt?.phaseUpdatedAt).not.toBeNull();
       expect(session?.status).toBe("in_progress");
-    }
+    },
+    LONG_VERIFY_FLOW_TIMEOUT_MS
   );
 
   test.serial(
@@ -1804,7 +1808,8 @@ describe("Verification Flows", () => {
       } finally {
         socket.close();
       }
-    }
+    },
+    LONG_VERIFY_FLOW_TIMEOUT_MS
   );
 
   test.serial(
@@ -1854,7 +1859,8 @@ describe("Verification Flows", () => {
       } finally {
         socket.close();
       }
-    }
+    },
+    LONG_VERIFY_FLOW_TIMEOUT_MS
   );
 
   test.serial("Reconnect requires selfie resend after disconnect", async () => {

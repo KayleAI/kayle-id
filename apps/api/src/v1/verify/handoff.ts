@@ -5,6 +5,7 @@ import {
 } from "@kayle-id/database/schema/core";
 import { desc, eq } from "drizzle-orm";
 import { generateId } from "@/utils/generate-id";
+import { expireVerificationSessionIfNeeded } from "@/v1/sessions/repo/session-repo";
 import { isTerminalSessionStatus } from "./status";
 import {
   deriveMobileWriteToken,
@@ -47,8 +48,15 @@ export async function issueHandoffPayload(
     .select({
       id: verification_sessions.id,
       environment: verification_sessions.environment,
+      organizationId: verification_sessions.organizationId,
       status: verification_sessions.status,
+      completedAt: verification_sessions.completedAt,
+      createdAt: verification_sessions.createdAt,
+      redirectUrl: verification_sessions.redirectUrl,
+      shareFields: verification_sessions.shareFields,
+      contractVersion: verification_sessions.contractVersion,
       expiresAt: verification_sessions.expiresAt,
+      updatedAt: verification_sessions.updatedAt,
     })
     .from(verification_sessions)
     .where(eq(verification_sessions.id, sessionId))
@@ -64,9 +72,14 @@ export async function issueHandoffPayload(
     };
   }
 
+  const normalizedSession = await expireVerificationSessionIfNeeded({
+    now,
+    row: session,
+  });
+
   if (
-    isTerminalSessionStatus(session.status) ||
-    session.expiresAt.getTime() < now.getTime()
+    isTerminalSessionStatus(normalizedSession.status) ||
+    normalizedSession.expiresAt.getTime() < now.getTime()
   ) {
     return {
       ok: false,
@@ -77,7 +90,7 @@ export async function issueHandoffPayload(
     };
   }
 
-  if (session.status === "in_progress") {
+  if (normalizedSession.status === "in_progress") {
     return {
       ok: false,
       error: {
@@ -136,7 +149,7 @@ export async function issueHandoffPayload(
   } else {
     attemptId = generateId({
       type: "va",
-      environment: session.environment,
+      environment: normalizedSession.environment,
     });
     issuedAt = now;
     expiresAt = new Date(now.getTime() + HANDOFF_TOKEN_TTL_MS);

@@ -3,16 +3,19 @@ import { createApiKey } from "@/functions/auth/create-api-key";
 import { deleteApiKey } from "@/functions/auth/delete-api-key";
 import { updateApiKey } from "@/functions/auth/update-api-key";
 import { verifyApiKey } from "@/functions/auth/verify-api-key";
-import { setup, TEST_DATA, teardown } from "../setup";
+import { setup, type TestData, teardown } from "../setup";
+
+let TEST_DATA: TestData | undefined;
 
 const API_KEY_PREFIX_PATTERN = /^kk_/;
 
 beforeAll(async () => {
-  await setup();
+  TEST_DATA = await setup();
 });
 
 afterAll(async () => {
-  await teardown();
+  await teardown(TEST_DATA);
+  TEST_DATA = undefined;
 });
 
 describe("Handling API Keys", () => {

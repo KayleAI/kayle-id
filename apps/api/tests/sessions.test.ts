@@ -2,14 +2,17 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import type z from "zod";
 import type { Session } from "@/openapi/models/sessions";
 import v1 from "@/v1";
-import { setup, TEST_DATA, teardown } from "./setup";
+import { setup, type TestData, teardown } from "./setup";
+
+let TEST_DATA: TestData | undefined;
 
 beforeAll(async () => {
-  await setup();
+  TEST_DATA = await setup();
 });
 
 afterAll(async () => {
-  await teardown();
+  await teardown(TEST_DATA);
+  TEST_DATA = undefined;
 });
 
 let createdSessionId: string | undefined;

@@ -162,3 +162,59 @@ export async function cancelVerificationSession({
     });
   });
 }
+
+export async function expireVerificationSessionIfNeeded({
+  now = new Date(),
+  row,
+}: {
+  now?: Date;
+  row: typeof verification_sessions.$inferSelect;
+}) {
+  if (
+    row.status === "expired" ||
+    row.status === "completed" ||
+    row.status === "cancelled" ||
+    row.expiresAt.getTime() > now.getTime()
+  ) {
+    return row;
+  }
+
+  await db.transaction(async (tx) => {
+    await tx
+      .update(verification_sessions)
+      .set({
+        status: "expired",
+        completedAt: row.completedAt ?? now,
+      })
+      .where(eq(verification_sessions.id, row.id));
+
+    await tx
+      .update(verification_attempts)
+      .set({
+        status: "failed",
+        failureCode: "session_expired",
+        completedAt: now,
+      })
+      .where(
+        and(
+          eq(verification_attempts.verificationSessionId, row.id),
+          eq(verification_attempts.status, "in_progress")
+        )
+      );
+
+    await tx.insert(events).values({
+      id: generateId({ type: "evt", environment: row.environment }),
+      organizationId: row.organizationId,
+      environment: row.environment,
+      type: "verification.session.expired",
+      triggerId: row.id,
+      triggerType: "verification_session",
+    });
+  });
+
+  return {
+    ...row,
+    status: "expired" as const,
+    completedAt: row.completedAt ?? now,
+  };
+}

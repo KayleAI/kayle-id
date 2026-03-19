@@ -6,6 +6,7 @@ import { webhook_deliveries } from "@kayle-id/database/schema/webhooks";
 import { and, eq, gt } from "drizzle-orm";
 import { listWebhookDeliveries } from "@/openapi/v1/webhooks/deliveries/list";
 import { retryWebhookDelivery } from "@/openapi/v1/webhooks/deliveries/retry";
+import { waitUntilIfAvailable } from "@/utils/wait-until";
 import {
   attemptWebhookDelivery,
   getWebhookDeliveryForOrganization,
@@ -116,12 +117,14 @@ webhookDeliveries.openapi(retryWebhookDelivery, async (c) => {
     );
   }
 
-  c.executionCtx?.waitUntil?.(
-    attemptWebhookDelivery({
-      authSecret: c.env?.AUTH_SECRET ?? env.AUTH_SECRET,
-      deliveryId: requeued.id,
-    })
-  );
+  waitUntilIfAvailable({
+    createTask: () =>
+      attemptWebhookDelivery({
+        authSecret: c.env?.AUTH_SECRET ?? env.AUTH_SECRET,
+        deliveryId: requeued.id,
+      }),
+    getExecutionCtx: () => c.executionCtx,
+  });
 
   return c.json(
     {

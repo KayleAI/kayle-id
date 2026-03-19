@@ -15,12 +15,14 @@ import {
   createWebhookDeliveriesForVerificationSucceeded,
 } from "@/v1/webhooks/deliveries/service";
 import { encryptWebhookSigningSecret } from "@/v1/webhooks/signing-secret";
-import { setup, TEST_DATA, teardown } from "../setup";
+import { setup, type TestData, teardown } from "../setup";
+
+let TEST_DATA: TestData | undefined;
 
 const originalFetch = globalThis.fetch;
 
 beforeAll(async () => {
-  await setup();
+  TEST_DATA = await setup();
 });
 
 afterEach(() => {
@@ -42,7 +44,8 @@ afterEach(async () => {
 });
 
 afterAll(async () => {
-  await teardown();
+  await teardown(TEST_DATA);
+  TEST_DATA = undefined;
 });
 
 test("createWebhookDeliveriesForVerificationSucceeded creates a pending encrypted delivery for subscribed endpoints", async () => {

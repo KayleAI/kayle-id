@@ -1,13 +1,16 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import apiKeys from "@/auth/api-keys";
-import { setup, TEST_DATA, teardown } from "./setup";
+import { setup, type TestData, teardown } from "./setup";
+
+let TEST_DATA: TestData | undefined;
 
 beforeAll(async () => {
-  await setup();
+  TEST_DATA = await setup();
 });
 
 afterAll(async () => {
-  await teardown();
+  await teardown(TEST_DATA);
+  TEST_DATA = undefined;
 });
 
 describe("API Key Endpoints", () => {

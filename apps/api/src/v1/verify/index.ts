@@ -16,6 +16,8 @@ import { Hono } from "hono";
 import { validator } from "hono/validator";
 import { z } from "zod";
 import { sessionIdSchema } from "@/shared/validation";
+import { waitUntilIfAvailable } from "@/utils/wait-until";
+import { expireVerificationSessionIfNeeded } from "@/v1/sessions/repo/session-repo";
 import {
   attemptWebhookDelivery,
   createWebhookDeliveriesForVerificationSucceeded,
@@ -54,6 +56,7 @@ import {
   persistTrackedAttemptPhase,
   validateTrackedPhaseTransition,
 } from "./phase-state";
+import { getPublicVerifySessionStatus } from "./session-status";
 import {
   createShareRequestPayload,
   type VerifyShareManifest,
@@ -142,6 +145,59 @@ verify.post(
 );
 
 verify.get(
+  "/session/:id/status",
+  validator("param", (value, c) => {
+    const parsed = handoffParamSchema.safeParse(value);
+
+    if (!parsed.success) {
+      const response = jsonErrorResponse({
+        code: "INVALID_SESSION_ID",
+        status: 400,
+      });
+
+      return c.json(
+        {
+          data: response.data,
+          error: response.error,
+        },
+        response.status
+      );
+    }
+
+    return parsed.data;
+  }),
+  async (c) => {
+    const { id } = c.req.valid("param");
+    const status = await getPublicVerifySessionStatus({
+      sessionId: id,
+    });
+
+    if (!status) {
+      const response = jsonErrorResponse({
+        code: "SESSION_NOT_FOUND",
+        status: 404,
+      });
+
+      return c.json(
+        {
+          data: response.data,
+          error: response.error,
+        },
+        response.status
+      );
+    }
+
+    return c.json(
+      {
+        data: status,
+        error: null,
+      },
+      200
+    );
+  }
+);
+
+verify.get(
   "/session/:id",
   validator("param", (value) => {
     const parsed = z.object({ id: sessionIdSchema }).safeParse(value);
@@ -183,9 +239,13 @@ verify.get(
       });
     }
 
+    const normalizedSession = await expireVerificationSessionIfNeeded({
+      row: session,
+    });
+
     if (
-      isTerminalSessionStatus(session.status) ||
-      session.expiresAt.getTime() < Date.now()
+      isTerminalSessionStatus(normalizedSession.status) ||
+      normalizedSession.expiresAt.getTime() < Date.now()
     ) {
       return webSocketErrorResponse({
         code: "SESSION_EXPIRED",
@@ -193,9 +253,9 @@ verify.get(
     }
 
     const shareRequestPayload = createShareRequestPayload({
-      contractVersion: session.contractVersion,
-      sessionId: session.id,
-      shareFieldsInput: session.shareFields,
+      contractVersion: normalizedSession.contractVersion,
+      sessionId: normalizedSession.id,
+      shareFieldsInput: normalizedSession.shareFields,
     });
 
     if (c.req.header("upgrade")?.toLowerCase() !== "websocket") {
@@ -933,7 +993,10 @@ verify.get(
         }
       })();
 
-      c.executionCtx?.waitUntil?.(deliveryTask);
+      waitUntilIfAvailable({
+        createTask: () => deliveryTask,
+        getExecutionCtx: () => c.executionCtx,
+      });
     };
 
     const handleDecodedMessage = async (

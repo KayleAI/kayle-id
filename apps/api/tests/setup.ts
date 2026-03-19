@@ -8,16 +8,14 @@ import { api_keys } from "@kayle-id/database/schema/core";
 import { eq } from "drizzle-orm";
 import { createApiKey } from "@/functions/auth/create-api-key";
 
-let TEST_DATA:
-  | {
-      userId: string;
-      organizationId: string;
-      apiKey: string;
-      apiKeyId: string;
-    }
-  | undefined;
+type TestData = {
+  userId: string;
+  organizationId: string;
+  apiKey: string;
+  apiKeyId: string;
+};
 
-const setup = async () => {
+const setup = async (): Promise<TestData> => {
   const [createdUser] = await db
     .insert(auth_users)
     .values({
@@ -36,7 +34,6 @@ const setup = async () => {
 
   const userId = createdUser.id;
 
-  // create an organization for the user
   const [createdOrganization] = await db
     .insert(auth_organizations)
     .values({
@@ -55,7 +52,6 @@ const setup = async () => {
 
   const organizationId = createdOrganization.id;
 
-  // add the user to the organization
   await db.insert(auth_organization_members).values({
     organizationId,
     createdAt: new Date(),
@@ -63,30 +59,25 @@ const setup = async () => {
     role: "owner",
   });
 
-  // create a test API key
   const { apiKey, id: apiKeyId } = await createApiKey({
     name: "Test API Key",
     environment: "test",
     organizationId,
   });
 
-  TEST_DATA = { userId, organizationId, apiKey, apiKeyId };
-
-  return TEST_DATA;
+  return { userId, organizationId, apiKey, apiKeyId };
 };
 
-const teardown = async () => {
-  if (!TEST_DATA) {
+const teardown = async (testData?: TestData): Promise<void> => {
+  if (!testData) {
     return;
   }
 
-  await db.delete(auth_users).where(eq(auth_users.id, TEST_DATA.userId));
+  await db.delete(auth_users).where(eq(auth_users.id, testData.userId));
   await db
     .delete(auth_organizations)
-    .where(eq(auth_organizations.id, TEST_DATA.organizationId));
-  await db.delete(api_keys).where(eq(api_keys.id, TEST_DATA.apiKeyId));
-
-  TEST_DATA = undefined;
+    .where(eq(auth_organizations.id, testData.organizationId));
+  await db.delete(api_keys).where(eq(api_keys.id, testData.apiKeyId));
 };
 
-export { setup, teardown, TEST_DATA };
+export { setup, teardown, type TestData };

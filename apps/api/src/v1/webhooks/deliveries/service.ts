@@ -586,4 +586,29 @@ export async function requeueWebhookDelivery({
   return updated ?? null;
 }
 
+export async function requeueWebhookDeliveriesForEvent({
+  eventId,
+}: {
+  eventId: string;
+}): Promise<(typeof webhook_deliveries.$inferSelect)[]> {
+  const deliveries = await db
+    .select()
+    .from(webhook_deliveries)
+    .where(eq(webhook_deliveries.eventId, eventId));
+
+  const requeued: (typeof webhook_deliveries.$inferSelect)[] = [];
+
+  for (const delivery of deliveries) {
+    const nextDelivery = await requeueWebhookDelivery({
+      deliveryId: delivery.id,
+    });
+
+    if (nextDelivery) {
+      requeued.push(nextDelivery);
+    }
+  }
+
+  return requeued;
+}
+
 export { mapWebhookDeliveryRowToResponse };
