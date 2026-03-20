@@ -1,0 +1,29 @@
+name: Test Web
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test-web:
+    name: Test Web
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository code
+        uses: actions/checkout@v5
+
+      - name: Set up Bun workspace
+        uses: ./.github/actions/setup-bun
+
+      - name: Test face matcher
+        run: bun --cwd infra/face-matcher test
+
+      - name: Test platform
+        run: bun --cwd apps/platform test
+
+      - name: Test verify
+        run: bun --cwd apps/verify test
