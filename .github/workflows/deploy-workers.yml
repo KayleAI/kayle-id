@@ -42,7 +42,8 @@ jobs:
         uses: ./.github/actions/setup-bun
 
       - name: Deploy face matcher worker
-        run: bun --cwd infra/face-matcher run deploy
+        working-directory: infra/face-matcher
+        run: bun run deploy
 
   deploy-api:
     name: Deploy API
@@ -61,7 +62,8 @@ jobs:
           generate-capnp-ts: "true"
 
       - name: Deploy API worker
-        run: bun --cwd apps/api run deploy
+        working-directory: apps/api
+        run: bun run deploy
 
   deploy-platform:
     name: Deploy Platform
@@ -78,7 +80,8 @@ jobs:
         uses: ./.github/actions/setup-bun
 
       - name: Deploy platform worker
-        run: bun --cwd apps/platform run deploy
+        working-directory: apps/platform
+        run: bun run deploy
 
   deploy-verify:
     name: Deploy Verify
@@ -97,4 +100,5 @@ jobs:
           generate-capnp-ts: "true"
 
       - name: Deploy verify worker
-        run: bun --cwd apps/verify run deploy
+        working-directory: apps/verify
+        run: bun run deploy

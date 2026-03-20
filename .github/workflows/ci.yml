@@ -92,9 +92,13 @@ jobs:
 
             if [[ "${exit_code}" -ne 0 ]]; then
               echo "Face matcher log:"
-              cat /tmp/face-matcher.log || true
+              if [[ -f /tmp/face-matcher.log ]]; then
+                cat /tmp/face-matcher.log
+              fi
               echo "API log:"
-              cat /tmp/api.log || true
+              if [[ -f /tmp/api.log ]]; then
+                cat /tmp/api.log
+              fi
             fi
 
             if [[ -n "${SERVER_PID:-}" ]]; then
@@ -161,18 +165,30 @@ jobs:
 
           trap 'cleanup $?' EXIT
 
-          bun --cwd infra/face-matcher run test:dev > /tmp/face-matcher.log 2>&1 &
+          (
+            cd infra/face-matcher
+            bun run test:dev
+          ) > /tmp/face-matcher.log 2>&1 &
           MATCHER_PID=$!
           echo "Face matcher started with PID ${MATCHER_PID}"
           wait_for_matcher
 
-          bun --cwd apps/api run test:setup
-          bun --cwd apps/api run test:dev > /tmp/api.log 2>&1 &
+          (
+            cd apps/api
+            bun run test:setup
+          )
+          (
+            cd apps/api
+            bun run test:dev
+          ) > /tmp/api.log 2>&1 &
           SERVER_PID=$!
           echo "API server started with PID ${SERVER_PID}"
           wait_for_api
 
-          bun --cwd apps/api test
+          (
+            cd apps/api
+            bun test
+          )
 
   test-web:
     name: Test Web
@@ -188,10 +204,13 @@ jobs:
           generate-capnp-ts: "true"
 
       - name: Test face matcher
-        run: bun --cwd infra/face-matcher test
+        working-directory: infra/face-matcher
+        run: bun test
 
       - name: Test platform
-        run: bun --cwd apps/platform test
+        working-directory: apps/platform
+        run: bun test
 
       - name: Test verify
-        run: bun --cwd apps/verify test
+        working-directory: apps/verify
+        run: bun test
