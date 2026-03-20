@@ -25,6 +25,13 @@ runs:
         sudo apt-get update
         sudo apt-get install -y ${{ inputs.apt-packages }}
 
+    - name: Install Cap'n Proto compiler
+      if: ${{ inputs.generate-capnp-ts == 'true' }}
+      shell: bash
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y capnproto
+
     - name: Install Bun
       uses: oven-sh/setup-bun@v2
       with:

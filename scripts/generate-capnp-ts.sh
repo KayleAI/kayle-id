@@ -16,6 +16,11 @@ else
   exit 1
 fi
 
+if ! command -v capnpc >/dev/null 2>&1; then
+  echo "capnpc not found. Install the Cap'n Proto compiler package (capnproto)." >&2
+  exit 1
+fi
+
 mkdir -p "${TS_OUT_DIR}"
 
 TMP_DIR="$(mktemp -d)"
