@@ -8,10 +8,12 @@ private struct ContentViewPreviewScreen: View {
   private let session: VerificationSession
   private let nfcReader: PassportNFCReader
   private let initialMRZSheetPresented: Bool
+  private let initialAboutSheetPresented: Bool
 
   init(
     step: VerificationStep,
     initialMRZSheetPresented: Bool = false,
+    initialAboutSheetPresented: Bool = false,
     configure: (VerificationSession, PassportNFCReader) -> Void = { _, _ in }
   ) {
     let session = VerificationSession()
@@ -24,6 +26,7 @@ private struct ContentViewPreviewScreen: View {
     self.session = session
     self.nfcReader = nfcReader
     self.initialMRZSheetPresented = initialMRZSheetPresented
+    self.initialAboutSheetPresented = initialAboutSheetPresented
   }
 
   var body: some View {
@@ -31,7 +34,8 @@ private struct ContentViewPreviewScreen: View {
       pendingQRCode: $pendingQRCode,
       session: session,
       nfcReader: nfcReader,
-      initialMRZSheetPresented: initialMRZSheetPresented
+      initialMRZSheetPresented: initialMRZSheetPresented,
+      initialAboutSheetPresented: initialAboutSheetPresented
     )
   }
 }
@@ -150,6 +154,10 @@ private enum PreviewFixtures {
 
 #Preview("Welcome") {
   ContentViewPreviewScreen(step: .welcome)
+}
+
+#Preview("About") {
+  ContentViewPreviewScreen(step: .welcome, initialAboutSheetPresented: true)
 }
 
 #Preview("QR Scan") {

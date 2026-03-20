@@ -21,6 +21,8 @@ env:
   APP_SCHEME: Kayle ID
   APP_TEAM_ID: K667TL7H29
   CAPNPROTO_SWIFT_REPOSITORY: https://github.com/arsenstorm/capnproto-swift
+  REQUIRED_IOS_SDK_MAJOR: "26"
+  REQUIRED_XCODE_MAJOR: "26"
   RELEASE_TAG_PREFIX: ios-app-store/v
 
 jobs:
@@ -186,6 +188,64 @@ jobs:
           CAPNP_GENERATE_TS: "false"
         run: bash ./scripts/generate-capnp.sh
 
+      - name: Select required Xcode
+        shell: bash
+        env:
+          REQUIRED_XCODE_MAJOR: ${{ env.REQUIRED_XCODE_MAJOR }}
+          REQUIRED_IOS_SDK_MAJOR: ${{ env.REQUIRED_IOS_SDK_MAJOR }}
+        run: |
+          set -euo pipefail
+
+          shopt -s nullglob
+          available_xcodes=(/Applications/Xcode*.app)
+
+          if (( ${#available_xcodes[@]} == 0 )); then
+            echo "No Xcode installations were found under /Applications." >&2
+            exit 1
+          fi
+
+          matching_xcodes=(/Applications/Xcode_${REQUIRED_XCODE_MAJOR}*.app)
+          selected_xcode_path=""
+
+          if (( ${#matching_xcodes[@]} > 0 )); then
+            selected_suffix="$(
+              printf '%s\n' "${matching_xcodes[@]}" \
+                | sed -E 's#^/Applications/Xcode_([0-9.]+)\.app$#\1#' \
+                | sort -V \
+                | tail -n 1
+            )"
+            selected_xcode_path="/Applications/Xcode_${selected_suffix}.app"
+          elif [[ -d /Applications/Xcode.app ]]; then
+            default_xcode_version="$(
+              DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer \
+                xcodebuild -version \
+                | awk '/^Xcode / { print $2; exit }'
+            )"
+            default_xcode_major="${default_xcode_version%%.*}"
+
+            if [[ "${default_xcode_major}" == "${REQUIRED_XCODE_MAJOR}" ]]; then
+              selected_xcode_path="/Applications/Xcode.app"
+            fi
+          fi
+
+          if [[ -z "${selected_xcode_path}" ]]; then
+            echo "Xcode ${REQUIRED_XCODE_MAJOR}.x is required for App Store uploads, but this runner does not provide it." >&2
+            printf 'Installed Xcode apps:\n%s\n' "${available_xcodes[*]}" >&2
+            exit 1
+          fi
+
+          export DEVELOPER_DIR="${selected_xcode_path}/Contents/Developer"
+          echo "DEVELOPER_DIR=${DEVELOPER_DIR}" >> "${GITHUB_ENV}"
+
+          echo "Selected Xcode:"
+          xcodebuild -version
+
+          if ! xcodebuild -showsdks | grep -Eq "iphoneos${REQUIRED_IOS_SDK_MAJOR}"; then
+            echo "Selected Xcode does not expose the iOS ${REQUIRED_IOS_SDK_MAJOR} SDK required for App Store uploads." >&2
+            xcodebuild -showsdks >&2
+            exit 1
+          fi
+
       - name: Resolve Swift package dependencies
         run: xcodebuild -resolvePackageDependencies -project "${APP_PROJECT_PATH}" -scheme "${APP_SCHEME}"
 
@@ -292,6 +352,32 @@ jobs:
             DEVELOPMENT_TEAM="${APP_TEAM_ID}" \
             PRODUCT_BUNDLE_IDENTIFIER="${APP_BUNDLE_ID}" \
             PROVISIONING_PROFILE_SPECIFIER="${PROVISIONING_PROFILE_NAME}"
+
+      - name: Verify archived SDK version
+        shell: bash
+        env:
+          ARCHIVE_PATH: ${{ runner.temp }}/KayleID.xcarchive
+          REQUIRED_IOS_SDK_MAJOR: ${{ env.REQUIRED_IOS_SDK_MAJOR }}
+        run: |
+          set -euo pipefail
+
+          app_info_plist="$(find "${ARCHIVE_PATH}/Products/Applications" -maxdepth 2 -name Info.plist -print -quit)"
+
+          if [[ -z "${app_info_plist}" ]]; then
+            echo "Could not locate the archived app Info.plist in ${ARCHIVE_PATH}." >&2
+            exit 1
+          fi
+
+          sdk_name="$(/usr/libexec/PlistBuddy -c 'Print :DTSDKName' "${app_info_plist}")"
+          xcode_build="$(/usr/libexec/PlistBuddy -c 'Print :DTXcodeBuild' "${app_info_plist}")"
+
+          echo "Archived SDK: ${sdk_name}"
+          echo "Xcode build: ${xcode_build}"
+
+          if [[ "${sdk_name}" != iphoneos${REQUIRED_IOS_SDK_MAJOR}* ]]; then
+            echo "The archived app was built with ${sdk_name}, but App Store uploads now require iphoneos${REQUIRED_IOS_SDK_MAJOR} or later." >&2
+            exit 1
+          fi
 
       - name: Export IPA
         env:

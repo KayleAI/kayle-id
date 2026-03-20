@@ -1,5 +1,135 @@
 import SwiftUI
 
+private enum AppAbout {
+  static let appName = "Kayle ID"
+  static let privacyPolicyURL = URL(string: "https://kayle.id/privacy")
+  static let termsOfServiceURL = URL(string: "https://kayle.id/terms")
+
+  static func versionDescription(bundle: Bundle = .main) -> String {
+    let version = bundle.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String
+    let build = bundle.object(forInfoDictionaryKey: "CFBundleVersion") as? String
+
+    switch (version?.trimmingCharacters(in: .whitespacesAndNewlines), build?.trimmingCharacters(in: .whitespacesAndNewlines)) {
+    case let (version?, build?) where !version.isEmpty && !build.isEmpty && version != build:
+      return "Version \(version) (\(build))"
+    case let (version?, _) where !version.isEmpty:
+      return "Version \(version)"
+    case let (_, build?) where !build.isEmpty:
+      return "Build \(build)"
+    default:
+      return "Version unavailable"
+    }
+  }
+}
+
+private struct AboutLinkRow: View {
+  let title: String
+  let subtitle: String
+  let destination: URL?
+
+  var body: some View {
+    Group {
+      if let destination {
+        Link(destination: destination) {
+          rowContent
+        }
+      } else {
+        rowContent
+      }
+    }
+    .buttonStyle(.plain)
+  }
+
+  private var rowContent: some View {
+    HStack(alignment: .center, spacing: 12) {
+      VStack(alignment: .leading, spacing: 4) {
+        Text(title)
+          .font(.headline)
+          .foregroundStyle(.black)
+
+        Text(subtitle)
+          .font(.subheadline)
+          .foregroundStyle(.black.opacity(0.6))
+      }
+
+      Spacer(minLength: 12)
+
+      Image(systemName: destination == nil ? "exclamationmark.circle" : "arrow.up.right")
+        .font(.system(size: 16, weight: .semibold))
+        .foregroundStyle(.black.opacity(0.5))
+    }
+    .frame(maxWidth: .infinity, minHeight: 56, alignment: .leading)
+    .padding(16)
+    .background(Color.black.opacity(0.03))
+    .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+    .contentShape(Rectangle())
+  }
+}
+
+private struct AboutSheetView: View {
+  @Environment(\.dismiss) private var dismiss
+
+  private let versionDescription = AppAbout.versionDescription()
+
+  var body: some View {
+    NavigationStack {
+      ScrollView {
+        VStack(spacing: 24) {
+          VStack(spacing: 12) {
+            Image("Logo")
+              .resizable()
+              .scaledToFit()
+              .frame(width: 96, height: 96)
+              .clipShape(RoundedRectangle(cornerRadius: 20))
+              .overlay(
+                RoundedRectangle(cornerRadius: 20)
+                  .stroke(Color.black.opacity(0.1), lineWidth: 1)
+              )
+
+            Text(AppAbout.appName)
+              .font(.title2).bold()
+              .foregroundStyle(.black)
+
+            Text(versionDescription)
+              .font(.subheadline)
+              .foregroundStyle(.black.opacity(0.6))
+          }
+          .frame(maxWidth: .infinity)
+          .padding(.top, 8)
+
+          VStack(alignment: .leading, spacing: 12) {
+            AboutLinkRow(
+              title: "Terms of Service",
+              subtitle: "Terms for using Kayle ID and its identity verification features.",
+              destination: AppAbout.termsOfServiceURL
+            )
+
+            AboutLinkRow(
+              title: "Privacy Policy",
+              subtitle: "How Kayle ID collects, uses, and protects your information.",
+              destination: AppAbout.privacyPolicyURL
+            )
+          }
+          .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .padding(24)
+      }
+      .background(Color.white)
+      .navigationTitle("About")
+      .navigationBarTitleDisplayMode(.inline)
+      .toolbar {
+        ToolbarItem(placement: .topBarTrailing) {
+          Button("Done") {
+            dismiss()
+          }
+          .foregroundStyle(.black)
+        }
+      }
+    }
+    .presentationDragIndicator(.visible)
+  }
+}
+
 struct ContentView: View {
   @Binding var pendingQRCode: String?
 
@@ -23,13 +153,15 @@ struct ContentView: View {
   @State private var didTriggerMRZ = false
   @State private var cardAccessNumber: String?
   @State private var isShareCancelConfirmationPresented = false
+  @State private var isAboutSheetPresented = false
 
   @MainActor
   init(
     pendingQRCode: Binding<String?>,
     session: VerificationSession? = nil,
     nfcReader: PassportNFCReader? = nil,
-    initialMRZSheetPresented: Bool = false
+    initialMRZSheetPresented: Bool = false,
+    initialAboutSheetPresented: Bool = false
   ) {
     let resolvedSession = session ?? VerificationSession()
     let resolvedNFCReader = nfcReader ?? PassportNFCReader()
@@ -38,6 +170,7 @@ struct ContentView: View {
     _session = StateObject(wrappedValue: resolvedSession)
     _nfcReader = StateObject(wrappedValue: resolvedNFCReader)
     _isMRZSheetPresented = State(initialValue: initialMRZSheetPresented)
+    _isAboutSheetPresented = State(initialValue: initialAboutSheetPresented)
   }
 
   var body: some View {
@@ -99,6 +232,9 @@ struct ContentView: View {
       }
       .presentationDetents([.large])
       .presentationDragIndicator(.visible)
+    }
+    .sheet(isPresented: $isAboutSheetPresented) {
+      AboutSheetView()
     }
     .onChange(of: pendingQRCode) { newCode in
       guard let code = newCode, !code.isEmpty else {
@@ -249,8 +385,14 @@ struct ContentView: View {
 
       Spacer()
 
-      PrimaryActionButton(title: "Get Started") {
-        session.moveToStep(.scanning)
+      VStack(spacing: 12) {
+        PrimaryActionButton(title: "Get Started") {
+          session.moveToStep(.scanning)
+        }
+
+        SecondaryActionButton(title: "About") {
+          isAboutSheetPresented = true
+        }
       }
     }
     .padding(16)
