@@ -127,6 +127,10 @@ struct CameraPermissionGate<Destination: View>: View {
   }
 
   private func mapPermissionState() -> CameraPermissionState {
+    if PreviewSupport.isRunningInXcodePreview {
+      return .authorized
+    }
+
     switch AVCaptureDevice.authorizationStatus(for: .video) {
     case .authorized:
       return .authorized

@@ -6,7 +6,6 @@ struct NFCReadingView: View {
   /// Pre-computed MRZ key for BAC authentication (document number + birth date + expiry date with check digits)
   let mrzKey: String
   let cardAccessNumber: String?
-  let uploadStatus: String?
   let uploadProgress: Double
   let isUploading: Bool
   let onComplete: (PassportReadResult) -> Void
@@ -33,13 +32,7 @@ struct NFCReadingView: View {
             .foregroundStyle(.red)
             .multilineTextAlignment(.center)
             .padding(.top, 8)
-        } else if let uploadStatus, isUploading {
-          Text(uploadStatus)
-            .font(.subheadline)
-            .foregroundStyle(.black.opacity(0.6))
-            .multilineTextAlignment(.center)
-            .padding(.top, 8)
-        } else if !nfcReader.status.isEmpty {
+        } else if !isUploading, !nfcReader.status.isEmpty {
           Text(nfcReader.status)
             .font(.subheadline)
             .foregroundStyle(.black.opacity(0.6))
@@ -48,8 +41,7 @@ struct NFCReadingView: View {
         }
 
         if isUploading {
-          ProgressView(value: uploadProgress)
-            .progressViewStyle(.linear)
+          StatusProgressBar(progress: uploadProgress)
             .padding(.top, 16)
             .padding(.horizontal, 32)
 
@@ -57,8 +49,7 @@ struct NFCReadingView: View {
             .font(.caption)
             .foregroundStyle(.black.opacity(0.5))
         } else if nfcReader.progress > 0 && nfcReader.progress < 4 {
-          ProgressView(value: Double(nfcReader.progress), total: 4)
-            .progressViewStyle(.linear)
+          StatusProgressBar(progress: Double(nfcReader.progress) / 4)
             .padding(.top, 16)
             .padding(.horizontal, 32)
         }
@@ -77,7 +68,13 @@ struct NFCReadingView: View {
       }
     }
     .padding(16)
+    .frame(maxWidth: .infinity, maxHeight: .infinity)
+    .background(Color.white.ignoresSafeArea())
     .onAppear {
+      if PreviewSupport.isRunningInXcodePreview {
+        return
+      }
+
       guard !hasStarted else { return }
       hasStarted = true
       // Start NFC reading on main thread
@@ -106,5 +103,26 @@ struct NFCReadingView: View {
     }
 
     return "This can take up to a minute."
+  }
+}
+
+private struct StatusProgressBar: View {
+  let progress: Double
+
+  var body: some View {
+    GeometryReader { geometry in
+      let clampedProgress = min(max(progress, 0), 1)
+
+      ZStack(alignment: .leading) {
+        Capsule()
+          .fill(Color.black.opacity(0.1))
+
+        Capsule()
+          .fill(Color.black)
+          .frame(width: geometry.size.width * clampedProgress)
+      }
+    }
+    .frame(height: 6)
+    .animation(.easeInOut(duration: 0.2), value: progress)
   }
 }

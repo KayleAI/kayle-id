@@ -11,15 +11,22 @@ struct QRScannerView: View {
 
   var body: some View {
     ZStack {
-      QRScannerViewController(
-        onScan: { code in
-          guard isScanning, code != lastScannedCode else { return }
-          lastScannedCode = code
-          isScanning = false
-          onScan(code)
-        }
-      )
-      .ignoresSafeArea()
+      if PreviewSupport.isRunningInXcodePreview {
+        PreviewCameraSurfaceView(
+          title: "QR camera preview",
+          subtitle: "Camera input is not available in Xcode Canvas."
+        )
+      } else {
+        QRScannerViewController(
+          onScan: { code in
+            guard isScanning, code != lastScannedCode else { return }
+            lastScannedCode = code
+            isScanning = false
+            onScan(code)
+          }
+        )
+        .ignoresSafeArea()
+      }
 
       QRScannerOverlay()
     }

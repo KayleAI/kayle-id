@@ -5,7 +5,26 @@ import SwiftUI
 struct MRZScannerView: UIViewControllerRepresentable {
   let onValidMRZ: (String, MRZResult, String?) -> Void
 
-  func makeUIViewController(context: Context) -> MRZOCRViewController {
+  func makeUIViewController(context: Context) -> UIViewController {
+    if PreviewSupport.isRunningInXcodePreview {
+      let controller = UIViewController()
+      let hostingController = UIHostingController(
+        rootView: PreviewCameraSurfaceView(
+          title: "Photo page scan preview",
+          subtitle: "Canvas shows a placeholder instead of live camera input."
+        )
+      )
+
+      controller.view.backgroundColor = .black
+      controller.addChild(hostingController)
+      hostingController.view.frame = controller.view.bounds
+      hostingController.view.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+      hostingController.view.translatesAutoresizingMaskIntoConstraints = true
+      controller.view.addSubview(hostingController.view)
+      hostingController.didMove(toParent: controller)
+      return controller
+    }
+
     let vc = MRZOCRViewController()
     vc.onScan = { mrz, can in
       guard
@@ -20,7 +39,7 @@ struct MRZScannerView: UIViewControllerRepresentable {
     return vc
   }
 
-  func updateUIViewController(_ uiViewController: MRZOCRViewController, context: Context) {}
+  func updateUIViewController(_ uiViewController: UIViewController, context: Context) {}
 }
 
 // MARK: - MRZ Scan Overlay

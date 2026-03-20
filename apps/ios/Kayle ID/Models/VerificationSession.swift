@@ -44,6 +44,7 @@ enum VerificationStep: Int, CaseIterable {
   case mrz            // Scanning passport MRZ
   case rfidCheck      // Asking if document has RFID (required, no skip)
   case nfc            // Reading NFC chip
+  case selfieIntro    // Preparing the user for selfie capture
   case selfie         // Taking selfie
   case shareDetails   // Review requested fields
   case complete       // Verification complete
@@ -56,6 +57,7 @@ enum VerificationStep: Int, CaseIterable {
     case .mrz: return "Scan Document"
     case .rfidCheck: return "RFID Check"
     case .nfc: return "Read Chip"
+    case .selfieIntro: return "Selfie Instructions"
     case .selfie: return "Take Selfie"
     case .shareDetails: return "Review Details"
     case .complete: return "Complete"
@@ -198,7 +200,6 @@ final class VerificationSession: ObservableObject {
                 self.nfcUploadProgress =
                   Double(acknowledgedChunks.count) / Double(totalChunkCount)
               }
-              self.nfcUploadStatusMessage = "Uploading \(self.nfcArtifactLabel(for: kind)) \(chunkIndex + 1) of \(chunkTotal)…"
             }
           )
         }
@@ -213,7 +214,6 @@ final class VerificationSession: ObservableObject {
               self.nfcUploadProgress =
                 Double(acknowledgedChunks.count) / Double(totalChunkCount)
             }
-            self.nfcUploadStatusMessage = "Uploading \(self.nfcArtifactLabel(for: kind)) \(chunkIndex + 1) of \(chunkTotal)…"
           }
         )
         resetNFCUploadState()
@@ -326,7 +326,18 @@ final class VerificationSession: ObservableObject {
   }
 
   /// Handle an error during verification.
-  func handleError(_ error: Error) {
+  func handleError(_ error: Error, forAttemptId attemptId: String? = nil) {
+    if let attemptId {
+      guard
+        shouldHandleAttemptScopedEvent(
+          currentAttemptId: payload?.attemptId,
+          eventAttemptId: attemptId
+        )
+      else {
+        return
+      }
+    }
+
     let resolvedError = resolveDisplayError(error)
     verdict = nil
     errorMessage = resolvedError.localizedDescription
@@ -340,9 +351,10 @@ final class VerificationSession: ObservableObject {
 
   /// Reset the session for a new verification attempt.
   func reset() {
-    webSocketService?.disconnect()
     step = .welcome
+    let activeWebSocketService = webSocketService
     resetAttemptState(clearPayload: true)
+    activeWebSocketService?.disconnect()
   }
 
   func retryVerification() async throws {
@@ -374,8 +386,9 @@ final class VerificationSession: ObservableObject {
     selfieUploadCancelled = false
 
     let baseURL = APIService.baseURL(from: payload.sessionId)
+    let attemptId = payload.attemptId
 
-    webSocketService = VerifyWebSocketService(
+    let service = VerifyWebSocketService(
       sessionId: payload.sessionId,
       attemptId: payload.attemptId,
       mobileWriteToken: payload.mobileWriteToken,
@@ -383,26 +396,52 @@ final class VerificationSession: ObservableObject {
       onFatalError: { [weak self] socketError in
         Task { @MainActor [weak self] in
           guard let self else { return }
+          guard
+            shouldHandleAttemptScopedEvent(
+              currentAttemptId: self.payload?.attemptId,
+              eventAttemptId: attemptId
+            )
+          else {
+            return
+          }
           if self.shouldDeferSocketFailure(socketError) {
             return
           }
-          self.handleError(socketError)
+          self.handleError(socketError, forAttemptId: attemptId)
         }
       },
       onShareRequest: { [weak self] shareRequest in
         Task { @MainActor [weak self] in
-          self?.handleShareRequest(shareRequest)
+          guard
+            let self,
+            shouldHandleAttemptScopedEvent(
+              currentAttemptId: self.payload?.attemptId,
+              eventAttemptId: attemptId
+            )
+          else {
+            return
+          }
+          self.handleShareRequest(shareRequest)
         }
       }
     )
+    webSocketService = service
 
     Task {
       do {
-        try webSocketService?.connect()
-        try await webSocketService?.sendHello()
+        try service.connect()
+        try await service.sendHello()
+        guard
+          shouldHandleAttemptScopedEvent(
+            currentAttemptId: self.payload?.attemptId,
+            eventAttemptId: attemptId
+          )
+        else {
+          return
+        }
         await updatePhase(.mobileConnected)
       } catch {
-        handleError(error)
+        handleError(error, forAttemptId: attemptId)
       }
     }
   }
@@ -1033,18 +1072,6 @@ final class VerificationSession: ObservableObject {
     nfcUploadStatusMessage = nil
   }
 
-  private func nfcArtifactLabel(for kind: VerifyDataKind) -> String {
-    switch kind {
-    case .dg1:
-      return "passport details"
-    case .dg2:
-      return "passport portrait"
-    case .sod:
-      return "passport security data"
-    case .selfie:
-      return "selfie"
-    }
-  }
 }
 
 enum VerificationError: LocalizedError {

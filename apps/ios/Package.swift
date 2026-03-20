@@ -18,6 +18,7 @@ let package = Package(
       name: "KayleIDModels",
       path: "Kayle ID",
       sources: [
+        "Models/AttemptScope.swift",
         "Models/MRZResult.swift",
         "Models/QRCodePayload.swift",
         "Models/VerifyWebSocketAuthPolicy.swift",
@@ -29,6 +30,7 @@ let package = Package(
       dependencies: ["KayleIDModels"],
       path: "Kayle IDTests",
       sources: [
+        "AttemptScopeTests.swift",
         "MRZParserTests.swift",
         "QRCodePayloadTests.swift",
         "VerifyWebSocketAuthPolicyTests.swift",

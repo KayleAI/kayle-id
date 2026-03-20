@@ -8,8 +8,8 @@ struct ContentView: View {
     case backward
   }
 
-  @StateObject private var session = VerificationSession()
-  @StateObject private var nfcReader = PassportNFCReader()
+  @StateObject private var session: VerificationSession
+  @StateObject private var nfcReader: PassportNFCReader
 
   @State private var previousStep: VerificationStep?
   @State private var lastStep: VerificationStep = .welcome
@@ -24,6 +24,21 @@ struct ContentView: View {
   @State private var cardAccessNumber: String?
   @State private var isShareCancelConfirmationPresented = false
 
+  @MainActor
+  init(
+    pendingQRCode: Binding<String?>,
+    session: VerificationSession? = nil,
+    nfcReader: PassportNFCReader? = nil,
+    initialMRZSheetPresented: Bool = false
+  ) {
+    let resolvedSession = session ?? VerificationSession()
+    let resolvedNFCReader = nfcReader ?? PassportNFCReader()
+
+    _pendingQRCode = pendingQRCode
+    _session = StateObject(wrappedValue: resolvedSession)
+    _nfcReader = StateObject(wrappedValue: resolvedNFCReader)
+    _isMRZSheetPresented = State(initialValue: initialMRZSheetPresented)
+  }
 
   var body: some View {
     NavigationStack {
@@ -37,14 +52,20 @@ struct ContentView: View {
           ZStack {
             if let previousStep {
               stepView(for: previousStep)
+                .frame(width: width, height: geo.size.height)
                 .offset(x: -directionSign * width * transitionProgress)
             }
 
             stepView(for: session.step)
+              .frame(width: width, height: geo.size.height)
               .offset(x: directionSign * width * (1 - transitionProgress))
           }
           .frame(maxWidth: .infinity, maxHeight: .infinity)
+          .clipped()
         }
+        .ignoresSafeArea(
+          edges: usesFullScreenCameraBackground ? [.top, .bottom] : []
+        )
       }
     }
     .tint(.black)
@@ -127,25 +148,26 @@ struct ContentView: View {
         nfcReader: nfcReader,
         mrzKey: session.mrzResult?.mrzKey ?? "",
         cardAccessNumber: cardAccessNumber,
-        uploadStatus: session.nfcUploadStatusMessage,
         uploadProgress: session.nfcUploadProgress,
         isUploading: session.isUploadingNFC,
         onComplete: { result in
           session.nfcResult = result
+          let attemptId = session.payload?.attemptId
           // Upload NFC data immediately
           Task {
             do {
               let shouldContinue = try await session.uploadNFCData()
               if shouldContinue {
-                session.moveToStep(.selfie)
-                await session.updatePhase(.selfieCapturing)
+                session.moveToStep(.selfieIntro)
               }
             } catch {
-              session.handleError(error)
+              session.handleError(error, forAttemptId: attemptId)
             }
           }
         }
       )
+    case .selfieIntro:
+      selfieIntroductionView
     case .selfie:
       CameraPermissionGate(onCancel: {
         session.moveToStep(.error)
@@ -157,11 +179,12 @@ struct ContentView: View {
           },
           onPhotoCaptured: { image, index, total in
             session.selfieImages.append(image)
+            let attemptId = session.payload?.attemptId
             Task {
               do {
                 _ = try await session.sendSelfieImage(image, index: index, total: total)
               } catch {
-                session.handleError(error)
+                session.handleError(error, forAttemptId: attemptId)
               }
             }
           }
@@ -406,6 +429,36 @@ struct ContentView: View {
     }
   }
 
+  private var selfieIntroductionView: some View {
+    VStack(alignment: .leading, spacing: 16) {
+      Spacer()
+
+      VStack(alignment: .center, spacing: 12) {
+        Image(systemName: "person.crop.circle")
+          .font(.system(size: 72))
+          .foregroundStyle(.black)
+
+        Text("Next, take a quick selfie")
+          .font(.title3).bold()
+          .foregroundStyle(.black)
+
+        Text("We’ll automatically capture three photos. Make sure your face is well lit and clearly visible.")
+          .font(.subheadline)
+          .foregroundStyle(.black.opacity(0.6))
+          .multilineTextAlignment(.center)
+      }
+      .frame(maxWidth: .infinity)
+
+      Spacer()
+
+      PrimaryActionButton(title: "Continue") {
+        startSelfieCapture()
+      }
+    }
+    .padding(16)
+    .background(Color.white.ignoresSafeArea())
+  }
+
   private func shareFieldRow(_ field: VerifyShareRequestField) -> some View {
     VStack(alignment: .leading, spacing: 10) {
       HStack(alignment: .center, spacing: 12) {
@@ -550,11 +603,12 @@ struct ContentView: View {
 
   private func handleCompletionPrimaryAction() {
     if let verdict = session.verdict, isRejectedVerdict(verdict), verdict.retryAllowed {
+      let attemptId = session.payload?.attemptId
       Task {
         do {
           try await session.retryVerification()
         } catch {
-          session.handleError(error)
+          session.handleError(error, forAttemptId: attemptId)
         }
       }
       return
@@ -588,6 +642,27 @@ struct ContentView: View {
     isMRZLocked = false
     cameraBlur = 0
     didTriggerMRZ = false
+  }
+
+  private var usesFullScreenCameraBackground: Bool {
+    requiresFullScreenCameraBackground(session.step) ||
+      previousStep.map(requiresFullScreenCameraBackground) == true
+  }
+
+  private func requiresFullScreenCameraBackground(_ step: VerificationStep) -> Bool {
+    switch step {
+    case .scanning, .selfie:
+      return true
+    default:
+      return false
+    }
+  }
+
+  private func startSelfieCapture() {
+    session.moveToStep(.selfie)
+    Task {
+      await session.updatePhase(.selfieCapturing)
+    }
   }
 
 }
