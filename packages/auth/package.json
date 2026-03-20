@@ -16,6 +16,7 @@
   "dependencies": {
     "@kayle-id/config": "*",
     "@kayle-id/database": "*",
+    "@kayle-id/emails": "*",
     "better-auth": "^1.4.1",
     "better-call": "1.1.0",
     "zod": "4.1.13"

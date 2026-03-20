@@ -6,6 +6,7 @@ import {
   auth_organization_members,
   auth_organizations,
 } from "@kayle-id/database/schema/auth";
+import { sendMagicLinkEmail } from "@kayle-id/emails/send-magic-link-email";
 import { type BetterAuthOptions, betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { customSession, openAPI, organization } from "better-auth/plugins";
@@ -19,6 +20,9 @@ const user = {
     // TODO: implement delete user
   },
 } satisfies BetterAuthOptions["user"];
+
+const magicLinkExpiryInSeconds = 15 * 60;
+const magicLinkExpiryInMinutes = magicLinkExpiryInSeconds / 60;
 
 const plugins = [
   ...(process.env.NODE_ENV !== "production" ? [openAPI()] : []),
@@ -39,14 +43,21 @@ const plugins = [
     },
   }),
   magic({
-    expiresIn: 15 * 60, // 15 minutes
-    sendMagicOtpAuth: async (_payload) => {
-      if (process.env.NODE_ENV === "development") {
+    expiresIn: magicLinkExpiryInSeconds,
+    sendMagicOtpAuth: async (payload) => {
+      /* if (process.env.NODE_ENV !== "production") {
         return;
-      }
+      }*/
 
-      // TODO: Integrate with email service
-      await new Promise((resolve) => setTimeout(resolve, 0));
+      await sendMagicLinkEmail({
+        apiKey: env.RESEND_API_KEY,
+        expiresInMinutes: magicLinkExpiryInMinutes,
+        from: env.RESEND_FROM_EMAIL,
+        otp: payload.otp,
+        to: payload.email,
+        type: payload.type,
+        url: payload.url,
+      });
     },
   }),
 ] satisfies BetterAuthOptions["plugins"];

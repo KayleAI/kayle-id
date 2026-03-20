@@ -1,0 +1,28 @@
+{
+  "name": "@kayle-id/emails",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "dev": "email dev --dir ./emails --port 3002",
+    "test": "bun test ./src"
+  },
+  "devDependencies": {
+    "@react-email/preview-server": "5.2.10",
+    "@types/bun": "latest",
+    "@types/react": "19.2.0",
+    "@types/react-dom": "19.2.0",
+    "react-email": "5.2.10"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  },
+  "exports": {
+    "./*": "./src/*.ts"
+  },
+  "dependencies": {
+    "@react-email/components": "1.0.10",
+    "react": "19.2.0",
+    "react-dom": "19.2.0",
+    "resend": "6.9.4"
+  }
+}

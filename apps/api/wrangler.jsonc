@@ -22,7 +22,8 @@
     "run_worker_first": true
   },
   "vars": {
-    "PUBLIC_AUTH_URL": "https://kayle.id"
+    "PUBLIC_AUTH_URL": "https://kayle.id",
+    "RESEND_FROM_EMAIL": "Kayle ID <security@care.kayle.id>"
   },
   "hyperdrive": [
     {

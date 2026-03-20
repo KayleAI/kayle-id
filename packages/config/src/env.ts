@@ -41,6 +41,10 @@ export const env = createEnv({
     REDIS_URL: z.string().min(1).optional(),
     REDIS_TOKEN: z.string().min(1).optional(),
 
+    // Resend
+    RESEND_API_KEY: z.string().min(1),
+    RESEND_FROM_EMAIL: z.string().min(1),
+
     // Cloudflare Specific Variables
     STORAGE: z.custom<R2Bucket>(),
     HYPERDRIVE: z.custom<Hyperdrive>().optional(),
