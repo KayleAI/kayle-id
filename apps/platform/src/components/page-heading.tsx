@@ -1,5 +1,6 @@
 import { Button } from "@kayleai/ui/button";
 import { Link } from "@tanstack/react-router";
+import { Fragment } from "react/jsx-runtime";
 import type { FileRoutesByTo } from "@/routeTree.gen";
 
 type PageHeadingAction = {
@@ -29,7 +30,12 @@ export function PageHeading({
         </h1>
         {description && (
           <p className="mb-12 text-balance font-medium text-2xl text-neutral-600">
-            {description}
+            {description.split("\n").map((line) => (
+              <Fragment key={line}>
+                {line}
+                <br />
+              </Fragment>
+            ))}
           </p>
         )}
         {actions && actions.length > 0 && (

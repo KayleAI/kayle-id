@@ -13,7 +13,7 @@ function TermsPage() {
     <div className="min-h-screen bg-white pt-16">
       <main className="mx-auto max-w-7xl px-6 py-24 lg:px-8">
         <PageHeading
-          description={`Last updated ${LAST_UPDATED}. These Terms of Service apply to both developers who integrate Kayle ID and end-users who complete a Kayle ID verification flow.`}
+          description={`Last updated ${LAST_UPDATED}.\n\nThese Terms of Service apply to both developers who integrate Kayle ID and end-users who complete a Kayle ID verification flow.`}
           title="Terms of Service"
         />
 
