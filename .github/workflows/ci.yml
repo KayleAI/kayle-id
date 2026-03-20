@@ -193,6 +193,8 @@ jobs:
   test-web:
     name: Test Web
     runs-on: ubuntu-latest
+    env:
+      NODE_ENV: test
 
     steps:
       - name: Check out repository code
