@@ -180,6 +180,12 @@ jobs:
           git clone --depth 1 --recurse-submodules "${CAPNPROTO_SWIFT_REPOSITORY}" "${CAPNPROTO_SWIFT_PATH}"
           "${CAPNPROTO_SWIFT_PATH}/scripts/build-xcframework.sh"
 
+      - name: Generate native Cap'n Proto artifacts
+        env:
+          CAPNPROTO_SWIFT_PATH: ${{ github.workspace }}/../../Work/capnproto-swift
+          CAPNP_GENERATE_TS: "false"
+        run: bash ./scripts/generate-capnp.sh
+
       - name: Resolve Swift package dependencies
         run: xcodebuild -resolvePackageDependencies -project "${APP_PROJECT_PATH}" -scheme "${APP_SCHEME}"
 

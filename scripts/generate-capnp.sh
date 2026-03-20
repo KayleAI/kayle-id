@@ -10,17 +10,25 @@ CPP_OUT_DIR="${OUT_ROOT}/c"
 
 CAPNP_BIN=""
 CAPNP_PLUGIN_DIR=""
-CAPNP_SWIFT_BIN="/Users/arsen/Work/capnproto-swift/.build/xcframework/macosx/capnproto/c++/src/capnp/capnp"
+CAPNPROTO_SWIFT_ROOT="${CAPNPROTO_SWIFT_PATH:-}"
+
+if [[ -z "${CAPNPROTO_SWIFT_ROOT}" ]]; then
+  CAPNPROTO_SWIFT_ROOT="${HOME}/Work/capnproto-swift"
+fi
+
+CAPNP_SWIFT_BIN="${CAPNPROTO_SWIFT_ROOT}/.build/xcframework/macosx/capnproto/c++/src/capnp/capnp"
 if [[ -x "${CAPNP_SWIFT_BIN}" ]]; then
   CAPNP_BIN="${CAPNP_SWIFT_BIN}"
   CAPNP_PLUGIN_DIR="$(dirname "${CAPNP_SWIFT_BIN}")"
 else
   echo "capnp compiler from capnproto-swift not found at ${CAPNP_SWIFT_BIN}." >&2
-  echo "Build capnproto-swift first so the compiler matches the headers." >&2
+  echo "Build capnproto-swift first and set CAPNPROTO_SWIFT_PATH if it is not at ${CAPNPROTO_SWIFT_ROOT}." >&2
   exit 1
 fi
 
-bash "${ROOT_DIR}/scripts/generate-capnp-ts.sh"
+if [[ "${CAPNP_GENERATE_TS:-true}" == "true" ]]; then
+  bash "${ROOT_DIR}/scripts/generate-capnp-ts.sh"
+fi
 
 rm -rf "${CPP_OUT_DIR}"
 mkdir -p "${CPP_OUT_DIR}"

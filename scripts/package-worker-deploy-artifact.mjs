@@ -7,6 +7,11 @@ const EXCLUDED_PATH_NAMES = new Set([
   ".wrangler",
   "node_modules",
 ]);
+const GENERATED_WRANGLER_CONFIG_PATH = path.join(
+  "dist",
+  "server",
+  "wrangler.json"
+);
 
 const parseArgs = (argv) => {
   const result = {
@@ -44,6 +49,32 @@ const parseArgs = (argv) => {
 
 const parseJson = (source) => JSON.parse(source);
 
+const readJsonIfExists = async (filePath) => {
+  try {
+    return parseJson(await readFile(filePath, "utf8"));
+  } catch (error) {
+    if (error?.code === "ENOENT") {
+      return null;
+    }
+
+    throw error;
+  }
+};
+
+const toRelativePath = (fromFilePath, targetPath) => {
+  const relativePath = path.relative(path.dirname(fromFilePath), targetPath);
+
+  if (
+    relativePath.startsWith("./") ||
+    relativePath.startsWith("../") ||
+    relativePath === "."
+  ) {
+    return relativePath;
+  }
+
+  return `./${relativePath}`;
+};
+
 const shouldCopyPath = (sourcePath) => {
   const pathName = path.basename(sourcePath);
 
@@ -76,6 +107,61 @@ const pruneWorkspaceProjectDir = async (workspaceProjectDir) => {
       });
     }
   }
+};
+
+const buildDeployConfig = async ({
+  absoluteProjectDir,
+  configPath,
+  deployConfigPath,
+  workspaceProjectDir,
+}) => {
+  const configSource = await readFile(configPath, "utf8");
+  const deployConfig = parseJson(configSource);
+  const { $schema: _schema, ...configForDeploy } = deployConfig;
+  const generatedConfigPath = path.join(
+    absoluteProjectDir,
+    GENERATED_WRANGLER_CONFIG_PATH
+  );
+  const generatedConfig = await readJsonIfExists(generatedConfigPath);
+
+  if (generatedConfig?.assets?.directory) {
+    const workspaceAssetsPath = path.join(
+      workspaceProjectDir,
+      path.relative(
+        absoluteProjectDir,
+        path.resolve(
+          path.dirname(generatedConfigPath),
+          generatedConfig.assets.directory
+        )
+      )
+    );
+
+    configForDeploy.assets = {
+      ...generatedConfig.assets,
+      directory: toRelativePath(deployConfigPath, workspaceAssetsPath),
+    };
+  }
+
+  if (generatedConfig?.no_bundle !== undefined) {
+    configForDeploy.no_bundle = generatedConfig.no_bundle;
+  }
+
+  if (Array.isArray(generatedConfig?.rules)) {
+    configForDeploy.rules = generatedConfig.rules;
+  }
+
+  if (
+    generatedConfig?.find_additional_modules !== undefined ||
+    Array.isArray(generatedConfig?.rules)
+  ) {
+    configForDeploy.find_additional_modules =
+      generatedConfig.find_additional_modules ?? true;
+  }
+
+  return {
+    ...configForDeploy,
+    main: "./.wrangler-out/index.js",
+  };
 };
 
 const main = async () => {
@@ -113,17 +199,16 @@ const main = async () => {
     });
   }
 
-  const configSource = await readFile(configPath, "utf8");
-  const deployConfig = parseJson(configSource);
-  const { $schema: _schema, ...configForDeploy } = deployConfig;
+  const configForDeploy = await buildDeployConfig({
+    absoluteProjectDir,
+    configPath,
+    deployConfigPath,
+    workspaceProjectDir,
+  });
 
   await writeFile(
     deployConfigPath,
-    `${JSON.stringify(
-      { ...configForDeploy, main: "./.wrangler-out/index.js" },
-      null,
-      2
-    )}\n`,
+    `${JSON.stringify(configForDeploy, null, 2)}\n`,
     "utf8"
   );
 };
