@@ -291,10 +291,6 @@ jobs:
         with:
           generate-capnp-ts: "true"
 
-      - name: Build API worker bundle
-        working-directory: apps/api
-        run: bun run build
-
       - name: Build preview API worker bundle
         working-directory: apps/api
         run: bunx wrangler deploy --dry-run --outdir .wrangler-out --minify
