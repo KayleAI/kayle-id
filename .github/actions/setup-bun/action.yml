@@ -10,6 +10,10 @@ inputs:
     description: Space-separated apt packages to install before Bun setup.
     required: false
     default: ""
+  generate-capnp-ts:
+    description: Generate the TypeScript Cap'n Proto artifacts after installing dependencies.
+    required: false
+    default: "false"
 
 runs:
   using: composite
@@ -29,3 +33,8 @@ runs:
     - name: Install dependencies
       shell: bash
       run: bun install --frozen-lockfile
+
+    - name: Generate Cap'n Proto TypeScript artifacts
+      if: ${{ inputs.generate-capnp-ts == 'true' }}
+      shell: bash
+      run: bun run capnp:generate:ts

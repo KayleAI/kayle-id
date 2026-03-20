@@ -10,6 +10,7 @@
     "lint": "bun run lint:format && bun run lint:runtime-logs",
     "lint:format": "ultracite check",
     "lint:runtime-logs": "bun ./scripts/check-runtime-console.ts",
+    "capnp:generate:ts": "bash ./scripts/generate-capnp-ts.sh",
     "format": "ultracite fix",
     "cf-typegen": "turbo run cf-typegen",
     "db:setup": "cd packages/database && bun run db:migrate && bun run db:seed",

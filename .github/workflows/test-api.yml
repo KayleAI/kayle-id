@@ -14,8 +14,8 @@ jobs:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
       POSTGRES_DB: kayle-id
-      POSTGRES_HOST: postgres
-      POSTGRES_PORT: 5432
+      POSTGRES_HOST: localhost
+      POSTGRES_PORT: 6432
       NODE_ENV: test
       # A randomly generated secret for testing
       AUTH_SECRET: YrI9mdtghMK4xwI9n9W7npc9rcujcB6X
@@ -23,6 +23,8 @@ jobs:
     services:
       postgres:
         image: postgres:17.7
+        ports:
+          - 6432:5432
 
         env:
           POSTGRES_USER: postgres
@@ -37,6 +39,8 @@ jobs:
 
       redis:
         image: redis:7-alpine
+        ports:
+          - 6379:6379
         options: >-
           --health-cmd "redis-cli ping"
           --health-interval 10s
@@ -51,6 +55,7 @@ jobs:
         uses: ./.github/actions/setup-bun
         with:
           apt-packages: unzip curl ripgrep
+          generate-capnp-ts: "true"
 
       - name: Export DATABASE_URL
         run: |

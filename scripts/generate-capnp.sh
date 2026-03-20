@@ -6,7 +6,6 @@ SCHEMA_DIR="${ROOT_DIR}/packages/capnp"
 SCHEMA_FILE="${SCHEMA_DIR}/verify.capnp"
 
 OUT_ROOT="${ROOT_DIR}/packages/capnp/generated"
-TS_OUT_DIR="${OUT_ROOT}/ts"
 CPP_OUT_DIR="${OUT_ROOT}/c"
 
 CAPNP_BIN=""
@@ -21,37 +20,15 @@ else
   exit 1
 fi
 
-CAPNP_ES_BIN=""
-if command -v capnp-es >/dev/null 2>&1; then
-  CAPNP_ES_BIN="capnp-es"
-elif [[ -x "${ROOT_DIR}/node_modules/.bin/capnp-es" ]]; then
-  CAPNP_ES_BIN="${ROOT_DIR}/node_modules/.bin/capnp-es"
-else
-  echo "capnp-es not found. Install capnp-es in the workspace." >&2
-  exit 1
-fi
+bash "${ROOT_DIR}/scripts/generate-capnp-ts.sh"
 
 rm -rf "${CPP_OUT_DIR}"
-mkdir -p "${TS_OUT_DIR}"
 mkdir -p "${CPP_OUT_DIR}"
-
-TMP_DIR="$(mktemp -d)"
-trap 'rm -rf "${TMP_DIR}"' EXIT
-
-cp "${SCHEMA_FILE}" "${TMP_DIR}/verify.capnp"
-
-"${CAPNP_ES_BIN}" "${TMP_DIR}/verify.capnp" -ojs,ts,dts
-
-mkdir -p "${TS_OUT_DIR}"
-mv "${TMP_DIR}/verify.js" "${TS_OUT_DIR}/verify.js"
-mv "${TMP_DIR}/verify.ts" "${TS_OUT_DIR}/verify.ts"
-mv "${TMP_DIR}/verify.d.ts" "${TS_OUT_DIR}/verify.d.ts"
 
 PATH="${CAPNP_PLUGIN_DIR}:${PATH}" "${CAPNP_BIN}" compile \
   --src-prefix "${SCHEMA_DIR}" \
   -o c++:"${CPP_OUT_DIR}" \
   "${SCHEMA_FILE}"
 
-echo "Cap'n Proto code generated:"
-echo "  TS: ${TS_OUT_DIR}"
+echo "Cap'n Proto C++ code generated:"
 echo "  C++: ${CPP_OUT_DIR}"
