@@ -1,20 +1,6 @@
 name: kayle-id
 icon: apps/platform/public/android-chrome-512x512.png
 processes:
-  Platform:
-    command: bun run dev
-    working_dir: ./apps/platform
-    auto_start: false
-    auto_restart: true
-    restart_when_changed: []
-    env: {}
-  Database:
-    command: ./infra/postgres/launch.sh
-    working_dir: null
-    auto_start: false
-    auto_restart: true
-    restart_when_changed: []
-    env: {}
   API:
     command: bun run dev
     working_dir: ./apps/api
@@ -29,9 +15,30 @@ processes:
     auto_restart: true
     restart_when_changed: []
     env: {}
+  Database:
+    command: ./infra/postgres/launch.sh
+    working_dir: null
+    auto_start: false
+    auto_restart: true
+    restart_when_changed: []
+    env: {}
   Verify:
     command: bun run dev
     working_dir: ./apps/verify
+    auto_start: false
+    auto_restart: true
+    restart_when_changed: []
+    env: {}
+  Drizzle Gateway:
+    command: drizzle-gateway
+    working_dir: null
+    auto_start: false
+    auto_restart: false
+    restart_when_changed: []
+    env: {}
+  Platform:
+    command: bun run dev
+    working_dir: ./apps/platform
     auto_start: false
     auto_restart: true
     restart_when_changed: []
