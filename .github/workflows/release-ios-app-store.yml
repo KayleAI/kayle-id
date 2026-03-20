@@ -1,0 +1,347 @@
+name: Release iOS App Store
+
+on:
+  workflow_run:
+    workflows:
+      - CI
+    types:
+      - completed
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: ios-app-store-release
+  cancel-in-progress: false
+
+env:
+  APP_BUNDLE_ID: kayle.id
+  APP_PROJECT_PATH: apps/ios/Kayle ID.xcodeproj
+  APP_SCHEME: Kayle ID
+  APP_TEAM_ID: K667TL7H29
+  CAPNPROTO_SWIFT_REPOSITORY: https://github.com/arsenstorm/capnproto-swift
+  RELEASE_TAG_PREFIX: ios-app-store/v
+
+jobs:
+  detect_release:
+    name: Detect iOS Release
+    runs-on: ubuntu-latest
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (
+        github.event_name == 'workflow_run' &&
+        github.event.workflow_run.conclusion == 'success' &&
+        github.event.workflow_run.event == 'push' &&
+        github.event.workflow_run.head_branch == 'main'
+      )
+    outputs:
+      app_version: ${{ steps.versions.outputs.app_version }}
+      release_tag: ${{ steps.versions.outputs.release_tag }}
+      should_release: ${{ steps.versions.outputs.should_release }}
+
+    steps:
+      - name: Check out repository code
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
+
+      - name: Restrict manual releases to main
+        if: github.event_name == 'workflow_dispatch' && github.ref != 'refs/heads/main'
+        run: |
+          echo "Manual App Store releases must run from main. Received ${GITHUB_REF}." >&2
+          exit 1
+
+      - name: Determine release version
+        id: versions
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          app_version="$(node -p "require('./package.json').version")"
+
+          if [[ -z "${app_version}" ]]; then
+            echo "Unable to determine the root package version from package.json." >&2
+            exit 1
+          fi
+
+          if [[ ! "${app_version}" =~ ^[0-9]+(\.[0-9]+){2}$ ]]; then
+            echo "The root package version must be a numeric semver like 1.2.3 for App Store releases. Received ${app_version}." >&2
+            exit 1
+          fi
+
+          compare_marketing_versions() {
+            local lhs="$1"
+            local rhs="$2"
+            local lhs_part
+            local rhs_part
+            local lhs_parts
+            local rhs_parts
+            local index
+            local max_parts
+
+            IFS=. read -r -a lhs_parts <<< "${lhs}"
+            IFS=. read -r -a rhs_parts <<< "${rhs}"
+
+            max_parts="${#lhs_parts[@]}"
+            if (( ${#rhs_parts[@]} > max_parts )); then
+              max_parts="${#rhs_parts[@]}"
+            fi
+
+            for (( index = 0; index < max_parts; index += 1 )); do
+              lhs_part="${lhs_parts[index]:-0}"
+              rhs_part="${rhs_parts[index]:-0}"
+
+              if (( 10#${lhs_part} > 10#${rhs_part} )); then
+                echo "newer"
+                return 0
+              fi
+
+              if (( 10#${lhs_part} < 10#${rhs_part} )); then
+                echo "older"
+                return 0
+              fi
+            done
+
+            echo "same"
+          }
+
+          latest_release_tag="$(git tag --list "${RELEASE_TAG_PREFIX}*" --sort=-creatordate | head -n 1)"
+          release_tag="${RELEASE_TAG_PREFIX}${app_version}"
+          should_release="false"
+
+          if [[ -z "${latest_release_tag}" ]]; then
+            should_release="true"
+          else
+            if [[ ! "${latest_release_tag}" =~ ^${RELEASE_TAG_PREFIX//\//\\/}(.+)$ ]]; then
+              echo "Latest iOS release tag ${latest_release_tag} does not match ${RELEASE_TAG_PREFIX}<version>." >&2
+              exit 1
+            fi
+
+            released_app_version="${BASH_REMATCH[1]}"
+            marketing_comparison="$(compare_marketing_versions "${app_version}" "${released_app_version}")"
+
+            case "${marketing_comparison}" in
+              newer)
+                should_release="true"
+                ;;
+              same)
+                ;;
+              older)
+                echo "Current package version ${app_version} is lower than last released version ${released_app_version}." >&2
+                exit 1
+                ;;
+            esac
+          fi
+
+          {
+            echo "app_version=${app_version}"
+            echo "release_tag=${release_tag}"
+            echo "should_release=${should_release}"
+          } >> "${GITHUB_OUTPUT}"
+
+      - name: Summarize release decision
+        run: |
+          if [[ "${{ steps.versions.outputs.should_release }}" == "true" ]]; then
+            echo "App Store release required for version ${{ steps.versions.outputs.app_version }}."
+          else
+            echo "Skipping App Store release because the root package version has not advanced."
+          fi
+
+  release:
+    name: Release iOS App Store
+    runs-on: macos-15
+    needs: detect_release
+    if: needs.detect_release.outputs.should_release == 'true'
+    timeout-minutes: 90
+    permissions:
+      contents: write
+      attestations: write
+      id-token: write
+
+    steps:
+      - name: Check out repository code
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
+
+      - name: Prepare capnproto-swift dependency
+        env:
+          CAPNPROTO_SWIFT_PATH: ${{ github.workspace }}/../../Work/capnproto-swift
+        run: |
+          if [[ -e "${CAPNPROTO_SWIFT_PATH}" ]]; then
+            echo "Expected dependency path ${CAPNPROTO_SWIFT_PATH} already exists." >&2
+            exit 1
+          fi
+
+          mkdir -p "$(dirname "${CAPNPROTO_SWIFT_PATH}")"
+          git clone --depth 1 --recurse-submodules "${CAPNPROTO_SWIFT_REPOSITORY}" "${CAPNPROTO_SWIFT_PATH}"
+          "${CAPNPROTO_SWIFT_PATH}/scripts/build-xcframework.sh"
+
+      - name: Resolve Swift package dependencies
+        run: xcodebuild -resolvePackageDependencies -project "${APP_PROJECT_PATH}" -scheme "${APP_SCHEME}"
+
+      - name: Import App Store signing certificate
+        uses: apple-actions/import-codesign-certs@v5
+        with:
+          p12-file-base64: ${{ secrets.IOS_APP_STORE_CERTIFICATE_P12_BASE64 }}
+          p12-password: ${{ secrets.IOS_APP_STORE_CERTIFICATE_PASSWORD }}
+
+      - name: Download App Store provisioning profile
+        id: provisioning
+        uses: apple-actions/download-provisioning-profiles@v1
+        with:
+          bundle-id: ${{ env.APP_BUNDLE_ID }}
+          profile-type: IOS_APP_STORE
+          issuer-id: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+          api-key-id: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+          api-private-key: ${{ secrets.APP_STORE_CONNECT_PRIVATE_KEY }}
+
+      - name: Create export options
+        env:
+          EXPORT_OPTIONS_PLIST: ${{ runner.temp }}/ExportOptions.plist
+        run: |
+          cat <<EOF > "${EXPORT_OPTIONS_PLIST}"
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>destination</key>
+            <string>export</string>
+            <key>manageAppVersionAndBuildNumber</key>
+            <false/>
+            <key>method</key>
+            <string>app-store-connect</string>
+            <key>signingStyle</key>
+            <string>automatic</string>
+            <key>teamID</key>
+            <string>${APP_TEAM_ID}</string>
+            <key>uploadSymbols</key>
+            <true/>
+          </dict>
+          </plist>
+          EOF
+
+      - name: Archive release build
+        env:
+          ARCHIVE_PATH: ${{ runner.temp }}/KayleID.xcarchive
+        run: |
+          xcodebuild archive \
+            -project "${APP_PROJECT_PATH}" \
+            -scheme "${APP_SCHEME}" \
+            -configuration Release \
+            -destination "generic/platform=iOS" \
+            -archivePath "${ARCHIVE_PATH}"
+
+      - name: Export IPA
+        env:
+          ARCHIVE_PATH: ${{ runner.temp }}/KayleID.xcarchive
+          EXPORT_OPTIONS_PLIST: ${{ runner.temp }}/ExportOptions.plist
+          EXPORT_PATH: ${{ runner.temp }}/KayleIDExport
+        run: |
+          xcodebuild -exportArchive \
+            -archivePath "${ARCHIVE_PATH}" \
+            -exportPath "${EXPORT_PATH}" \
+            -exportOptionsPlist "${EXPORT_OPTIONS_PLIST}"
+
+      - name: Create App Store Connect API key
+        env:
+          API_PRIVATE_KEYS_DIR: ${{ runner.temp }}/private_keys
+          APP_STORE_CONNECT_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+          APP_STORE_CONNECT_PRIVATE_KEY: ${{ secrets.APP_STORE_CONNECT_PRIVATE_KEY }}
+        run: |
+          install -d -m 700 "${API_PRIVATE_KEYS_DIR}"
+          cat <<EOF > "${API_PRIVATE_KEYS_DIR}/AuthKey_${APP_STORE_CONNECT_KEY_ID}.p8"
+          ${APP_STORE_CONNECT_PRIVATE_KEY}
+          EOF
+          chmod 600 "${API_PRIVATE_KEYS_DIR}/AuthKey_${APP_STORE_CONNECT_KEY_ID}.p8"
+
+      - name: Locate exported IPA
+        id: ipa
+        env:
+          EXPORT_PATH: ${{ runner.temp }}/KayleIDExport
+        run: |
+          ipa_path="$(find "${EXPORT_PATH}" -maxdepth 1 -name '*.ipa' -print -quit)"
+
+          if [[ -z "${ipa_path}" ]]; then
+            echo "No IPA was exported to ${EXPORT_PATH}." >&2
+            exit 1
+          fi
+
+          echo "path=${ipa_path}" >> "${GITHUB_OUTPUT}"
+
+      - name: Create attested release assets
+        id: assets
+        shell: bash
+        env:
+          APP_VERSION: ${{ needs.detect_release.outputs.app_version }}
+          ARCHIVE_PATH: ${{ runner.temp }}/KayleID.xcarchive
+          EXPORT_OPTIONS_PLIST: ${{ runner.temp }}/ExportOptions.plist
+          IPA_PATH: ${{ steps.ipa.outputs.path }}
+          RELEASE_ASSETS_DIR: ${{ runner.temp }}/ios-release-assets
+        run: |
+          set -euo pipefail
+
+          ipa_filename="KayleID-${APP_VERSION}.ipa"
+          archive_filename="KayleID-${APP_VERSION}.xcarchive.zip"
+          checksums_filename="KayleID-${APP_VERSION}-checksums.txt"
+          provenance_filename="KayleID-${APP_VERSION}-provenance.json"
+
+          mkdir -p "${RELEASE_ASSETS_DIR}"
+
+          cp "${IPA_PATH}" "${RELEASE_ASSETS_DIR}/${ipa_filename}"
+          cp "${EXPORT_OPTIONS_PLIST}" "${RELEASE_ASSETS_DIR}/ExportOptions.plist"
+          ditto -c -k --keepParent "${ARCHIVE_PATH}" "${RELEASE_ASSETS_DIR}/${archive_filename}"
+
+          (
+            cd "${RELEASE_ASSETS_DIR}"
+            shasum -a 256 "${ipa_filename}" "${archive_filename}" ExportOptions.plist
+          ) > "${RELEASE_ASSETS_DIR}/${checksums_filename}"
+
+          {
+            echo "ipa_path=${RELEASE_ASSETS_DIR}/${ipa_filename}"
+            echo "provenance_path=${RELEASE_ASSETS_DIR}/${provenance_filename}"
+          } >> "${GITHUB_OUTPUT}"
+
+      - name: Attest iOS release assets
+        id: attest
+        uses: actions/attest-build-provenance@v3
+        with:
+          subject-path: ${{ runner.temp }}/ios-release-assets/*
+
+      - name: Add provenance bundle to attested assets
+        env:
+          BUNDLE_PATH: ${{ steps.attest.outputs.bundle-path }}
+          PROVENANCE_PATH: ${{ steps.assets.outputs.provenance_path }}
+        run: cp "${BUNDLE_PATH}" "${PROVENANCE_PATH}"
+
+      - name: Upload attested iOS release assets
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-app-store-release-assets
+          path: ${{ runner.temp }}/ios-release-assets/*
+          if-no-files-found: error
+
+      - name: Upload IPA to App Store Connect
+        env:
+          API_PRIVATE_KEYS_DIR: ${{ runner.temp }}/private_keys
+          APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+          APP_STORE_CONNECT_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+        run: |
+          xcrun altool \
+            --upload-app \
+            --type ios \
+            --file "${{ steps.assets.outputs.ipa_path }}" \
+            --apiIssuer "${APP_STORE_CONNECT_ISSUER_ID}" \
+            --apiKey "${APP_STORE_CONNECT_KEY_ID}"
+
+      - name: Tag released version
+        env:
+          RELEASE_TAG: ${{ needs.detect_release.outputs.release_tag }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "${RELEASE_TAG}" -m "iOS App Store release ${RELEASE_TAG}"
+          git push origin "${RELEASE_TAG}"

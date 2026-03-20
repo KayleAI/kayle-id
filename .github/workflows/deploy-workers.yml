@@ -12,69 +12,159 @@ permissions:
   contents: read
 
 concurrency:
-  group: deploy-workers-production
+  group: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.event == 'push' && github.event.workflow_run.head_branch == 'main' && 'deploy-workers-production' || format('deploy-workers-preview-{0}', github.run_id) }}
   cancel-in-progress: false
 
 env:
   CI: "true"
-  CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-  CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+  RELEASE_TAG_PREFIX: v
 
 jobs:
-  detect_changes:
-    name: Detect Deploy Changes
+  detect_release:
+    name: Detect Worker Release
     runs-on: ubuntu-latest
     if: >-
-      github.event_name == 'workflow_run' &&
-      github.event.workflow_run.conclusion == 'success' &&
-      github.event.workflow_run.event == 'push' &&
-      github.event.workflow_run.head_branch == 'main'
+      github.event_name == 'workflow_dispatch' ||
+      (
+        github.event_name == 'workflow_run' &&
+        github.event.workflow_run.conclusion == 'success'
+      )
     outputs:
-      face_matcher: ${{ steps.filter.outputs.face_matcher }}
-      api: ${{ steps.filter.outputs.api }}
-      platform: ${{ steps.filter.outputs.platform }}
-      verify: ${{ steps.filter.outputs.verify }}
+      app_version: ${{ steps.context.outputs.app_version }}
+      release_allowed: ${{ steps.context.outputs.release_allowed }}
+      release_tag: ${{ steps.context.outputs.release_tag }}
+      face_matcher: ${{ steps.context.outputs.face_matcher }}
+      api: ${{ steps.context.outputs.api }}
+      platform: ${{ steps.context.outputs.platform }}
+      verify: ${{ steps.context.outputs.verify }}
 
     steps:
       - name: Check out repository code
         uses: actions/checkout@v5
         with:
-          fetch-depth: 2
+          fetch-depth: 0
           ref: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
 
-      - name: Detect worker changes
-        id: filter
+      - name: Detect release context
+        id: context
         shell: bash
+        env:
+          HEAD_BRANCH: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_branch || '' }}
+          WORKFLOW_EVENT: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.event || '' }}
         run: |
           set -euo pipefail
 
-          if ! git rev-parse HEAD^1 >/dev/null 2>&1; then
-            {
-              echo "face_matcher=true"
-              echo "api=true"
-              echo "platform=true"
-              echo "verify=true"
-            } >> "$GITHUB_OUTPUT"
-            exit 0
+          app_version="$(node -p "require('./package.json').version")"
+
+          if [[ -z "${app_version}" ]]; then
+            echo "Unable to determine the root package version from package.json." >&2
+            exit 1
           fi
 
-          base_ref="$(git rev-parse HEAD^1)"
+          if [[ ! "${app_version}" =~ ^[0-9]+(\.[0-9]+){2}$ ]]; then
+            echo "The root package version must be a numeric semver like 1.2.3. Received ${app_version}." >&2
+            exit 1
+          fi
 
-          has_changes() {
-            if git diff --quiet "${base_ref}" HEAD -- "$@"; then
-              echo "false"
-            else
-              echo "true"
+          compare_versions() {
+            local lhs="$1"
+            local rhs="$2"
+            local lhs_part
+            local rhs_part
+            local lhs_parts
+            local rhs_parts
+            local index
+            local max_parts
+
+            IFS=. read -r -a lhs_parts <<< "${lhs}"
+            IFS=. read -r -a rhs_parts <<< "${rhs}"
+
+            max_parts="${#lhs_parts[@]}"
+            if (( ${#rhs_parts[@]} > max_parts )); then
+              max_parts="${#rhs_parts[@]}"
             fi
+
+            for (( index = 0; index < max_parts; index += 1 )); do
+              lhs_part="${lhs_parts[index]:-0}"
+              rhs_part="${rhs_parts[index]:-0}"
+
+              if (( 10#${lhs_part} > 10#${rhs_part} )); then
+                echo "newer"
+                return 0
+              fi
+
+              if (( 10#${lhs_part} < 10#${rhs_part} )); then
+                echo "older"
+                return 0
+              fi
+            done
+
+            echo "same"
           }
 
-          {
-            echo "face_matcher=$(has_changes \
+          release_tag="${RELEASE_TAG_PREFIX}${app_version}"
+          release_allowed="false"
+          is_main_push="false"
+
+          if [[ "${WORKFLOW_EVENT}" == "push" && "${HEAD_BRANCH}" == "main" ]]; then
+            is_main_push="true"
+          fi
+
+          if [[ "${is_main_push}" == "true" ]]; then
+            latest_release_tag="$(git tag --list "${RELEASE_TAG_PREFIX}*" --sort=-v:refname | head -n 1)"
+
+            if [[ -z "${latest_release_tag}" ]]; then
+              release_allowed="true"
+            else
+              if [[ ! "${latest_release_tag}" =~ ^${RELEASE_TAG_PREFIX}([0-9]+\.[0-9]+\.[0-9]+)$ ]]; then
+                echo "Latest release tag ${latest_release_tag} does not match ${RELEASE_TAG_PREFIX}<version>." >&2
+                exit 1
+              fi
+
+              released_version="${BASH_REMATCH[1]}"
+              comparison="$(compare_versions "${app_version}" "${released_version}")"
+
+              case "${comparison}" in
+                newer)
+                  release_allowed="true"
+                  ;;
+                same)
+                  ;;
+                older)
+                  echo "Current package version ${app_version} is lower than last released version ${released_version}." >&2
+                  exit 1
+                  ;;
+              esac
+            fi
+          fi
+
+          if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]; then
+            face_matcher="true"
+            api="true"
+            platform="true"
+            verify="true"
+          elif ! git rev-parse HEAD^1 >/dev/null 2>&1; then
+            face_matcher="true"
+            api="true"
+            platform="true"
+            verify="true"
+          else
+            base_ref="$(git rev-parse HEAD^1)"
+
+            has_changes() {
+              if git diff --quiet "${base_ref}" HEAD -- "$@"; then
+                echo "false"
+              else
+                echo "true"
+              fi
+            }
+
+            face_matcher="$(has_changes \
               bun.lock \
               package.json \
               infra/face-matcher \
               packages/config)"
-            echo "api=$(has_changes \
+            api="$(has_changes \
               bun.lock \
               package.json \
               apps/api \
@@ -82,30 +172,43 @@ jobs:
               packages/capnp \
               packages/config \
               packages/database)"
-            echo "platform=$(has_changes \
+            platform="$(has_changes \
               bun.lock \
               package.json \
               apps/platform \
               packages/auth \
               packages/config)"
-            echo "verify=$(has_changes \
+            verify="$(has_changes \
               bun.lock \
               package.json \
               apps/verify \
               packages/capnp \
               packages/config)"
-          } >> "$GITHUB_OUTPUT"
+          fi
 
-  deploy_face_matcher:
-    name: Deploy Face Matcher
+          {
+            echo "app_version=${app_version}"
+            echo "release_allowed=${release_allowed}"
+            echo "release_tag=${release_tag}"
+            echo "face_matcher=${face_matcher}"
+            echo "api=${api}"
+            echo "platform=${platform}"
+            echo "verify=${verify}"
+          } >> "${GITHUB_OUTPUT}"
+
+      - name: Summarize release decision
+        run: |
+          if [[ "${{ steps.context.outputs.release_allowed }}" == "true" ]]; then
+            echo "Production worker deployment is unlocked for version ${{ steps.context.outputs.app_version }}."
+          else
+            echo "Running preview builds only. Production deployment remains locked until the root package version changes on main."
+          fi
+
+  preview_face_matcher:
+    name: Preview Face Matcher
     runs-on: ubuntu-latest
-    needs: detect_changes
-    if: >-
-      always() &&
-      (
-        github.event_name == 'workflow_dispatch' ||
-        needs.detect_changes.outputs.face_matcher == 'true'
-      )
+    needs: detect_release
+    if: needs.detect_release.outputs.face_matcher == 'true'
 
     steps:
       - name: Check out repository code
@@ -116,26 +219,482 @@ jobs:
       - name: Set up Bun workspace
         uses: ./.github/actions/setup-bun
 
-      - name: Deploy face matcher worker
+      - name: Build preview face matcher worker bundle
         working-directory: infra/face-matcher
-        run: bun run deploy
+        run: bun run build
+
+      - name: Package face matcher deploy artifact
+        id: package
+        shell: bash
+        env:
+          APP_VERSION: ${{ needs.detect_release.outputs.app_version }}
+        run: |
+          set -euo pipefail
+
+          artifact_dir="${RUNNER_TEMP}/worker-face-matcher-artifact"
+          archive_path="${RUNNER_TEMP}/kayle-id-worker-face-matcher-${APP_VERSION}.tgz"
+
+          node ./scripts/package-worker-deploy-artifact.mjs \
+            --project-dir infra/face-matcher \
+            --artifact-dir "${artifact_dir}" \
+            --extra-path apps/api/public
+
+          tar -C "${artifact_dir}" -czf "${archive_path}" .
+
+          echo "archive_path=${archive_path}" >> "${GITHUB_OUTPUT}"
+
+      - name: Upload face matcher deploy artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: worker-face-matcher-package
+          path: ${{ steps.package.outputs.archive_path }}
+          if-no-files-found: error
+
+  preview_api:
+    name: Preview API
+    runs-on: ubuntu-latest
+    needs: detect_release
+    if: needs.detect_release.outputs.api == 'true'
+
+    steps:
+      - name: Check out repository code
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
+
+      - name: Set up Bun workspace
+        uses: ./.github/actions/setup-bun
+        with:
+          generate-capnp-ts: "true"
+
+      - name: Build preview API worker bundle
+        working-directory: apps/api
+        run: bunx wrangler deploy --dry-run --outdir .wrangler-out --minify
+
+      - name: Package API deploy artifact
+        id: package
+        shell: bash
+        env:
+          APP_VERSION: ${{ needs.detect_release.outputs.app_version }}
+        run: |
+          set -euo pipefail
+
+          artifact_dir="${RUNNER_TEMP}/worker-api-artifact"
+          archive_path="${RUNNER_TEMP}/kayle-id-worker-api-${APP_VERSION}.tgz"
+
+          node ./scripts/package-worker-deploy-artifact.mjs \
+            --project-dir apps/api \
+            --artifact-dir "${artifact_dir}"
+
+          tar -C "${artifact_dir}" -czf "${archive_path}" .
+
+          echo "archive_path=${archive_path}" >> "${GITHUB_OUTPUT}"
+
+      - name: Upload API deploy artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: worker-api-package
+          path: ${{ steps.package.outputs.archive_path }}
+          if-no-files-found: error
+
+  preview_platform:
+    name: Preview Platform
+    runs-on: ubuntu-latest
+    needs: detect_release
+    if: needs.detect_release.outputs.platform == 'true'
+
+    steps:
+      - name: Check out repository code
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
+
+      - name: Set up Bun workspace
+        uses: ./.github/actions/setup-bun
+
+      - name: Build preview platform worker bundle
+        working-directory: apps/platform
+        run: bunx wrangler deploy --dry-run --outdir .wrangler-out --minify
+
+      - name: Package platform deploy artifact
+        id: package
+        shell: bash
+        env:
+          APP_VERSION: ${{ needs.detect_release.outputs.app_version }}
+        run: |
+          set -euo pipefail
+
+          artifact_dir="${RUNNER_TEMP}/worker-platform-artifact"
+          archive_path="${RUNNER_TEMP}/kayle-id-worker-platform-${APP_VERSION}.tgz"
+
+          node ./scripts/package-worker-deploy-artifact.mjs \
+            --project-dir apps/platform \
+            --artifact-dir "${artifact_dir}"
+
+          tar -C "${artifact_dir}" -czf "${archive_path}" .
+
+          echo "archive_path=${archive_path}" >> "${GITHUB_OUTPUT}"
+
+      - name: Upload platform deploy artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: worker-platform-package
+          path: ${{ steps.package.outputs.archive_path }}
+          if-no-files-found: error
+
+  preview_verify:
+    name: Preview Verify
+    runs-on: ubuntu-latest
+    needs: detect_release
+    if: needs.detect_release.outputs.verify == 'true'
+
+    steps:
+      - name: Check out repository code
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
+
+      - name: Set up Bun workspace
+        uses: ./.github/actions/setup-bun
+        with:
+          generate-capnp-ts: "true"
+
+      - name: Build preview verify worker bundle
+        working-directory: apps/verify
+        run: bunx wrangler deploy --dry-run --outdir .wrangler-out --minify
+
+      - name: Package verify deploy artifact
+        id: package
+        shell: bash
+        env:
+          APP_VERSION: ${{ needs.detect_release.outputs.app_version }}
+        run: |
+          set -euo pipefail
+
+          artifact_dir="${RUNNER_TEMP}/worker-verify-artifact"
+          archive_path="${RUNNER_TEMP}/kayle-id-worker-verify-${APP_VERSION}.tgz"
+
+          node ./scripts/package-worker-deploy-artifact.mjs \
+            --project-dir apps/verify \
+            --artifact-dir "${artifact_dir}"
+
+          tar -C "${artifact_dir}" -czf "${archive_path}" .
+
+          echo "archive_path=${archive_path}" >> "${GITHUB_OUTPUT}"
+
+      - name: Upload verify deploy artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: worker-verify-package
+          path: ${{ steps.package.outputs.archive_path }}
+          if-no-files-found: error
+
+  attest_release_artifacts:
+    name: Attest Worker Release Artifacts
+    runs-on: ubuntu-latest
+    needs:
+      - detect_release
+      - preview_face_matcher
+      - preview_api
+      - preview_platform
+      - preview_verify
+    if: >-
+      always() &&
+      needs.detect_release.outputs.release_allowed == 'true' &&
+      (
+        needs.preview_face_matcher.result == 'success' ||
+        needs.preview_face_matcher.result == 'skipped'
+      ) &&
+      (
+        needs.preview_api.result == 'success' ||
+        needs.preview_api.result == 'skipped'
+      ) &&
+      (
+        needs.preview_platform.result == 'success' ||
+        needs.preview_platform.result == 'skipped'
+      ) &&
+      (
+        needs.preview_verify.result == 'success' ||
+        needs.preview_verify.result == 'skipped'
+      )
+    permissions:
+      attestations: write
+      id-token: write
+
+    steps:
+      - name: Download face matcher release package
+        if: needs.detect_release.outputs.face_matcher == 'true'
+        uses: actions/download-artifact@v4
+        with:
+          name: worker-face-matcher-package
+          path: ${{ runner.temp }}/release-assets
+
+      - name: Download API release package
+        if: needs.detect_release.outputs.api == 'true'
+        uses: actions/download-artifact@v4
+        with:
+          name: worker-api-package
+          path: ${{ runner.temp }}/release-assets
+
+      - name: Download platform release package
+        if: needs.detect_release.outputs.platform == 'true'
+        uses: actions/download-artifact@v4
+        with:
+          name: worker-platform-package
+          path: ${{ runner.temp }}/release-assets
+
+      - name: Download verify release package
+        if: needs.detect_release.outputs.verify == 'true'
+        uses: actions/download-artifact@v4
+        with:
+          name: worker-verify-package
+          path: ${{ runner.temp }}/release-assets
+
+      - name: Create attested release assets
+        id: assets
+        shell: bash
+        env:
+          APP_VERSION: ${{ needs.detect_release.outputs.app_version }}
+          RELEASE_TAG: ${{ needs.detect_release.outputs.release_tag }}
+          TARGET_SHA: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
+          FACE_MATCHER_CHANGED: ${{ needs.detect_release.outputs.face_matcher }}
+          API_CHANGED: ${{ needs.detect_release.outputs.api }}
+          PLATFORM_CHANGED: ${{ needs.detect_release.outputs.platform }}
+          VERIFY_CHANGED: ${{ needs.detect_release.outputs.verify }}
+        run: |
+          set -euo pipefail
+
+          release_assets_dir="${RUNNER_TEMP}/release-assets"
+          manifest_path="${release_assets_dir}/kayle-id-release-${APP_VERSION}.json"
+          checksums_path="${release_assets_dir}/kayle-id-release-${APP_VERSION}-checksums.txt"
+          notes_path="${release_assets_dir}/kayle-id-release-${APP_VERSION}-notes.md"
+          provenance_path="${release_assets_dir}/kayle-id-release-${APP_VERSION}-provenance.json"
+
+          mkdir -p "${release_assets_dir}"
+
+          artifact_name_for() {
+            local worker="$1"
+            printf 'kayle-id-worker-%s-%s.tgz' "${worker}" "${APP_VERSION}"
+          }
+
+          require_artifact() {
+            local artifact_path="$1"
+
+            if [[ ! -f "${artifact_path}" ]]; then
+              echo "Expected release artifact ${artifact_path} to exist." >&2
+              exit 1
+            fi
+          }
+
+          artifact_json_value() {
+            local changed="$1"
+            local artifact_name="$2"
+
+            if [[ "${changed}" == "true" ]]; then
+              printf '"%s"' "${artifact_name}"
+            else
+              printf 'null'
+            fi
+          }
+
+          artifact_notes_value() {
+            local changed="$1"
+            local artifact_name="$2"
+
+            if [[ "${changed}" == "true" ]]; then
+              printf '%s' "${artifact_name}"
+            else
+              printf 'n/a'
+            fi
+          }
+
+          face_matcher_artifact="$(artifact_name_for face-matcher)"
+          api_artifact="$(artifact_name_for api)"
+          platform_artifact="$(artifact_name_for platform)"
+          verify_artifact="$(artifact_name_for verify)"
+
+          worker_archives=()
+
+          if [[ "${FACE_MATCHER_CHANGED}" == "true" ]]; then
+            require_artifact "${release_assets_dir}/${face_matcher_artifact}"
+            worker_archives+=("${face_matcher_artifact}")
+          fi
+
+          if [[ "${API_CHANGED}" == "true" ]]; then
+            require_artifact "${release_assets_dir}/${api_artifact}"
+            worker_archives+=("${api_artifact}")
+          fi
+
+          if [[ "${PLATFORM_CHANGED}" == "true" ]]; then
+            require_artifact "${release_assets_dir}/${platform_artifact}"
+            worker_archives+=("${platform_artifact}")
+          fi
+
+          if [[ "${VERIFY_CHANGED}" == "true" ]]; then
+            require_artifact "${release_assets_dir}/${verify_artifact}"
+            worker_archives+=("${verify_artifact}")
+          fi
+
+          if (( ${#worker_archives[@]} > 0 )); then
+            (
+              cd "${release_assets_dir}"
+              shasum -a 256 "${worker_archives[@]}"
+            ) > "${checksums_path}"
+          else
+            : > "${checksums_path}"
+          fi
+
+          cat <<EOF > "${manifest_path}"
+          {
+            "version": "${APP_VERSION}",
+            "tag": "${RELEASE_TAG}",
+            "commit": "${TARGET_SHA}",
+            "releasedAt": "$(date -u +"%Y-%m-%dT%H:%M:%SZ")",
+            "releaseAssets": {
+              "manifest": "$(basename "${manifest_path}")",
+              "checksums": "$(basename "${checksums_path}")"
+            },
+            "workers": {
+              "faceMatcher": {
+                "changed": ${FACE_MATCHER_CHANGED},
+                "deployed": ${FACE_MATCHER_CHANGED},
+                "artifact": $(artifact_json_value "${FACE_MATCHER_CHANGED}" "${face_matcher_artifact}")
+              },
+              "api": {
+                "changed": ${API_CHANGED},
+                "deployed": ${API_CHANGED},
+                "artifact": $(artifact_json_value "${API_CHANGED}" "${api_artifact}")
+              },
+              "platform": {
+                "changed": ${PLATFORM_CHANGED},
+                "deployed": ${PLATFORM_CHANGED},
+                "artifact": $(artifact_json_value "${PLATFORM_CHANGED}" "${platform_artifact}")
+              },
+              "verify": {
+                "changed": ${VERIFY_CHANGED},
+                "deployed": ${VERIFY_CHANGED},
+                "artifact": $(artifact_json_value "${VERIFY_CHANGED}" "${verify_artifact}")
+              }
+            }
+          }
+          EOF
+
+          cat <<EOF > "${notes_path}"
+          Release version: ${APP_VERSION}
+          Commit: ${TARGET_SHA}
+
+          Production worker deployment
+          - Face Matcher: changed=${FACE_MATCHER_CHANGED}, deployed=${FACE_MATCHER_CHANGED}, artifact=$(artifact_notes_value "${FACE_MATCHER_CHANGED}" "${face_matcher_artifact}")
+          - API: changed=${API_CHANGED}, deployed=${API_CHANGED}, artifact=$(artifact_notes_value "${API_CHANGED}" "${api_artifact}")
+          - Platform: changed=${PLATFORM_CHANGED}, deployed=${PLATFORM_CHANGED}, artifact=$(artifact_notes_value "${PLATFORM_CHANGED}" "${platform_artifact}")
+          - Verify: changed=${VERIFY_CHANGED}, deployed=${VERIFY_CHANGED}, artifact=$(artifact_notes_value "${VERIFY_CHANGED}" "${verify_artifact}")
+
+          Security assets
+          - Release manifest: $(basename "${manifest_path}")
+          - Artifact checksums: $(basename "${checksums_path}")
+          EOF
+
+          {
+            echo "notes_path=${notes_path}"
+            echo "provenance_path=${provenance_path}"
+          } >> "${GITHUB_OUTPUT}"
+
+      - name: Attest release assets
+        id: attest
+        uses: actions/attest-build-provenance@v3
+        with:
+          subject-path: ${{ runner.temp }}/release-assets/*
+
+      - name: Add provenance bundle to release assets
+        shell: bash
+        env:
+          BUNDLE_PATH: ${{ steps.attest.outputs.bundle-path }}
+          PROVENANCE_PATH: ${{ steps.assets.outputs.provenance_path }}
+        run: cp "${BUNDLE_PATH}" "${PROVENANCE_PATH}"
+
+      - name: Upload attested release assets
+        uses: actions/upload-artifact@v4
+        with:
+          name: worker-release-assets
+          path: ${{ runner.temp }}/release-assets/*
+          if-no-files-found: error
+
+  deploy_face_matcher:
+    name: Deploy Face Matcher
+    runs-on: ubuntu-latest
+    needs:
+      - detect_release
+      - preview_face_matcher
+      - attest_release_artifacts
+    if: >-
+      needs.detect_release.outputs.release_allowed == 'true' &&
+      needs.detect_release.outputs.face_matcher == 'true' &&
+      needs.preview_face_matcher.result == 'success' &&
+      needs.attest_release_artifacts.result == 'success'
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+    steps:
+      - name: Check out repository code
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
+
+      - name: Set up Bun workspace
+        uses: ./.github/actions/setup-bun
+
+      - name: Download attested release assets
+        uses: actions/download-artifact@v4
+        with:
+          name: worker-release-assets
+          path: ${{ runner.temp }}/release-assets
+
+      - name: Extract face matcher deploy artifact
+        shell: bash
+        env:
+          APP_VERSION: ${{ needs.detect_release.outputs.app_version }}
+        run: |
+          set -euo pipefail
+
+          archive_path="${RUNNER_TEMP}/release-assets/kayle-id-worker-face-matcher-${APP_VERSION}.tgz"
+          deploy_dir="${RUNNER_TEMP}/deploy-face-matcher"
+
+          if [[ ! -f "${archive_path}" ]]; then
+            echo "Missing attested face matcher artifact ${archive_path}." >&2
+            exit 1
+          fi
+
+          mkdir -p "${deploy_dir}"
+          tar -xzf "${archive_path}" -C "${deploy_dir}"
+
+      - name: Deploy face matcher worker to production
+        shell: bash
+        run: |
+          bunx wrangler deploy \
+            --config "${RUNNER_TEMP}/deploy-face-matcher/workspace/infra/face-matcher/wrangler.deploy.jsonc" \
+            --no-bundle
 
   deploy_api:
     name: Deploy API
     runs-on: ubuntu-latest
     needs:
-      - detect_changes
+      - detect_release
+      - preview_api
+      - attest_release_artifacts
       - deploy_face_matcher
     if: >-
-      always() &&
-      (
-        github.event_name == 'workflow_dispatch' ||
-        needs.detect_changes.outputs.api == 'true'
-      ) &&
+      needs.detect_release.outputs.release_allowed == 'true' &&
+      needs.detect_release.outputs.api == 'true' &&
+      needs.preview_api.result == 'success' &&
+      needs.attest_release_artifacts.result == 'success' &&
       (
         needs.deploy_face_matcher.result == 'success' ||
         needs.deploy_face_matcher.result == 'skipped'
       )
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
 
     steps:
       - name: Check out repository code
@@ -145,29 +704,58 @@ jobs:
 
       - name: Set up Bun workspace
         uses: ./.github/actions/setup-bun
-        with:
-          generate-capnp-ts: "true"
 
-      - name: Deploy API worker
-        working-directory: apps/api
-        run: bun run deploy
+      - name: Download attested release assets
+        uses: actions/download-artifact@v4
+        with:
+          name: worker-release-assets
+          path: ${{ runner.temp }}/release-assets
+
+      - name: Extract API deploy artifact
+        shell: bash
+        env:
+          APP_VERSION: ${{ needs.detect_release.outputs.app_version }}
+        run: |
+          set -euo pipefail
+
+          archive_path="${RUNNER_TEMP}/release-assets/kayle-id-worker-api-${APP_VERSION}.tgz"
+          deploy_dir="${RUNNER_TEMP}/deploy-api"
+
+          if [[ ! -f "${archive_path}" ]]; then
+            echo "Missing attested API artifact ${archive_path}." >&2
+            exit 1
+          fi
+
+          mkdir -p "${deploy_dir}"
+          tar -xzf "${archive_path}" -C "${deploy_dir}"
+
+      - name: Deploy API worker to production
+        shell: bash
+        run: |
+          bunx wrangler deploy \
+            --config "${RUNNER_TEMP}/deploy-api/workspace/apps/api/wrangler.deploy.jsonc" \
+            --no-bundle
 
   deploy_platform:
     name: Deploy Platform
     runs-on: ubuntu-latest
     needs:
-      - detect_changes
+      - detect_release
+      - preview_platform
+      - attest_release_artifacts
       - deploy_api
     if: >-
-      always() &&
-      (
-        github.event_name == 'workflow_dispatch' ||
-        needs.detect_changes.outputs.platform == 'true'
-      ) &&
+      needs.detect_release.outputs.release_allowed == 'true' &&
+      needs.detect_release.outputs.platform == 'true' &&
+      needs.preview_platform.result == 'success' &&
+      needs.attest_release_artifacts.result == 'success' &&
       (
         needs.deploy_api.result == 'success' ||
         needs.deploy_api.result == 'skipped'
       )
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
 
     steps:
       - name: Check out repository code
@@ -178,30 +766,57 @@ jobs:
       - name: Set up Bun workspace
         uses: ./.github/actions/setup-bun
 
-      - name: Build platform worker
-        working-directory: apps/platform
-        run: bun run build
+      - name: Download attested release assets
+        uses: actions/download-artifact@v4
+        with:
+          name: worker-release-assets
+          path: ${{ runner.temp }}/release-assets
 
-      - name: Deploy platform worker
-        working-directory: apps/platform
-        run: bun run deploy
+      - name: Extract platform deploy artifact
+        shell: bash
+        env:
+          APP_VERSION: ${{ needs.detect_release.outputs.app_version }}
+        run: |
+          set -euo pipefail
+
+          archive_path="${RUNNER_TEMP}/release-assets/kayle-id-worker-platform-${APP_VERSION}.tgz"
+          deploy_dir="${RUNNER_TEMP}/deploy-platform"
+
+          if [[ ! -f "${archive_path}" ]]; then
+            echo "Missing attested platform artifact ${archive_path}." >&2
+            exit 1
+          fi
+
+          mkdir -p "${deploy_dir}"
+          tar -xzf "${archive_path}" -C "${deploy_dir}"
+
+      - name: Deploy platform worker to production
+        shell: bash
+        run: |
+          bunx wrangler deploy \
+            --config "${RUNNER_TEMP}/deploy-platform/workspace/apps/platform/wrangler.deploy.jsonc" \
+            --no-bundle
 
   deploy_verify:
     name: Deploy Verify
     runs-on: ubuntu-latest
     needs:
-      - detect_changes
+      - detect_release
+      - preview_verify
+      - attest_release_artifacts
       - deploy_api
     if: >-
-      always() &&
-      (
-        github.event_name == 'workflow_dispatch' ||
-        needs.detect_changes.outputs.verify == 'true'
-      ) &&
+      needs.detect_release.outputs.release_allowed == 'true' &&
+      needs.detect_release.outputs.verify == 'true' &&
+      needs.preview_verify.result == 'success' &&
+      needs.attest_release_artifacts.result == 'success' &&
       (
         needs.deploy_api.result == 'success' ||
         needs.deploy_api.result == 'skipped'
       )
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
 
     steps:
       - name: Check out repository code
@@ -211,13 +826,140 @@ jobs:
 
       - name: Set up Bun workspace
         uses: ./.github/actions/setup-bun
+
+      - name: Download attested release assets
+        uses: actions/download-artifact@v4
         with:
-          generate-capnp-ts: "true"
+          name: worker-release-assets
+          path: ${{ runner.temp }}/release-assets
 
-      - name: Build verify worker
-        working-directory: apps/verify
-        run: bun run build
+      - name: Extract verify deploy artifact
+        shell: bash
+        env:
+          APP_VERSION: ${{ needs.detect_release.outputs.app_version }}
+        run: |
+          set -euo pipefail
 
-      - name: Deploy verify worker
-        working-directory: apps/verify
-        run: bun run deploy
+          archive_path="${RUNNER_TEMP}/release-assets/kayle-id-worker-verify-${APP_VERSION}.tgz"
+          deploy_dir="${RUNNER_TEMP}/deploy-verify"
+
+          if [[ ! -f "${archive_path}" ]]; then
+            echo "Missing attested verify artifact ${archive_path}." >&2
+            exit 1
+          fi
+
+          mkdir -p "${deploy_dir}"
+          tar -xzf "${archive_path}" -C "${deploy_dir}"
+
+      - name: Deploy verify worker to production
+        shell: bash
+        run: |
+          bunx wrangler deploy \
+            --config "${RUNNER_TEMP}/deploy-verify/workspace/apps/verify/wrangler.deploy.jsonc" \
+            --no-bundle
+
+  publish_release:
+    name: Publish Worker Release
+    runs-on: ubuntu-latest
+    needs:
+      - detect_release
+      - attest_release_artifacts
+      - deploy_face_matcher
+      - deploy_api
+      - deploy_platform
+      - deploy_verify
+    if: >-
+      always() &&
+      needs.detect_release.outputs.release_allowed == 'true' &&
+      (
+        needs.attest_release_artifacts.result == 'success'
+      ) &&
+      (
+        needs.deploy_face_matcher.result == 'success' ||
+        needs.deploy_face_matcher.result == 'skipped'
+      ) &&
+      (
+        needs.deploy_api.result == 'success' ||
+        needs.deploy_api.result == 'skipped'
+      ) &&
+      (
+        needs.deploy_platform.result == 'success' ||
+        needs.deploy_platform.result == 'skipped'
+      ) &&
+      (
+        needs.deploy_verify.result == 'success' ||
+        needs.deploy_verify.result == 'skipped'
+      )
+    permissions:
+      contents: write
+
+    steps:
+      - name: Check out repository code
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
+
+      - name: Download attested release assets
+        uses: actions/download-artifact@v4
+        with:
+          name: worker-release-assets
+          path: ${{ runner.temp }}/release-assets
+
+      - name: Ensure release tag exists
+        env:
+          RELEASE_TAG: ${{ needs.detect_release.outputs.release_tag }}
+          TARGET_SHA: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
+        run: |
+          if git rev-parse "${RELEASE_TAG}" >/dev/null 2>&1 || \
+            git ls-remote --exit-code --tags origin "refs/tags/${RELEASE_TAG}" >/dev/null 2>&1; then
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "${RELEASE_TAG}" "${TARGET_SHA}" -m "Kayle ID ${RELEASE_TAG}"
+          git push origin "${RELEASE_TAG}"
+
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          APP_VERSION: ${{ needs.detect_release.outputs.app_version }}
+          RELEASE_TAG: ${{ needs.detect_release.outputs.release_tag }}
+        shell: bash
+        run: |
+          notes_path="${RUNNER_TEMP}/release-assets/kayle-id-release-${APP_VERSION}-notes.md"
+
+          if gh release view "${RELEASE_TAG}" >/dev/null 2>&1; then
+            exit 0
+          fi
+
+          gh release create "${RELEASE_TAG}" \
+            --title "Kayle ID ${APP_VERSION}" \
+            --notes-file "${notes_path}" \
+            --verify-tag
+
+      - name: Upload release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+          APP_VERSION: ${{ needs.detect_release.outputs.app_version }}
+          RELEASE_TAG: ${{ needs.detect_release.outputs.release_tag }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          release_assets_dir="${RUNNER_TEMP}/release-assets"
+          asset_paths=(
+            "${release_assets_dir}/kayle-id-release-${APP_VERSION}.json"
+            "${release_assets_dir}/kayle-id-release-${APP_VERSION}-checksums.txt"
+            "${release_assets_dir}/kayle-id-release-${APP_VERSION}-provenance.json"
+          )
+
+          shopt -s nullglob
+          worker_archives=("${release_assets_dir}"/kayle-id-worker-*.tgz)
+
+          if (( ${#worker_archives[@]} > 0 )); then
+            asset_paths+=("${worker_archives[@]}")
+          fi
+
+          gh release upload "${RELEASE_TAG}" "${asset_paths[@]}" --clobber

@@ -54,7 +54,7 @@
          <EnvironmentVariable
             key = "KAYLE_DEV_API_BASE_URL"
             value = "http://100.98.104.67:8787"
-            isEnabled = "YES">
+            isEnabled = "NO">
          </EnvironmentVariable>
       </EnvironmentVariables>
    </LaunchAction>

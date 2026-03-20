@@ -54,6 +54,32 @@
 		};
 /* End PBXFrameworksBuildPhase section */
 
+/* Begin PBXShellScriptBuildPhase section */
+		B9A0C0A0A0A0A0A0A0A0F001 /* Sync Version From package.json */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+				"$(SRCROOT)/../../package.json",
+				"$(SRCROOT)/Kayle ID/Info.plist",
+				"$(SRCROOT)/scripts/sync-version-from-package-json.sh",
+			);
+			name = "Sync Version From package.json";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+				"$(DERIVED_FILE_DIR)/KayleID-Generated-Info.plist",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "/bin/sh \"${SRCROOT}/scripts/sync-version-from-package-json.sh\"\n";
+			showEnvVarsInLog = 0;
+		};
+/* End PBXShellScriptBuildPhase section */
+
 /* Begin PBXGroup section */
 		B8ED7CEC2F081CC600CD508D = {
 			isa = PBXGroup;
@@ -91,6 +117,7 @@
 				B8ED7CF12F081CC600CD508D /* Sources */,
 				B8ED7CF22F081CC600CD508D /* Frameworks */,
 				B8ED7CF32F081CC600CD508D /* Resources */,
+				B9A0C0A0A0A0A0A0A0A0F001 /* Sync Version From package.json */,
 			);
 			buildRules = (
 			);
@@ -309,7 +336,7 @@
 					"$(SRCROOT)/../../packages/capnp/generated/c",
 					"/Users/arsen/Work/capnproto-swift/capnproto/c++/src",
 				);
-				INFOPLIST_FILE = "Kayle ID/Info.plist";
+				INFOPLIST_FILE = "$(DERIVED_FILE_DIR)/KayleID-Generated-Info.plist";
 				INFOPLIST_KEY_NFCReaderUsageDescription = "Used to read ePassport NFC data.";
 				INFOPLIST_KEY_NSCameraUsageDescription = "Used to scan the MRZ on your passport.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
@@ -351,7 +378,7 @@
 					"$(SRCROOT)/../../packages/capnp/generated/c",
 					"/Users/arsen/Work/capnproto-swift/capnproto/c++/src",
 				);
-				INFOPLIST_FILE = "Kayle ID/Info.plist";
+				INFOPLIST_FILE = "$(DERIVED_FILE_DIR)/KayleID-Generated-Info.plist";
 				INFOPLIST_KEY_NFCReaderUsageDescription = "Used to read ePassport NFC data.";
 				INFOPLIST_KEY_NSCameraUsageDescription = "Used to scan the MRZ on your passport.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
