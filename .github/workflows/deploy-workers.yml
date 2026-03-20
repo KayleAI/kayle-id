@@ -31,8 +31,13 @@ jobs:
       )
     outputs:
       app_version: ${{ steps.context.outputs.app_version }}
+      force_full_release: ${{ steps.context.outputs.force_full_release }}
       release_allowed: ${{ steps.context.outputs.release_allowed }}
       release_tag: ${{ steps.context.outputs.release_tag }}
+      face_matcher_changed: ${{ steps.context.outputs.face_matcher_changed }}
+      api_changed: ${{ steps.context.outputs.api_changed }}
+      platform_changed: ${{ steps.context.outputs.platform_changed }}
+      verify_changed: ${{ steps.context.outputs.verify_changed }}
       face_matcher: ${{ steps.context.outputs.face_matcher }}
       api: ${{ steps.context.outputs.api }}
       platform: ${{ steps.context.outputs.platform }}
@@ -104,6 +109,7 @@ jobs:
 
           release_tag="${RELEASE_TAG_PREFIX}${app_version}"
           release_allowed="false"
+          force_full_release="false"
           is_main_push="false"
 
           if [[ "${WORKFLOW_EVENT}" == "push" && "${HEAD_BRANCH}" == "main" ]]; then
@@ -139,15 +145,15 @@ jobs:
           fi
 
           if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]; then
-            face_matcher="true"
-            api="true"
-            platform="true"
-            verify="true"
+            face_matcher_changed="true"
+            api_changed="true"
+            platform_changed="true"
+            verify_changed="true"
           elif ! git rev-parse HEAD^1 >/dev/null 2>&1; then
-            face_matcher="true"
-            api="true"
-            platform="true"
-            verify="true"
+            face_matcher_changed="true"
+            api_changed="true"
+            platform_changed="true"
+            verify_changed="true"
           else
             base_ref="$(git rev-parse HEAD^1)"
 
@@ -159,12 +165,12 @@ jobs:
               fi
             }
 
-            face_matcher="$(has_changes \
+            face_matcher_changed="$(has_changes \
               bun.lock \
               package.json \
               infra/face-matcher \
               packages/config)"
-            api="$(has_changes \
+            api_changed="$(has_changes \
               bun.lock \
               package.json \
               apps/api \
@@ -172,13 +178,13 @@ jobs:
               packages/capnp \
               packages/config \
               packages/database)"
-            platform="$(has_changes \
+            platform_changed="$(has_changes \
               bun.lock \
               package.json \
               apps/platform \
               packages/auth \
               packages/config)"
-            verify="$(has_changes \
+            verify_changed="$(has_changes \
               bun.lock \
               package.json \
               apps/verify \
@@ -186,10 +192,28 @@ jobs:
               packages/config)"
           fi
 
+          face_matcher="${face_matcher_changed}"
+          api="${api_changed}"
+          platform="${platform_changed}"
+          verify="${verify_changed}"
+
+          if [[ "${release_allowed}" == "true" ]]; then
+            force_full_release="true"
+            face_matcher="true"
+            api="true"
+            platform="true"
+            verify="true"
+          fi
+
           {
             echo "app_version=${app_version}"
+            echo "force_full_release=${force_full_release}"
             echo "release_allowed=${release_allowed}"
             echo "release_tag=${release_tag}"
+            echo "face_matcher_changed=${face_matcher_changed}"
+            echo "api_changed=${api_changed}"
+            echo "platform_changed=${platform_changed}"
+            echo "verify_changed=${verify_changed}"
             echo "face_matcher=${face_matcher}"
             echo "api=${api}"
             echo "platform=${platform}"
@@ -199,7 +223,7 @@ jobs:
       - name: Summarize release decision
         run: |
           if [[ "${{ steps.context.outputs.release_allowed }}" == "true" ]]; then
-            echo "Production worker deployment is unlocked for version ${{ steps.context.outputs.app_version }}."
+            echo "Production worker deployment is unlocked for version ${{ steps.context.outputs.app_version }}, and every worker will be rebuilt and redeployed."
           else
             echo "Running preview builds only. Production deployment remains locked until the root package version changes on main."
           fi
@@ -457,10 +481,15 @@ jobs:
           APP_VERSION: ${{ needs.detect_release.outputs.app_version }}
           RELEASE_TAG: ${{ needs.detect_release.outputs.release_tag }}
           TARGET_SHA: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
-          FACE_MATCHER_CHANGED: ${{ needs.detect_release.outputs.face_matcher }}
-          API_CHANGED: ${{ needs.detect_release.outputs.api }}
-          PLATFORM_CHANGED: ${{ needs.detect_release.outputs.platform }}
-          VERIFY_CHANGED: ${{ needs.detect_release.outputs.verify }}
+          FORCE_FULL_RELEASE: ${{ needs.detect_release.outputs.force_full_release }}
+          FACE_MATCHER_CHANGED: ${{ needs.detect_release.outputs.face_matcher_changed }}
+          API_CHANGED: ${{ needs.detect_release.outputs.api_changed }}
+          PLATFORM_CHANGED: ${{ needs.detect_release.outputs.platform_changed }}
+          VERIFY_CHANGED: ${{ needs.detect_release.outputs.verify_changed }}
+          FACE_MATCHER_DEPLOYED: ${{ needs.detect_release.outputs.face_matcher }}
+          API_DEPLOYED: ${{ needs.detect_release.outputs.api }}
+          PLATFORM_DEPLOYED: ${{ needs.detect_release.outputs.platform }}
+          VERIFY_DEPLOYED: ${{ needs.detect_release.outputs.verify }}
         run: |
           set -euo pipefail
 
@@ -515,22 +544,22 @@ jobs:
 
           worker_archives=()
 
-          if [[ "${FACE_MATCHER_CHANGED}" == "true" ]]; then
+          if [[ "${FACE_MATCHER_DEPLOYED}" == "true" ]]; then
             require_artifact "${release_assets_dir}/${face_matcher_artifact}"
             worker_archives+=("${face_matcher_artifact}")
           fi
 
-          if [[ "${API_CHANGED}" == "true" ]]; then
+          if [[ "${API_DEPLOYED}" == "true" ]]; then
             require_artifact "${release_assets_dir}/${api_artifact}"
             worker_archives+=("${api_artifact}")
           fi
 
-          if [[ "${PLATFORM_CHANGED}" == "true" ]]; then
+          if [[ "${PLATFORM_DEPLOYED}" == "true" ]]; then
             require_artifact "${release_assets_dir}/${platform_artifact}"
             worker_archives+=("${platform_artifact}")
           fi
 
-          if [[ "${VERIFY_CHANGED}" == "true" ]]; then
+          if [[ "${VERIFY_DEPLOYED}" == "true" ]]; then
             require_artifact "${release_assets_dir}/${verify_artifact}"
             worker_archives+=("${verify_artifact}")
           fi
@@ -550,6 +579,7 @@ jobs:
             "tag": "${RELEASE_TAG}",
             "commit": "${TARGET_SHA}",
             "releasedAt": "$(date -u +"%Y-%m-%dT%H:%M:%SZ")",
+            "forceFullRelease": ${FORCE_FULL_RELEASE},
             "releaseAssets": {
               "manifest": "$(basename "${manifest_path}")",
               "checksums": "$(basename "${checksums_path}")"
@@ -557,23 +587,23 @@ jobs:
             "workers": {
               "faceMatcher": {
                 "changed": ${FACE_MATCHER_CHANGED},
-                "deployed": ${FACE_MATCHER_CHANGED},
-                "artifact": $(artifact_json_value "${FACE_MATCHER_CHANGED}" "${face_matcher_artifact}")
+                "deployed": ${FACE_MATCHER_DEPLOYED},
+                "artifact": $(artifact_json_value "${FACE_MATCHER_DEPLOYED}" "${face_matcher_artifact}")
               },
               "api": {
                 "changed": ${API_CHANGED},
-                "deployed": ${API_CHANGED},
-                "artifact": $(artifact_json_value "${API_CHANGED}" "${api_artifact}")
+                "deployed": ${API_DEPLOYED},
+                "artifact": $(artifact_json_value "${API_DEPLOYED}" "${api_artifact}")
               },
               "platform": {
                 "changed": ${PLATFORM_CHANGED},
-                "deployed": ${PLATFORM_CHANGED},
-                "artifact": $(artifact_json_value "${PLATFORM_CHANGED}" "${platform_artifact}")
+                "deployed": ${PLATFORM_DEPLOYED},
+                "artifact": $(artifact_json_value "${PLATFORM_DEPLOYED}" "${platform_artifact}")
               },
               "verify": {
                 "changed": ${VERIFY_CHANGED},
-                "deployed": ${VERIFY_CHANGED},
-                "artifact": $(artifact_json_value "${VERIFY_CHANGED}" "${verify_artifact}")
+                "deployed": ${VERIFY_DEPLOYED},
+                "artifact": $(artifact_json_value "${VERIFY_DEPLOYED}" "${verify_artifact}")
               }
             }
           }
@@ -582,12 +612,13 @@ jobs:
           cat <<EOF > "${notes_path}"
           Release version: ${APP_VERSION}
           Commit: ${TARGET_SHA}
+          Force full worker release: ${FORCE_FULL_RELEASE}
 
           Production worker deployment
-          - Face Matcher: changed=${FACE_MATCHER_CHANGED}, deployed=${FACE_MATCHER_CHANGED}, artifact=$(artifact_notes_value "${FACE_MATCHER_CHANGED}" "${face_matcher_artifact}")
-          - API: changed=${API_CHANGED}, deployed=${API_CHANGED}, artifact=$(artifact_notes_value "${API_CHANGED}" "${api_artifact}")
-          - Platform: changed=${PLATFORM_CHANGED}, deployed=${PLATFORM_CHANGED}, artifact=$(artifact_notes_value "${PLATFORM_CHANGED}" "${platform_artifact}")
-          - Verify: changed=${VERIFY_CHANGED}, deployed=${VERIFY_CHANGED}, artifact=$(artifact_notes_value "${VERIFY_CHANGED}" "${verify_artifact}")
+          - Face Matcher: changed=${FACE_MATCHER_CHANGED}, deployed=${FACE_MATCHER_DEPLOYED}, artifact=$(artifact_notes_value "${FACE_MATCHER_DEPLOYED}" "${face_matcher_artifact}")
+          - API: changed=${API_CHANGED}, deployed=${API_DEPLOYED}, artifact=$(artifact_notes_value "${API_DEPLOYED}" "${api_artifact}")
+          - Platform: changed=${PLATFORM_CHANGED}, deployed=${PLATFORM_DEPLOYED}, artifact=$(artifact_notes_value "${PLATFORM_DEPLOYED}" "${platform_artifact}")
+          - Verify: changed=${VERIFY_CHANGED}, deployed=${VERIFY_DEPLOYED}, artifact=$(artifact_notes_value "${VERIFY_DEPLOYED}" "${verify_artifact}")
 
           Security assets
           - Release manifest: $(basename "${manifest_path}")
