@@ -25,12 +25,10 @@ jobs:
     name: Detect Deploy Changes
     runs-on: ubuntu-latest
     if: >-
-      github.event_name == 'workflow_dispatch' ||
-      (
-        github.event.workflow_run.conclusion == 'success' &&
-        github.event.workflow_run.event == 'push' &&
-        github.event.workflow_run.head_branch == 'main'
-      )
+      github.event_name == 'workflow_run' &&
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.head_branch == 'main'
     outputs:
       face_matcher: ${{ steps.filter.outputs.face_matcher }}
       api: ${{ steps.filter.outputs.api }}
@@ -49,16 +47,6 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-
-          if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]; then
-            {
-              echo "face_matcher=true"
-              echo "api=true"
-              echo "platform=true"
-              echo "verify=true"
-            } >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
 
           if ! git rev-parse HEAD^1 >/dev/null 2>&1; then
             {
@@ -113,7 +101,11 @@ jobs:
     runs-on: ubuntu-latest
     needs: detect_changes
     if: >-
-      needs.detect_changes.outputs.face_matcher == 'true'
+      always() &&
+      (
+        github.event_name == 'workflow_dispatch' ||
+        needs.detect_changes.outputs.face_matcher == 'true'
+      )
 
     steps:
       - name: Check out repository code
@@ -135,7 +127,11 @@ jobs:
       - detect_changes
       - deploy_face_matcher
     if: >-
-      needs.detect_changes.outputs.api == 'true' &&
+      always() &&
+      (
+        github.event_name == 'workflow_dispatch' ||
+        needs.detect_changes.outputs.api == 'true'
+      ) &&
       (
         needs.deploy_face_matcher.result == 'success' ||
         needs.deploy_face_matcher.result == 'skipped'
@@ -163,7 +159,11 @@ jobs:
       - detect_changes
       - deploy_api
     if: >-
-      needs.detect_changes.outputs.platform == 'true' &&
+      always() &&
+      (
+        github.event_name == 'workflow_dispatch' ||
+        needs.detect_changes.outputs.platform == 'true'
+      ) &&
       (
         needs.deploy_api.result == 'success' ||
         needs.deploy_api.result == 'skipped'
@@ -193,7 +193,11 @@ jobs:
       - detect_changes
       - deploy_api
     if: >-
-      needs.detect_changes.outputs.verify == 'true' &&
+      always() &&
+      (
+        github.event_name == 'workflow_dispatch' ||
+        needs.detect_changes.outputs.verify == 'true'
+      ) &&
       (
         needs.deploy_api.result == 'success' ||
         needs.deploy_api.result == 'skipped'
