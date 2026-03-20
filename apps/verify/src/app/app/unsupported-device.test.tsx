@@ -224,8 +224,6 @@ afterEach(() => {
 
 describe("UnsupportedDevice", () => {
   test("renders the inline handoff screen on entry instead of an unsupported-device dialog", async () => {
-    vi.useFakeTimers();
-
     mockedUseDevice.mockReturnValue({
       supported: false,
       os: "ios",
@@ -337,8 +335,6 @@ describe("UnsupportedDevice", () => {
   });
 
   test("renders failure state when handoff fetch fails", async () => {
-    vi.useFakeTimers();
-
     mockedUseDevice.mockReturnValue({
       supported: false,
       os: "unknown",
@@ -408,8 +404,6 @@ describe("UnsupportedDevice", () => {
   });
 
   test("shows terminal failure state without redirect when redirect_url is absent", async () => {
-    vi.useFakeTimers();
-
     mockedUseDevice.mockReturnValue({
       supported: false,
       os: "unknown",

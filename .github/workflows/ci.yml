@@ -205,12 +205,12 @@ jobs:
 
       - name: Test face matcher
         working-directory: infra/face-matcher
-        run: bun test
+        run: bun run test
 
       - name: Test platform
         working-directory: apps/platform
-        run: bun test
+        run: bun run test
 
       - name: Test verify
         working-directory: apps/verify
-        run: bun test
+        run: bun run test
