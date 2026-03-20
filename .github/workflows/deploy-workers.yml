@@ -291,6 +291,10 @@ jobs:
         with:
           generate-capnp-ts: "true"
 
+      - name: Build API worker bundle
+        working-directory: apps/api
+        run: bun run build
+
       - name: Build preview API worker bundle
         working-directory: apps/api
         run: bunx wrangler deploy --dry-run --outdir .wrangler-out --minify
@@ -335,6 +339,10 @@ jobs:
 
       - name: Set up Bun workspace
         uses: ./.github/actions/setup-bun
+
+      - name: Build platform worker bundle
+        working-directory: apps/platform
+        run: bun run build
 
       - name: Build preview platform worker bundle
         working-directory: apps/platform
@@ -382,6 +390,10 @@ jobs:
         uses: ./.github/actions/setup-bun
         with:
           generate-capnp-ts: "true"
+
+      - name: Build verify worker bundle
+        working-directory: apps/verify
+        run: bun run build
 
       - name: Build preview verify worker bundle
         working-directory: apps/verify
