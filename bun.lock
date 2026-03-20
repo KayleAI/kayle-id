@@ -73,6 +73,7 @@
         "sonner": "2.0.7",
         "tailwindcss": "4.1.17",
         "vite-tsconfig-paths": "5.1.4",
+        "zod": "4.1.13",
       },
       "devDependencies": {
         "@testing-library/dom": "10.4.0",
