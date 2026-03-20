@@ -1,6 +1,6 @@
 {
   "name": "kayle-id-api",
-  "version": "0.0.1",
+  "version": "1.0.0",
   "type": "module",
   "scripts": {
     "dev": "bunx wrangler dev --env-file ../../.env --ip 0.0.0.0",
