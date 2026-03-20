@@ -112,6 +112,7 @@ async function requestFaceMatcher({
       body: formData,
       headers: matcherSecret
         ? {
+            authorization: `Bearer ${matcherSecret}`,
             [FACE_MATCHER_AUTH_HEADER]: matcherSecret,
           }
         : undefined,

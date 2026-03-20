@@ -69,7 +69,10 @@ function isInternalRequestAuthorized(
     return true;
   }
 
-  return request.headers.get(FACE_MATCHER_AUTH_HEADER) === matcherSecret;
+  return (
+    request.headers.get(FACE_MATCHER_AUTH_HEADER) === matcherSecret ||
+    request.headers.get("authorization") === `Bearer ${matcherSecret}`
+  );
 }
 
 function resolveStringEnvValue(env: unknown, key: string): string | null {

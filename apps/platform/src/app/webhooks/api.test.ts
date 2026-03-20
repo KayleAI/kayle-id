@@ -6,7 +6,10 @@ import {
   revealWebhookSigningSecret,
 } from "./api";
 
+const originalFetch = globalThis.fetch;
+
 afterEach(() => {
+  globalThis.fetch = originalFetch;
   vi.restoreAllMocks();
 });
 
@@ -63,7 +66,7 @@ describe("webhook api helpers", () => {
       })
     );
 
-    vi.stubGlobal("fetch", fetchMock);
+    globalThis.fetch = fetchMock as typeof fetch;
 
     await listWebhookEndpoints({
       environment: "live",
@@ -91,7 +94,7 @@ describe("webhook api helpers", () => {
       })
     );
 
-    vi.stubGlobal("fetch", fetchMock);
+    globalThis.fetch = fetchMock as typeof fetch;
 
     await expect(revealWebhookSigningSecret("whe_123")).resolves.toEqual({
       endpoint_id: "whe_123",
@@ -126,7 +129,7 @@ describe("webhook api helpers", () => {
       })
     );
 
-    vi.stubGlobal("fetch", fetchMock);
+    globalThis.fetch = fetchMock as typeof fetch;
 
     await createWebhookKey({
       endpointId: "whe_123",
