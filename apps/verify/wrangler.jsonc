@@ -2,6 +2,7 @@
   "$schema": "../../node_modules/wrangler/config-schema.json",
   "name": "kayle-id-verify",
   "compatibility_date": "2026-03-20",
+  "preview_urls": false,
   "compatibility_flags": ["nodejs_compat"],
   "main": "@tanstack/react-start/server-entry",
   "observability": {

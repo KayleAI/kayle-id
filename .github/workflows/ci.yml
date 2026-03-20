@@ -1,4 +1,5 @@
-name: Test API
+name: CI
+
 on:
   push:
     branches:
@@ -6,7 +7,26 @@ on:
   pull_request:
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
+  validate:
+    name: Validate
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository code
+        uses: actions/checkout@v5
+
+      - name: Set up Bun workspace
+        uses: ./.github/actions/setup-bun
+        with:
+          apt-packages: ripgrep
+
+      - name: Run repository validation
+        run: bun run lint
+
   test-api:
     name: Test API Integration
     runs-on: ubuntu-latest
@@ -17,7 +37,6 @@ jobs:
       POSTGRES_HOST: localhost
       POSTGRES_PORT: 6432
       NODE_ENV: test
-      # A randomly generated secret for testing
       AUTH_SECRET: YrI9mdtghMK4xwI9n9W7npc9rcujcB6X
 
     services:
@@ -25,12 +44,10 @@ jobs:
         image: postgres:17.7
         ports:
           - 6432:5432
-
         env:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres
           POSTGRES_DB: kayle-id
-
         options: >-
           --health-cmd pg_isready
           --health-interval 10s
@@ -77,12 +94,11 @@ jobs:
 
           cd ../../apps/api
 
-          # Start Wrangler dev (test env) in the background
           bun run test:setup
           bun run test:dev > /tmp/api.log 2>&1 &
           SERVER_PID=$!
           echo "API server started with PID $SERVER_PID"
-          
+
           sleep 10
 
           bun test
@@ -96,3 +112,25 @@ jobs:
           kill $SERVER_PID || true
           wait $SERVER_PID 2>/dev/null || true
           echo "API server stopped"
+
+  test-web:
+    name: Test Web
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository code
+        uses: actions/checkout@v5
+
+      - name: Set up Bun workspace
+        uses: ./.github/actions/setup-bun
+        with:
+          generate-capnp-ts: "true"
+
+      - name: Test face matcher
+        run: bun --cwd infra/face-matcher test
+
+      - name: Test platform
+        run: bun --cwd apps/platform test
+
+      - name: Test verify
+        run: bun --cwd apps/verify test
