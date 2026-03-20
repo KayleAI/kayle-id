@@ -21,6 +21,23 @@ const result = spawnSync(
   }
 );
 
+if (result.error) {
+  const message =
+    result.error instanceof Error
+      ? result.error.message
+      : "Unknown error while running rg.";
+
+  process.stderr.write(
+    [
+      "Failed to run the runtime log checker.",
+      "",
+      "This script requires the `rg` binary from ripgrep to be installed.",
+      message,
+    ].join("\n")
+  );
+  process.exit(1);
+}
+
 if (result.status === 1) {
   process.exit(0);
 }
