@@ -240,9 +240,6 @@ function HandoffStateContent({
           Open Kayle ID app
         </Button>
       ) : null}
-      <p className="text-muted-foreground text-sm">
-        The handoff QR refreshes automatically every minute.
-      </p>
       <div className="flex justify-center rounded-lg border border-blue-200 border-dashed bg-white p-4">
         <QRCodeSVG
           bgColor="transparent"
