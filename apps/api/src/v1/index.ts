@@ -1,4 +1,5 @@
 import { OpenAPIHono } from "@hono/zod-openapi";
+import { requestLoggingMiddleware } from "@/logging";
 import { authenticate } from "@/v1/auth";
 import sessions from "@/v1/sessions";
 import sessionAttempts from "@/v1/sessions/attempts";
@@ -6,6 +7,8 @@ import webhooks from "@/v1/webhooks";
 import events from "@/v1/webhooks/events";
 
 const v1 = new OpenAPIHono<{ Bindings: CloudflareBindings }>();
+
+v1.use(requestLoggingMiddleware());
 
 // All v1 routes require authentication
 v1.use(authenticate);

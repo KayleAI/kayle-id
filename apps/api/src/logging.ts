@@ -71,12 +71,19 @@ export function markRequestLogForManualEmit(c: Context): void {
 
 export function requestLoggingMiddleware(): MiddlewareHandler {
   return async (c, next) => {
+    const loggingContext = getLoggingContext(c);
+    const existingLogger = loggingContext.get(REQUEST_LOG_KEY);
+
+    if (existingLogger) {
+      await next();
+      return;
+    }
+
     const logger = createSafeRequestLogger({
       headers: c.req.raw.headers,
       method: c.req.method,
       path: c.req.path,
     });
-    const loggingContext = getLoggingContext(c);
 
     loggingContext.set(REQUEST_LOG_KEY, logger);
     loggingContext.set(REQUEST_LOG_EMITTED_KEY, false);
