@@ -1,7 +1,7 @@
 {
   "$schema": "../../node_modules/wrangler/config-schema.json",
   "name": "kayle-id-platform",
-  "compatibility_date": "2025-11-22",
+  "compatibility_date": "2026-03-20",
   "compatibility_flags": ["nodejs_compat"],
   "main": "src/server-entry.ts",
   "observability": {
@@ -26,6 +26,18 @@
     {
       "binding": "API",
       "service": "kayle-id-api"
+    }
+  ],
+  "routes": [
+    {
+      "pattern": "kayle.id",
+      "zone_name": "kayle.id",
+      "custom_domain": true
+    },
+    {
+      "pattern": "kayle.id/*",
+      "zone_name": "kayle.id",
+      "custom_domain": false
     }
   ]
 }

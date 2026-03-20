@@ -2,7 +2,7 @@
   "$schema": "../../node_modules/wrangler/config-schema.json",
   "name": "kayle-id-face-matcher",
   "main": "src/index.ts",
-  "compatibility_date": "2025-12-23",
+  "compatibility_date": "2026-03-20",
   "observability": {
     "enabled": true,
     "head_sampling_rate": 1,

@@ -40,8 +40,12 @@ async function loadPublicJwk(): Promise<JsonWebKey> {
   const publicKeyText = await file(
     new URL("../../../tests/secrets/rsa_public.pem", import.meta.url)
   ).text();
+  const jwk = await exportJWK(await importSPKI(publicKeyText, "RSA-OAEP-256"));
 
-  return exportJWK(await importSPKI(publicKeyText, "RSA-OAEP-256"));
+  return {
+    ...jwk,
+    kty: jwk.kty ?? "RSA",
+  };
 }
 
 describe("/v1/webhooks/keys", () => {

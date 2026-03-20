@@ -1,29 +1,69 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { auth } from "@kayle-id/auth/server";
 import { db } from "@kayle-id/database/drizzle";
-import {
-  auth_organization_members,
-  auth_organizations,
-  auth_users,
-} from "@kayle-id/database/schema/auth";
-import { eq } from "drizzle-orm";
-import apiKeys from "@/auth/api-keys";
+import { auth_organization_members } from "@kayle-id/database/schema/auth";
+import { api_keys } from "@kayle-id/database/schema/core";
+import { and, eq } from "drizzle-orm";
 import { createApiKey } from "@/functions/auth/create-api-key";
+import { verifyApiKey } from "@/functions/auth/verify-api-key";
+import app from "@/index";
+import {
+  type SessionAuthTestData,
+  setupSessionAuth,
+  teardownSessionAuth,
+} from "./session-auth";
 
-type TestData = {
+type ApiKeysRouteTestData = SessionAuthTestData & {
   apiKey: string;
   apiKeyId: string;
-  organizationId: string;
-  sessionCookie: string;
-  userId: string;
 };
 
-let TEST_DATA: TestData | undefined;
+type ApiKeysListResponse = {
+  data: Array<{
+    enabled: boolean;
+    environment: "live" | "test";
+    id: string;
+    name: string;
+  }>;
+  error: null | {
+    code: string;
+    docs?: string;
+    hint?: string;
+    message: string;
+  };
+  pagination?: {
+    has_more: boolean;
+    limit: number;
+    next_cursor: string | null;
+  };
+};
 
-const COOKIE_HEADER_SPLIT_PATTERN = /;\s*/u;
-const SET_COOKIE_SPLIT_PATTERN = /, (?=[^;]+?=)/u;
+type ApiKeyMutationResponse = {
+  data: null | {
+    id?: string;
+    key?: string;
+    message?: string;
+    status?: "success";
+  };
+  error: null | {
+    code: string;
+    docs?: string;
+    hint?: string;
+    message: string;
+  };
+};
 
-function requireTestData(): TestData {
+let TEST_DATA: ApiKeysRouteTestData | undefined;
+let FORBIDDEN_TEST_DATA: SessionAuthTestData | undefined;
+
+function requireOrganizationId(organizationId: string | null): string {
+  if (!organizationId) {
+    throw new Error("api_keys_test_organization_missing");
+  }
+
+  return organizationId;
+}
+
+function requireTestData(): ApiKeysRouteTestData {
   if (!TEST_DATA) {
     throw new Error("api_keys_test_data_missing");
   }
@@ -31,179 +71,67 @@ function requireTestData(): TestData {
   return TEST_DATA;
 }
 
-function getSetCookieHeader(response: Response): string | null {
-  const setCookies = response.headers.getSetCookie();
-
-  if (setCookies.length > 0) {
-    return setCookies.join(", ");
+function requireForbiddenTestData(): SessionAuthTestData {
+  if (!FORBIDDEN_TEST_DATA) {
+    throw new Error("api_keys_forbidden_test_data_missing");
   }
 
-  return response.headers.get("set-cookie");
+  return FORBIDDEN_TEST_DATA;
 }
 
-function mergeCookieHeader(
-  currentCookieHeader: string | null,
-  setCookieHeader: string | null
-): string {
-  const cookies = new Map<string, string>();
-
-  if (currentCookieHeader) {
-    for (const part of currentCookieHeader.split(COOKIE_HEADER_SPLIT_PATTERN)) {
-      const [name, ...valueParts] = part.split("=");
-      const value = valueParts.join("=");
-
-      if (name && value) {
-        cookies.set(name, value);
-      }
-    }
-  }
-
-  if (setCookieHeader) {
-    for (const cookie of setCookieHeader.split(SET_COOKIE_SPLIT_PATTERN)) {
-      const [cookiePair] = cookie.split(";");
-      const separatorIndex = cookiePair.indexOf("=");
-
-      if (separatorIndex === -1) {
-        continue;
-      }
-
-      cookies.set(
-        cookiePair.slice(0, separatorIndex),
-        cookiePair.slice(separatorIndex + 1)
-      );
-    }
-  }
-
-  return Array.from(cookies.entries())
-    .map(([name, value]) => `${name}=${value}`)
-    .join("; ");
+function createJsonHeaders(cookie: string): HeadersInit {
+  return {
+    "Content-Type": "application/json",
+    Cookie: cookie,
+  };
 }
 
-async function setup(): Promise<TestData> {
-  const organizationId = crypto.randomUUID();
-  const credentials = {
-    email: `${crypto.randomUUID()}@test.kayle.id`,
-    name: "Test User",
-    password: "test123456",
-  };
-
-  await db.insert(auth_organizations).values({
-    createdAt: new Date(),
-    id: organizationId,
-    name: "Test Organization",
-    slug: Math.random().toString(36).substring(2, 15),
+beforeAll(async () => {
+  const sessionTestData = await setupSessionAuth({
+    withActiveOrganization: true,
   });
-
-  const signUpResponse = await auth.api.signUpEmail({
-    asResponse: true,
-    body: credentials,
-  });
-
-  if (!signUpResponse.ok) {
-    throw new Error(`auth_sign_up_failed:${signUpResponse.status}`);
-  }
-
-  const signUpPayload = (await signUpResponse.json()) as {
-    user: { id: string };
-  };
-
-  await db.insert(auth_organization_members).values({
-    createdAt: new Date(),
-    organizationId,
-    role: "owner",
-    userId: signUpPayload.user.id,
-  });
-
-  const signUpCookie = mergeCookieHeader(
-    null,
-    getSetCookieHeader(signUpResponse)
-  );
-  const setActiveOrganizationResponse = await auth.api.setActiveOrganization({
-    asResponse: true,
-    body: {
-      organizationId,
-    },
-    headers: new Headers({
-      cookie: signUpCookie,
-    }),
-  });
-
-  if (!setActiveOrganizationResponse.ok) {
-    throw new Error(
-      `auth_set_active_organization_failed:${setActiveOrganizationResponse.status}`
-    );
-  }
-
+  const organizationId = requireOrganizationId(sessionTestData.organizationId);
   const { apiKey, id: apiKeyId } = await createApiKey({
     environment: "test",
     name: "Test API Key",
     organizationId,
   });
 
-  return {
+  TEST_DATA = {
+    ...sessionTestData,
     apiKey,
     apiKeyId,
-    organizationId,
-    sessionCookie: mergeCookieHeader(
-      signUpCookie,
-      getSetCookieHeader(setActiveOrganizationResponse)
-    ),
-    userId: signUpPayload.user.id,
   };
-}
-
-async function teardown(testData?: TestData): Promise<void> {
-  if (!testData) {
-    return;
-  }
-
-  await db.delete(auth_users).where(eq(auth_users.id, testData.userId));
-  await db
-    .delete(auth_organizations)
-    .where(eq(auth_organizations.id, testData.organizationId));
-}
-
-beforeAll(async () => {
-  TEST_DATA = await setup();
+  FORBIDDEN_TEST_DATA = await setupSessionAuth({
+    withActiveOrganization: true,
+  });
 });
 
 afterAll(async () => {
-  await teardown(TEST_DATA);
+  await teardownSessionAuth(TEST_DATA);
   TEST_DATA = undefined;
+  await teardownSessionAuth(FORBIDDEN_TEST_DATA);
+  FORBIDDEN_TEST_DATA = undefined;
 });
 
 describe("API Key Endpoints", () => {
-  test("Lists API keys for an authenticated session", async () => {
+  test("lists API keys for an authenticated session", async () => {
     const testData = requireTestData();
-    const response = await apiKeys.request("/", {
+    const response = await app.request("/v1/auth/api-keys", {
+      headers: createJsonHeaders(testData.sessionCookie),
       method: "GET",
-      headers: {
-        "Content-Type": "application/json",
-        Cookie: testData.sessionCookie,
-      },
     });
 
     expect(response.status).toBe(200);
 
-    const payload = (await response.json()) as {
-      data: Array<{
-        enabled: boolean;
-        environment: "live" | "test";
-        id: string;
-        name: string;
-      }>;
-      error: null;
-      pagination: {
-        has_more: boolean;
-        limit: number;
-        next_cursor: string | null;
-      };
-    };
+    const payload = (await response.json()) as ApiKeysListResponse;
 
     expect(payload.error).toBeNull();
-    expect(payload.pagination.limit).toBe(10);
-    expect(payload.pagination.has_more).toBe(false);
-    expect(payload.data.length).toBeGreaterThan(0);
+    expect(payload.pagination).toEqual({
+      has_more: false,
+      limit: 10,
+      next_cursor: null,
+    });
     expect(payload.data).toContainEqual(
       expect.objectContaining({
         enabled: true,
@@ -214,14 +142,200 @@ describe("API Key Endpoints", () => {
     );
   });
 
-  test("Ensure API Keys cannot be listed using an API key", async () => {
+  test("creates an API key for an authenticated session", async () => {
     const testData = requireTestData();
-    const response = await apiKeys.request("/", {
-      method: "GET",
+    const organizationId = requireOrganizationId(testData.organizationId);
+    const response = await app.request("/v1/auth/api-keys", {
+      body: JSON.stringify({
+        environment: "test",
+        name: "Created API Key",
+      }),
+      headers: createJsonHeaders(testData.sessionCookie),
+      method: "POST",
+    });
+
+    expect(response.status).toBe(200);
+
+    const payload = (await response.json()) as ApiKeyMutationResponse;
+
+    expect(payload.error).toBeNull();
+    expect(payload.data?.id).toBeString();
+    expect(payload.data?.key?.startsWith("kk_test_")).toBeTrue();
+
+    const verification = await verifyApiKey(payload.data?.key ?? "");
+    expect(verification).toEqual({
+      enabled: true,
+      organizationId,
+    });
+  });
+
+  test("updates an API key for an authenticated session", async () => {
+    const testData = requireTestData();
+    const organizationId = requireOrganizationId(testData.organizationId);
+    const { apiKey, id } = await createApiKey({
+      environment: "test",
+      name: "Before Update",
+      organizationId,
+    });
+    const response = await app.request(`/v1/auth/api-keys/${id}`, {
+      body: JSON.stringify({
+        enabled: false,
+        name: "After Update",
+      }),
+      headers: createJsonHeaders(testData.sessionCookie),
+      method: "PATCH",
+    });
+
+    expect(response.status).toBe(200);
+
+    const payload = (await response.json()) as ApiKeyMutationResponse;
+    const [updatedApiKey] = await db
+      .select({
+        enabled: api_keys.enabled,
+        name: api_keys.name,
+      })
+      .from(api_keys)
+      .where(eq(api_keys.id, id))
+      .limit(1);
+
+    expect(payload).toEqual({
+      data: {
+        message: "API key updated successfully",
+        status: "success",
+      },
+      error: null,
+    });
+    expect(updatedApiKey).toEqual({
+      enabled: false,
+      name: "After Update",
+    });
+
+    const verification = await verifyApiKey(apiKey);
+    expect(verification).toEqual({
+      enabled: false,
+      organizationId,
+    });
+  });
+
+  test("deletes an API key for an authenticated session", async () => {
+    const testData = requireTestData();
+    const organizationId = requireOrganizationId(testData.organizationId);
+    const { apiKey, id } = await createApiKey({
+      environment: "test",
+      name: "Delete Me",
+      organizationId,
+    });
+    const response = await app.request(`/v1/auth/api-keys/${id}`, {
+      headers: createJsonHeaders(testData.sessionCookie),
+      method: "DELETE",
+    });
+
+    expect(response.status).toBe(200);
+
+    const payload = (await response.json()) as ApiKeyMutationResponse;
+
+    expect(payload).toEqual({
+      data: {
+        message: "API key deleted successfully",
+        status: "success",
+      },
+      error: null,
+    });
+
+    const verification = await verifyApiKey(apiKey);
+    expect(verification).toEqual({
+      enabled: null,
+      organizationId: null,
+    });
+  });
+
+  test("returns route-level not-found errors for missing API keys", async () => {
+    const testData = requireTestData();
+    const missingId = crypto.randomUUID();
+    const updateResponse = await app.request(`/v1/auth/api-keys/${missingId}`, {
+      body: JSON.stringify({
+        enabled: false,
+      }),
+      headers: createJsonHeaders(testData.sessionCookie),
+      method: "PATCH",
+    });
+    const deleteResponse = await app.request(`/v1/auth/api-keys/${missingId}`, {
+      headers: createJsonHeaders(testData.sessionCookie),
+      method: "DELETE",
+    });
+
+    expect(updateResponse.status).toBe(400);
+    expect(deleteResponse.status).toBe(400);
+
+    const updatePayload =
+      (await updateResponse.json()) as ApiKeyMutationResponse;
+    const deletePayload =
+      (await deleteResponse.json()) as ApiKeyMutationResponse;
+
+    expect(updatePayload.error?.code).toBe("API_KEY_NOT_FOUND");
+    expect(deletePayload.error?.code).toBe("API_KEY_NOT_DELETED");
+  });
+
+  test("returns forbidden for session-auth API-key routes when membership is missing", async () => {
+    const testData = requireForbiddenTestData();
+    const organizationId = requireOrganizationId(testData.organizationId);
+    const { id } = await createApiKey({
+      environment: "test",
+      name: "Forbidden API Key",
+      organizationId,
+    });
+
+    await db
+      .delete(auth_organization_members)
+      .where(
+        and(
+          eq(auth_organization_members.organizationId, organizationId),
+          eq(auth_organization_members.userId, testData.userId)
+        )
+      );
+
+    const requests = await Promise.all([
+      app.request("/v1/auth/api-keys", {
+        headers: createJsonHeaders(testData.sessionCookie),
+        method: "GET",
+      }),
+      app.request("/v1/auth/api-keys", {
+        body: JSON.stringify({
+          environment: "test",
+          name: "Forbidden Create",
+        }),
+        headers: createJsonHeaders(testData.sessionCookie),
+        method: "POST",
+      }),
+      app.request(`/v1/auth/api-keys/${id}`, {
+        body: JSON.stringify({
+          enabled: false,
+        }),
+        headers: createJsonHeaders(testData.sessionCookie),
+        method: "PATCH",
+      }),
+      app.request(`/v1/auth/api-keys/${id}`, {
+        headers: createJsonHeaders(testData.sessionCookie),
+        method: "DELETE",
+      }),
+    ]);
+
+    for (const response of requests) {
+      expect(response.status).toBe(403);
+
+      const payload = (await response.json()) as ApiKeyMutationResponse;
+      expect(payload.error?.code).toBe("FORBIDDEN");
+    }
+  });
+
+  test("ensures API keys cannot be listed using an API key", async () => {
+    const testData = requireTestData();
+    const response = await app.request("/v1/auth/api-keys", {
       headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${testData.apiKey}`,
       },
+      method: "GET",
     });
 
     expect(response.status).toBe(401);

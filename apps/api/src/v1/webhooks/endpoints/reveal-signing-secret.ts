@@ -40,7 +40,7 @@ revealSigningSecretEndpoint.openapi(
             message: "Webhook endpoint not found.",
             hint: "The webhook endpoint with the given ID was not found.",
             docs: "https://kayle.id/docs/api/webhooks/endpoints#reveal-signing-secret",
-          },
+          } as const,
         },
         404
       );
@@ -52,10 +52,10 @@ revealSigningSecretEndpoint.openapi(
           data: null,
           error: {
             code: "INTERNAL_SERVER_ERROR",
-            message: "Webhook signing secret is unavailable.",
-            hint: "The signing secret for this endpoint could not be retrieved.",
-            docs: "https://kayle.id/docs/api/webhooks/endpoints#reveal-signing-secret",
-          },
+            message: "Internal server error.",
+            hint: "The server encountered an error.",
+            docs: "https://kayle.id/docs/api/errors",
+          } as const,
         },
         500
       );
@@ -83,10 +83,10 @@ revealSigningSecretEndpoint.openapi(
           data: null,
           error: {
             code: "INTERNAL_SERVER_ERROR",
-            message: "Webhook signing secret is unavailable.",
-            hint: "The signing secret for this endpoint could not be retrieved.",
-            docs: "https://kayle.id/docs/api/webhooks/endpoints#reveal-signing-secret",
-          },
+            message: "Internal server error.",
+            hint: "The server encountered an error.",
+            docs: "https://kayle.id/docs/api/errors",
+          } as const,
         },
         500
       );

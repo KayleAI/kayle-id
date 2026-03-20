@@ -7,7 +7,7 @@
     "test:setup": "cp ../../.env.test.example ./.env.test",
     "test:dev": "bunx wrangler dev --env-file ./.env.test --local --ip 127.0.0.1 --port 8787",
     "deploy": "bunx wrangler deploy --minify",
-    "cf-typegen": "bunx wrangler types --env-file ../../.env --env-interface CloudflareBindings cloudflare-env.d.ts"
+    "cf-typegen": "bunx wrangler types --env-file ./.env --env-interface CloudflareBindings cloudflare-env.d.ts"
   },
   "dependencies": {
     "@cornerstonejs/codec-openjpeg": "1.3.0",
