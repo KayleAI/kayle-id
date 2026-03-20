@@ -199,9 +199,48 @@ jobs:
           api-key-id: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
           api-private-key: ${{ secrets.APP_STORE_CONNECT_PRIVATE_KEY }}
 
+      - name: Resolve App Store provisioning profile
+        id: profile
+        shell: bash
+        env:
+          APP_BUNDLE_ID: ${{ env.APP_BUNDLE_ID }}
+          PROFILES_JSON: ${{ steps.provisioning.outputs.profiles }}
+        run: |
+          set -euo pipefail
+
+          profile_name="$(
+            ruby -rjson -e '
+              profiles = JSON.parse(ENV.fetch("PROFILES_JSON"))
+
+              if profiles.length != 1
+                abort("Expected exactly one provisioning profile for #{ENV.fetch("APP_BUNDLE_ID")}, received #{profiles.length}.")
+              end
+
+              profile = profiles.first
+
+              if profile.fetch("type") != "IOS_APP_STORE"
+                abort("Expected an IOS_APP_STORE provisioning profile but received #{profile.fetch("type")}.")
+              end
+
+              print profile.fetch("name")
+            '
+          )"
+          profile_uuid="$(
+            ruby -rjson -e '
+              profiles = JSON.parse(ENV.fetch("PROFILES_JSON"))
+              print profiles.first.fetch("udid")
+            '
+          )"
+
+          {
+            printf 'name<<EOF\n%s\nEOF\n' "${profile_name}"
+            echo "uuid=${profile_uuid}"
+          } >> "${GITHUB_OUTPUT}"
+
       - name: Create export options
         env:
           EXPORT_OPTIONS_PLIST: ${{ runner.temp }}/ExportOptions.plist
+          PROVISIONING_PROFILE_NAME: ${{ steps.profile.outputs.name }}
         run: |
           cat <<EOF > "${EXPORT_OPTIONS_PLIST}"
           <?xml version="1.0" encoding="UTF-8"?>
@@ -214,8 +253,15 @@ jobs:
             <false/>
             <key>method</key>
             <string>app-store-connect</string>
+            <key>provisioningProfiles</key>
+            <dict>
+              <key>${APP_BUNDLE_ID}</key>
+              <string>${PROVISIONING_PROFILE_NAME}</string>
+            </dict>
+            <key>signingCertificate</key>
+            <string>Apple Distribution</string>
             <key>signingStyle</key>
-            <string>automatic</string>
+            <string>manual</string>
             <key>teamID</key>
             <string>${APP_TEAM_ID}</string>
             <key>uploadSymbols</key>
@@ -227,13 +273,19 @@ jobs:
       - name: Archive release build
         env:
           ARCHIVE_PATH: ${{ runner.temp }}/KayleID.xcarchive
+          PROVISIONING_PROFILE_NAME: ${{ steps.profile.outputs.name }}
         run: |
           xcodebuild archive \
             -project "${APP_PROJECT_PATH}" \
             -scheme "${APP_SCHEME}" \
             -configuration Release \
             -destination "generic/platform=iOS" \
-            -archivePath "${ARCHIVE_PATH}"
+            -archivePath "${ARCHIVE_PATH}" \
+            CODE_SIGN_STYLE=Manual \
+            CODE_SIGN_IDENTITY="Apple Distribution" \
+            DEVELOPMENT_TEAM="${APP_TEAM_ID}" \
+            PRODUCT_BUNDLE_IDENTIFIER="${APP_BUNDLE_ID}" \
+            PROVISIONING_PROFILE_SPECIFIER="${PROVISIONING_PROFILE_NAME}"
 
       - name: Export IPA
         env:
