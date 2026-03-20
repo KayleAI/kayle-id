@@ -6,56 +6,56 @@
       "idx": 1,
       "version": "7",
       "when": 1764362073722,
-      "tag": "0000_initial_schema",
+      "tag": "0000_create_application_schema",
       "breakpoints": true
     },
     {
       "idx": 2,
       "version": "7",
       "when": 1772719367236,
-      "tag": "0001_phase1_session_share_contract",
+      "tag": "0001_add_verification_session_share_contract",
       "breakpoints": true
     },
     {
       "idx": 3,
       "version": "7",
       "when": 1772724463407,
-      "tag": "0003_phase1_failure_code_contract",
+      "tag": "0003_add_verification_attempt_failure_code_check",
       "breakpoints": true
     },
     {
       "idx": 4,
       "version": "7",
       "when": 1772726036003,
-      "tag": "0004_phase2_verify_handoff",
+      "tag": "0004_add_verification_attempt_mobile_write_token",
       "breakpoints": true
     },
     {
       "idx": 5,
       "version": "7",
       "when": 1772728364900,
-      "tag": "0005_phase2_mobile_write_token_seed",
+      "tag": "0005_add_verification_attempt_mobile_write_token_seed",
       "breakpoints": true
     },
     {
       "idx": 6,
       "version": "7",
       "when": 1772734650699,
-      "tag": "0006_phase3_websocket_hello_auth",
+      "tag": "0006_add_verification_attempt_mobile_hello_metadata",
       "breakpoints": true
     },
     {
       "idx": 7,
       "version": "7",
       "when": 1772739600000,
-      "tag": "0007_phase4_attempt_phase_state",
+      "tag": "0007_add_verification_attempt_phase_tracking",
       "breakpoints": true
     },
     {
       "idx": 8,
       "version": "7",
       "when": 1773919020208,
-      "tag": "0008_slim_toxin",
+      "tag": "0008_update_webhook_endpoint_delivery_contract",
       "breakpoints": true
     }
   ]
