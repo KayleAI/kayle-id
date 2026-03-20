@@ -1,4 +1,5 @@
 import { createRoute, z } from "@hono/zod-openapi";
+import { webhookEventTypeSchema } from "@kayle-id/config/webhook-events";
 import { ErrorResponse } from "@/openapi/base";
 import { InternalServerErrorResponse } from "@/openapi/errors";
 import { WebhookEndpoint } from "@/openapi/models/webhook";
@@ -28,11 +29,19 @@ export const updateWebhookEndpoint = createRoute({
                 .boolean()
                 .optional()
                 .describe("New enabled state for the webhook endpoint."),
+              subscribed_event_types: z
+                .array(webhookEventTypeSchema)
+                .optional()
+                .describe("The updated event subscriptions for the endpoint."),
             })
             .refine(
-              (body) => body.url !== undefined || body.enabled !== undefined,
+              (body) =>
+                body.url !== undefined ||
+                body.enabled !== undefined ||
+                body.subscribed_event_types !== undefined,
               {
-                message: "At least one of `url` or `enabled` must be provided.",
+                message:
+                  "At least one of `url`, `enabled` or `subscribed_event_types` must be provided.",
               }
             )
             .openapi("UpdateWebhookEndpointRequest"),
@@ -65,7 +74,7 @@ export const updateWebhookEndpoint = createRoute({
               error: {
                 code: "BAD_REQUEST",
                 message: "Bad request.",
-                hint: "At least one of `url` or `enabled` must be provided.",
+                hint: "At least one of `url`, `enabled` or `subscribed_event_types` must be provided.",
                 docs: "https://kayle.id/docs/api/webhooks/endpoints#update",
               },
             },

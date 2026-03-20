@@ -1,4 +1,8 @@
 import { z } from "@hono/zod-openapi";
+import {
+  SUPPORTED_WEBHOOK_EVENT_TYPES,
+  webhookEventTypeSchema,
+} from "@kayle-id/config/webhook-events";
 
 export const WebhookDelivery = z
   .object({
@@ -9,6 +13,7 @@ export const WebhookDelivery = z
       .describe("The ID of the webhook endpoint this delivery targets"),
     webhook_encryption_key_id: z
       .string()
+      .nullable()
       .describe(
         "The ID of the encryption key used to encrypt the payload for this delivery"
       ),
@@ -50,6 +55,13 @@ export const WebhookEndpoint = z
       .describe("The environment this webhook endpoint belongs to."),
     url: z.string().url().describe("The URL of the webhook endpoint"),
     enabled: z.boolean().describe("Whether the webhook endpoint is enabled"),
+    subscribed_event_types: z
+      .array(webhookEventTypeSchema)
+      .describe(
+        `The event types this endpoint is subscribed to. Supported values: ${SUPPORTED_WEBHOOK_EVENT_TYPES.join(
+          ", "
+        )}.`
+      ),
     created_at: z
       .string()
       .describe("The time the webhook endpoint was created"),
@@ -62,6 +74,35 @@ export const WebhookEndpoint = z
       .describe("The time the webhook endpoint was disabled, null if enabled"),
   })
   .openapi("Webhook Endpoint");
+
+export const CreatedWebhookEndpoint = z
+  .object({
+    endpoint: WebhookEndpoint,
+    signing_secret: z
+      .string()
+      .describe("The webhook signing secret. This value is shown only once."),
+  })
+  .openapi("Created Webhook Endpoint");
+
+export const RotatedWebhookSigningSecret = z
+  .object({
+    endpoint_id: z.string().describe("The webhook endpoint ID"),
+    signing_secret: z
+      .string()
+      .describe(
+        "The rotated webhook signing secret. This value is shown only once."
+      ),
+  })
+  .openapi("Rotated Webhook Signing Secret");
+
+export const RevealedWebhookSigningSecret = z
+  .object({
+    endpoint_id: z.string().describe("The webhook endpoint ID"),
+    signing_secret: z
+      .string()
+      .describe("The current webhook signing secret for the endpoint."),
+  })
+  .openapi("Revealed Webhook Signing Secret");
 
 export const WebhookEncryptionKey = z
   .object({

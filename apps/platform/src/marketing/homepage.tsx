@@ -9,10 +9,14 @@ export function Homepage() {
       <PageHeading
         actions={[
           {
+            to: "/demo",
+            label: "View Demo",
+            variant: "outline",
+          },
+          {
             to: status === "authenticated" ? "/dashboard" : "/sign-in",
             label: "Get Started",
           },
-          { to: "/docs", label: "Read Documentation", variant: "outline" },
         ]}
         description="Kayle ID provides the building blocks for building identity verification into your platform securely, privately, and at scale."
         title="Identity Verification Infrastructure for KYC, AML, and more."

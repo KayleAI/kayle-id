@@ -1,5 +1,3 @@
-import type { VerifySession } from "@api/shared/verify";
-import type { RpcStub } from "capnweb";
 import type { ReactNode } from "react";
 import {
   createContext,
@@ -10,10 +8,155 @@ import {
   useRef,
   useState,
 } from "react";
-import { initialiseSession } from "@/config/capnweb";
+import type {
+  HelloCredentials,
+  SessionError,
+  VerifySession,
+} from "@/config/capnp";
+import { initialiseSession } from "@/config/capnp";
+import { requestHandoffPayload } from "@/config/handoff";
+import { useDevice } from "@/utils/use-device";
+
+const WEB_DEVICE_ID_STORAGE_KEY = "kayle-id.verify.web-device-id";
+const WEB_APP_VERSION = "verify-web";
+
+function isErrorWithCode(
+  value: unknown
+): value is { code: string; message?: string } {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "code" in value &&
+    typeof (value as { code?: unknown }).code === "string"
+  );
+}
+
+function toSessionError(value: unknown): SessionError {
+  if (isErrorWithCode(value)) {
+    return {
+      code: value.code,
+      message: value.message ?? value.code,
+    };
+  }
+
+  if (value instanceof Error) {
+    return {
+      code: "UNKNOWN",
+      message: value.message,
+    };
+  }
+
+  return {
+    code: "UNKNOWN",
+    message: "Failed to initialise the verification session.",
+  };
+}
+
+function getWebDeviceId(): string {
+  if (typeof window === "undefined") {
+    return `web-${crypto.randomUUID()}`;
+  }
+
+  try {
+    const existing = window.localStorage.getItem(WEB_DEVICE_ID_STORAGE_KEY);
+    if (existing) {
+      return existing;
+    }
+
+    const generated = `web-${crypto.randomUUID()}`;
+    window.localStorage.setItem(WEB_DEVICE_ID_STORAGE_KEY, generated);
+    return generated;
+  } catch {
+    return `web-${crypto.randomUUID()}`;
+  }
+}
+
+function toHelloCredentials(payload: {
+  attempt_id: string;
+  mobile_write_token: string;
+}): HelloCredentials {
+  return {
+    attemptId: payload.attempt_id,
+    mobileWriteToken: payload.mobile_write_token,
+    deviceId: getWebDeviceId(),
+    appVersion: WEB_APP_VERSION,
+  };
+}
+
+function closeSessionStub(sessionStubRef: { current: VerifySession | null }) {
+  if (!sessionStubRef.current) {
+    return;
+  }
+
+  sessionStubRef.current.close();
+  sessionStubRef.current = null;
+}
+
+function reportCallbackErrorDevOnly(error: unknown): void {
+  if (!import.meta.env.DEV) {
+    return;
+  }
+
+  const callbackError =
+    error instanceof Error ? error : new Error("session_error_callback_failed");
+
+  queueMicrotask(() => {
+    throw callbackError;
+  });
+}
+
+async function bootstrapSupportedSession({
+  sessionId,
+  handleRpcError,
+  isUnmountedRef,
+  sessionStubRef,
+  setIsSessionReady,
+  setError,
+}: {
+  sessionId: string;
+  handleRpcError: (sessionError: SessionError) => void;
+  isUnmountedRef: { current: boolean };
+  sessionStubRef: { current: VerifySession | null };
+  setIsSessionReady: (value: boolean) => void;
+  setError: (value: SessionError | null) => void;
+}) {
+  try {
+    const handoffPayload = await requestHandoffPayload(sessionId);
+    if (isUnmountedRef.current) {
+      return;
+    }
+
+    const stub = initialiseSession(
+      {
+        sessionId,
+        helloCredentials: toHelloCredentials(handoffPayload),
+      },
+      handleRpcError
+    );
+    sessionStubRef.current = stub;
+
+    await stub.connect();
+    const pingResult = await stub.ping();
+    if (!pingResult) {
+      throw new Error("Invalid ping response");
+    }
+
+    if (isUnmountedRef.current) {
+      return;
+    }
+
+    setIsSessionReady(true);
+    setError(null);
+  } catch (bootstrapError) {
+    if (isUnmountedRef.current) {
+      return;
+    }
+    handleRpcError(toSessionError(bootstrapError));
+  }
+}
 
 type SessionContextType = {
-  session: RpcStub<VerifySession> | null;
+  session: VerifySession | null;
   error: SessionError | null;
   onError: (callback: (sessionError: SessionError) => void) => () => void;
 };
@@ -25,25 +168,21 @@ type SessionProviderProps = {
   children: ReactNode;
 };
 
-type SessionError = {
-  code: string;
-  message: string;
-};
-
 export function SessionProvider({ sessionId, children }: SessionProviderProps) {
+  const { supported: deviceSupported } = useDevice();
   const [isSessionReady, setIsSessionReady] = useState(false);
   const [error, setError] = useState<SessionError | null>(null);
   const errorCallbacksRef = useRef<Set<(sessionError: SessionError) => void>>(
     new Set()
   );
-  const sessionStubRef = useRef<RpcStub<VerifySession> | null>(null);
+  const sessionStubRef = useRef<VerifySession | null>(null);
 
   const notifyErrorCallbacks = useCallback((sessionError: SessionError) => {
     for (const callback of errorCallbacksRef.current) {
       try {
         callback(sessionError);
       } catch (callbackErr) {
-        console.error("Error callback threw:", callbackErr);
+        reportCallbackErrorDevOnly(callbackErr);
       }
     }
   }, []);
@@ -59,21 +198,10 @@ export function SessionProvider({ sessionId, children }: SessionProviderProps) {
   );
 
   const handleRpcError = useCallback(
-    (rpcError: Error) => {
-      try {
-        const parsedError = JSON.parse(
-          rpcError.message.split("bad RPC message:")[1]?.trim()
-        )?.error;
-
-        setIsSessionReady(false);
-        setError(parsedError);
-        notifyErrorCallbacks(parsedError);
-      } catch (parseError) {
-        console.error("Error parsing RPC error:", parseError);
-        setIsSessionReady(false);
-        setError({ code: "UNKNOWN", message: rpcError.message });
-        notifyErrorCallbacks({ code: "UNKNOWN", message: rpcError.message });
-      }
+    (sessionError: SessionError) => {
+      setIsSessionReady(false);
+      setError(sessionError);
+      notifyErrorCallbacks(sessionError);
     },
     [notifyErrorCallbacks]
   );
@@ -84,44 +212,29 @@ export function SessionProvider({ sessionId, children }: SessionProviderProps) {
     setError(null);
 
     // Dispose previous stub if it exists
-    if (sessionStubRef.current) {
-      sessionStubRef.current[Symbol.dispose]?.();
-      sessionStubRef.current = null;
+    closeSessionStub(sessionStubRef);
+
+    if (!deviceSupported) {
+      return;
     }
 
-    // Create new stub with error handling
-    const stub = initialiseSession(sessionId, handleRpcError);
-    sessionStubRef.current = stub;
+    const isUnmountedRef = { current: false };
 
-    // Attempt to connect and ping
-    (async () => {
-      try {
-        const pingResult = await stub.ping();
-
-        if (pingResult !== "pong") {
-          throw new Error("Invalid ping response");
-        }
-
-        // If ping succeeds, mark session as ready (don't store stub in state!)
-        setIsSessionReady(true);
-        setError(null);
-      } catch (pingError: unknown) {
-        if (pingError instanceof Error) {
-          handleRpcError(pingError);
-        } else {
-          handleRpcError(new Error(String(pingError)));
-        }
-      }
-    })();
+    bootstrapSupportedSession({
+      sessionId,
+      handleRpcError,
+      isUnmountedRef,
+      sessionStubRef,
+      setIsSessionReady,
+      setError,
+    });
 
     // Cleanup function
     return () => {
-      if (sessionStubRef.current) {
-        sessionStubRef.current[Symbol.dispose]?.();
-        sessionStubRef.current = null;
-      }
+      isUnmountedRef.current = true;
+      closeSessionStub(sessionStubRef);
     };
-  }, [sessionId, handleRpcError]);
+  }, [deviceSupported, sessionId, handleRpcError]);
 
   // Memoize the context value, providing session from ref only when ready
   const value: SessionContextType = useMemo(

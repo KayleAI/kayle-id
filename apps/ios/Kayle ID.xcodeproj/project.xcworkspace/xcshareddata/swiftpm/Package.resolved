@@ -1,0 +1,24 @@
+{
+  "originHash" : "f7e082083baa0aec4a48d66a210193d20e65085a6d9376c026e94566044a8c24",
+  "pins" : [
+    {
+      "identity" : "mrtdreader",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/arsenstorm/MRTDReader",
+      "state" : {
+        "revision" : "d4e341efa8bdf2c5fa213176f4c64a2a7efed934",
+        "version" : "4.0.4"
+      }
+    },
+    {
+      "identity" : "openssl-package",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/krzyzanowskim/OpenSSL-Package.git",
+      "state" : {
+        "revision" : "71dbe0b4514cdaad95961470db72e8231f5943a6",
+        "version" : "3.3.3001"
+      }
+    }
+  ],
+  "version" : 3
+}

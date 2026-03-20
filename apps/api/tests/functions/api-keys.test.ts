@@ -3,14 +3,19 @@ import { createApiKey } from "@/functions/auth/create-api-key";
 import { deleteApiKey } from "@/functions/auth/delete-api-key";
 import { updateApiKey } from "@/functions/auth/update-api-key";
 import { verifyApiKey } from "@/functions/auth/verify-api-key";
-import { setup, TEST_DATA, teardown } from "../setup";
+import { setup, type TestData, teardown } from "../setup";
+
+let TEST_DATA: TestData | undefined;
+
+const API_KEY_PREFIX_PATTERN = /^kk_/;
 
 beforeAll(async () => {
-  await setup();
+  TEST_DATA = await setup();
 });
 
 afterAll(async () => {
-  await teardown();
+  await teardown(TEST_DATA);
+  TEST_DATA = undefined;
 });
 
 describe("Handling API Keys", () => {
@@ -27,8 +32,7 @@ describe("Handling API Keys", () => {
     expect(apiKey).toBeString();
 
     // Assert that the API key starts with "kk_"
-    // biome-ignore lint/performance/useTopLevelRegex: this is test regex
-    expect(apiKey).toMatch(/^kk_/);
+    expect(apiKey).toMatch(API_KEY_PREFIX_PATTERN);
 
     // Assert that the API key is 32 + 3 (kk_) + 5 (test_ or live_) = 40 characters long
     expect(apiKey.length).toBe(40);

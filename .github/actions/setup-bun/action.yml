@@ -1,0 +1,47 @@
+name: Setup Bun Workspace
+description: Install Bun and workspace dependencies for CI jobs.
+
+inputs:
+  bun-version:
+    description: Bun version to install.
+    required: false
+    default: "1.3.6"
+  apt-packages:
+    description: Space-separated apt packages to install before Bun setup.
+    required: false
+    default: ""
+  generate-capnp-ts:
+    description: Generate the TypeScript Cap'n Proto artifacts after installing dependencies.
+    required: false
+    default: "false"
+
+runs:
+  using: composite
+  steps:
+    - name: Install apt packages
+      if: ${{ inputs.apt-packages != '' }}
+      shell: bash
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y ${{ inputs.apt-packages }}
+
+    - name: Install Cap'n Proto compiler
+      if: ${{ inputs.generate-capnp-ts == 'true' }}
+      shell: bash
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y capnproto
+
+    - name: Install Bun
+      uses: oven-sh/setup-bun@v2
+      with:
+        bun-version: ${{ inputs.bun-version }}
+
+    - name: Install dependencies
+      shell: bash
+      run: bun install --frozen-lockfile
+
+    - name: Generate Cap'n Proto TypeScript artifacts
+      if: ${{ inputs.generate-capnp-ts == 'true' }}
+      shell: bash
+      run: bun run capnp:generate:ts

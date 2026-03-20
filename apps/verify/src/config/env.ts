@@ -1,6 +1,19 @@
 import { createEnv } from "@t3-oss/env-core";
 import { z } from "zod";
 
+type ImportMetaWithEnv = ImportMeta & {
+  env?: Record<string, string | undefined>;
+};
+
+function getImportMetaEnv(): Record<string, string | undefined> {
+  if (typeof import.meta === "undefined") {
+    return {};
+  }
+
+  const maybeEnv = (import.meta as ImportMetaWithEnv).env;
+  return maybeEnv ?? {};
+}
+
 /**
  * This is the root environment variable object that is used to access all the environment variables.
  */
@@ -20,11 +33,33 @@ export const env = createEnv({
 
   runtimeEnv: {
     ...(typeof process !== "undefined" ? process?.env : {}),
-    ...(typeof import.meta !== "undefined" &&
-    (import.meta as unknown as { env: Record<string, string> })?.env
-      ? (import.meta as unknown as { env: Record<string, string> }).env
-      : {}),
+    ...getImportMetaEnv(),
   },
 
   emptyStringAsUndefined: true,
 });
+
+function getApiHost(): string {
+  if (process.env.NODE_ENV === "development" && typeof window !== "undefined") {
+    return `${window.location.hostname}:8787`;
+  }
+
+  return env.PUBLIC_API_HOST;
+}
+
+function getApiWebSocketProtocol(): "ws" | "wss" {
+  return (
+    env.PUBLIC_API_PROTOCOL ??
+    (process.env.NODE_ENV === "development" ? "ws" : "wss")
+  );
+}
+
+export function getApiWsBaseUrl(): string {
+  return `${getApiWebSocketProtocol()}://${getApiHost()}`;
+}
+
+export function getApiHttpBaseUrl(): string {
+  const wsProtocol = getApiWebSocketProtocol();
+  const httpProtocol = wsProtocol === "wss" ? "https" : "http";
+  return `${httpProtocol}://${getApiHost()}`;
+}

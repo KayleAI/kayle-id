@@ -10,33 +10,43 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as SplatRouteImport } from './routes/$'
+import { Route as V1SplatRouteImport } from './routes/v1/$'
 
 const SplatRoute = SplatRouteImport.update({
   id: '/$',
   path: '/$',
   getParentRoute: () => rootRouteImport,
 } as any)
+const V1SplatRoute = V1SplatRouteImport.update({
+  id: '/v1/$',
+  path: '/v1/$',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/$': typeof SplatRoute
+  '/v1/$': typeof V1SplatRoute
 }
 export interface FileRoutesByTo {
   '/$': typeof SplatRoute
+  '/v1/$': typeof V1SplatRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/$': typeof SplatRoute
+  '/v1/$': typeof V1SplatRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/$'
+  fullPaths: '/$' | '/v1/$'
   fileRoutesByTo: FileRoutesByTo
-  to: '/$'
-  id: '__root__' | '/$'
+  to: '/$' | '/v1/$'
+  id: '__root__' | '/$' | '/v1/$'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   SplatRoute: typeof SplatRoute
+  V1SplatRoute: typeof V1SplatRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -48,11 +58,19 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SplatRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/v1/$': {
+      id: '/v1/$'
+      path: '/v1/$'
+      fullPath: '/v1/$'
+      preLoaderRoute: typeof V1SplatRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
 const rootRouteChildren: RootRouteChildren = {
   SplatRoute: SplatRoute,
+  V1SplatRoute: V1SplatRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

@@ -1,5 +1,6 @@
 import { client } from "@kayle-id/auth/client";
 import { useAuth } from "@kayle-id/auth/client/provider";
+import type { Organization } from "@kayle-id/auth/types";
 import { Avatar, AvatarFallback, AvatarImage } from "@kayleai/ui/avatar";
 import { Button } from "@kayleai/ui/button";
 import {
@@ -46,6 +47,7 @@ import {
   SettingsIcon,
   UserIcon,
   UsersIcon,
+  WebhookIcon,
 } from "lucide-react";
 import { useMemo } from "react";
 import { toast } from "sonner";
@@ -60,6 +62,11 @@ const navItems = [
     title: "API Keys",
     url: "/api-keys",
     icon: Key,
+  },
+  {
+    title: "Webhooks",
+    url: "/webhooks",
+    icon: WebhookIcon,
   },
   {
     title: "Sandbox",
@@ -86,6 +93,7 @@ export function AppSidebar() {
     } finally {
       // Invalidate any queries that depend on the organization
       queryClient.invalidateQueries({ queryKey: ["api-keys"] });
+      queryClient.invalidateQueries({ queryKey: ["webhooks"] });
     }
   };
 
@@ -272,7 +280,7 @@ export function AppSidebar() {
                   <DropdownMenuLabel className="text-muted-foreground text-xs">
                     Organizations
                   </DropdownMenuLabel>
-                  {organizations.map((organization) => (
+                  {organizations.map((organization: Organization) => (
                     <DropdownMenuItem
                       key={organization.id}
                       render={

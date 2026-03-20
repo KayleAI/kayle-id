@@ -28,9 +28,11 @@ export const createWebhookEncryptionKey = createRoute({
                 .record(z.string(), z.unknown())
                 .describe("The public JWK for encrypting webhook payloads."),
               algorithm: z
-                .string()
-                .describe('The JWE algorithm to use (e.g. "ECDH-ES").'),
-              key_type: z.string().describe('The JWK key type (e.g. "EC").'),
+                .literal("RSA-OAEP-256")
+                .describe("The JWE algorithm to use for webhook delivery."),
+              key_type: z
+                .literal("RSA")
+                .describe("The JWK key type for webhook delivery."),
             })
             .openapi("CreateWebhookEncryptionKeyRequest"),
         },

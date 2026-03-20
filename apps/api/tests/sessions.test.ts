@@ -2,14 +2,17 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import type z from "zod";
 import type { Session } from "@/openapi/models/sessions";
 import v1 from "@/v1";
-import { setup, TEST_DATA, teardown } from "./setup";
+import { setup, type TestData, teardown } from "./setup";
+
+let TEST_DATA: TestData | undefined;
 
 beforeAll(async () => {
-  await setup();
+  TEST_DATA = await setup();
 });
 
 afterAll(async () => {
-  await teardown();
+  await teardown(TEST_DATA);
+  TEST_DATA = undefined;
 });
 
 let createdSessionId: string | undefined;
@@ -41,6 +44,9 @@ describe("/v1/sessions", () => {
     //  default to the Kayle ID's success page
     expect(data?.redirect_url).toBeNull();
     expect(data?.verification_url).toBeDefined();
+    expect(data?.contract_version).toBe(1);
+    expect(data?.share_fields).toBeDefined();
+    expect(data?.share_fields.kayle_document_id.required).toBe(true);
 
     // Store the created session ID for later use
     createdSessionId = data.id;
@@ -98,6 +104,8 @@ describe("/v1/sessions", () => {
 
     // Assert that the session is returned
     expect(data?.id).toBe(createdSessionId);
+    expect(data?.contract_version).toBe(1);
+    expect(data?.share_fields).toBeDefined();
   });
 
   test.serial("Can cancel a session by ID", async () => {

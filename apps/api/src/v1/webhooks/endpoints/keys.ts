@@ -50,6 +50,15 @@ endpointKeys.openapi(createWebhookEncryptionKey, async (c) => {
 
   const environment = endpoint.environment as Environment;
   const id = generateKeyId(environment);
+  const now = new Date();
+
+  await db
+    .update(webhook_encryption_keys)
+    .set({
+      disabledAt: now,
+      isActive: false,
+    })
+    .where(eq(webhook_encryption_keys.webhookEndpointId, endpoint.id));
 
   const [created] = await db
     .insert(webhook_encryption_keys)
@@ -61,6 +70,7 @@ endpointKeys.openapi(createWebhookEncryptionKey, async (c) => {
       keyType: body.key_type,
       jwk: body.jwk,
       isActive: true,
+      disabledAt: null,
     })
     .returning();
 

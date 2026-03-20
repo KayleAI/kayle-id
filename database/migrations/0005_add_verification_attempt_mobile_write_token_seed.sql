@@ -1,0 +1,1 @@
+ALTER TABLE "verification_attempts" ADD COLUMN "mobile_write_token_seed" text;

@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { file } from "bun";
-import { compactDecrypt, importPKCS8 } from "jose";
+import { compactDecrypt, exportJWK, importPKCS8, importSPKI } from "jose";
 import { createJWE } from "@/functions/jwe";
 
 /**
@@ -32,4 +32,27 @@ test("createJWE", async () => {
   // Assert we can correctly decode the plaintext back to the original payload
   const decoded = new TextDecoder().decode(plaintext);
   expect(decoded).toBe(payload);
+});
+
+test("createJWE supports JWK public keys", async () => {
+  const payload = "Hello, JWK!";
+  const publicKeyText = await file(
+    new URL("../../../../tests/secrets/rsa_public.pem", import.meta.url)
+  ).text();
+  const publicJwk = await exportJWK(
+    await importSPKI(publicKeyText, "RSA-OAEP-256")
+  );
+
+  const jwe = await createJWE(payload, {
+    publicJwk,
+  });
+  const privateKey = await file(
+    new URL("../../../../tests/secrets/rsa_private.pem", import.meta.url)
+  ).text();
+  const { plaintext } = await compactDecrypt(
+    jwe,
+    await importPKCS8(privateKey, "RSA-OAEP-256")
+  );
+
+  expect(new TextDecoder().decode(plaintext)).toBe(payload);
 });

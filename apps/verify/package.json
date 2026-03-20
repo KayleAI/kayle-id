@@ -7,8 +7,8 @@
     "build": "vite build",
     "serve": "vite preview",
     "test": "vitest run",
-    "deploy": "npm run build && wrangler deploy",
-    "preview": "npm run build && vite preview",
+    "deploy": "wrangler deploy",
+    "preview": "vite preview",
     "cf-typegen": "wrangler types --env-interface CloudflareBindings cloudflare-env.d.ts"
   },
   "dependencies": {
@@ -21,7 +21,8 @@
     "@tanstack/react-router-ssr-query": "1.141.6",
     "@tanstack/react-start": "1.141.7",
     "@tanstack/router-plugin": "1.141.7",
-    "capnweb": "0.4.0",
+    "@kayle-id/capnp": "*",
+    "capnp-es": "0.0.14",
     "clsx": "2.1.1",
     "motion": "12.23.26",
     "qrcode.react": "4.2.0",

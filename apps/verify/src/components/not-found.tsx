@@ -1,5 +1,6 @@
 import { ERROR_MESSAGES } from "@kayle-id/config/error-messages";
 import { Layout } from "@kayleai/ui/layout";
+import type { NotFoundRouteProps } from "@tanstack/react-router";
 import InfoCard from "./info";
 
 /**
@@ -13,22 +14,20 @@ import InfoCard from "./info";
  *
  * @returns A not found component.
  */
-export function NotFound({
-  data,
-}: {
-  data:
-    | {
-        data:
-          | {
-              type: "invalid_session_id" | undefined;
-            }
-          | undefined;
-        isNotFound: true;
-        routeId: "/$";
-      }
-    | undefined;
-}) {
-  if (data?.data?.type === "invalid_session_id") {
+type InvalidSessionData = {
+  data?: {
+    type?: string;
+  };
+};
+
+function isInvalidSessionData(data: unknown): data is InvalidSessionData {
+  return typeof data === "object" && data !== null && "data" in data;
+}
+
+export function NotFound({ data }: NotFoundRouteProps) {
+  const invalidData = isInvalidSessionData(data) ? data : undefined;
+
+  if (invalidData?.data?.type === "invalid_session_id") {
     const errorMessage = ERROR_MESSAGES.INVALID_SESSION_ID;
     return (
       <InfoCard

@@ -1,5 +1,6 @@
 import { client } from "@kayle-id/auth/client";
 import { useAuth } from "@kayle-id/auth/client/provider";
+import type { Organization } from "@kayle-id/auth/types";
 import { Button } from "@kayleai/ui/button";
 import { Logo } from "@kayleai/ui/logo";
 import { Link, useNavigate } from "@tanstack/react-router";
@@ -60,7 +61,7 @@ export function SelectOrganizations() {
 
         {/* Organization Cards */}
         <div className="w-full space-y-3">
-          {organizations.map((org) => (
+          {organizations.map((org: Organization) => (
             <button
               className="w-full rounded-lg border border-border bg-card p-4 text-left transition-colors hover:border-foreground/50 hover:bg-muted/50"
               disabled={isLoading !== null}

@@ -1,26 +1,32 @@
 {
   "name": "kayle-id-api",
-  "version": "0.0.1",
+  "version": "1.0.0",
   "type": "module",
   "scripts": {
     "dev": "bunx wrangler dev --env-file ../../.env --ip 0.0.0.0",
     "test:setup": "cp ../../.env.test.example ./.env.test",
     "test:dev": "bunx wrangler dev --env-file ./.env.test --local --ip 127.0.0.1 --port 8787",
     "deploy": "bunx wrangler deploy --minify",
-    "cf-typegen": "bunx wrangler types --env-file ../../.env --env-interface CloudflareBindings cloudflare-env.d.ts"
+    "cf-typegen": "bunx wrangler types --env-file ./.env --env-interface CloudflareBindings cloudflare-env.d.ts"
   },
   "dependencies": {
+    "@cornerstonejs/codec-openjpeg": "1.3.0",
     "@hono/standard-validator": "0.2.0",
     "@hono/zod-openapi": "1.1.5",
     "@kayle-id/auth": "*",
+    "@kayle-id/capnp": "*",
     "@kayle-id/config": "*",
     "@kayle-id/database": "*",
     "@scalar/hono-api-reference": "0.9.25",
+    "asn1js": "3.0.7",
+    "capnp-es": "0.0.14",
     "capnweb": "0.4.0",
     "drizzle-orm": "0.44.7",
     "hono": "4.12.7",
     "hono-openapi": "1.1.1",
     "jose": "6.1.2",
+    "jpeg-js": "0.4.4",
+    "pkijs": "3.3.3",
     "zod": "4.1.13"
   },
   "devDependencies": {

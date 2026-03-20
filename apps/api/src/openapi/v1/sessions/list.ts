@@ -26,7 +26,7 @@ export const listSessions = createRoute({
         .describe(
           "Return sessions created at or before this ISO 8601 timestamp."
         ),
-      limit: z
+      limit: z.coerce
         .number()
         .int()
         .min(1)
@@ -41,7 +41,7 @@ export const listSessions = createRoute({
         .describe(
           "Cursor of the last item from the previous page. When provided, the next page of results will be returned."
         ),
-      include_attempts: z
+      include_attempts: z.coerce
         .boolean()
         .optional()
         .describe(

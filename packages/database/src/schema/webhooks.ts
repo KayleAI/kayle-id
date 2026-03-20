@@ -33,6 +33,10 @@ export const webhook_endpoints = pgTable(
       .notNull(),
     url: text("url").notNull(),
     enabled: boolean("enabled").default(true).notNull(),
+    subscribedEventTypes: jsonb("subscribed_event_types")
+      .default(["verification.attempt.succeeded"])
+      .notNull(),
+    signingSecretCiphertext: text("signing_secret_ciphertext"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at")
       .defaultNow()
@@ -117,9 +121,10 @@ export const webhook_deliveries = pgTable(
      *
      * This allows key rotation per endpoint without breaking old deliveries.
      */
-    webhookEncryptionKeyId: text("webhook_encryption_key_id")
-      .notNull()
-      .references(() => webhook_encryption_keys.id, { onDelete: "restrict" }),
+    webhookEncryptionKeyId: text("webhook_encryption_key_id").references(
+      () => webhook_encryption_keys.id,
+      { onDelete: "restrict" }
+    ),
 
     /**
      * Current status of this delivery.
@@ -160,7 +165,7 @@ export const webhook_deliveries = pgTable(
      * This may contain end-user personal data, but only encrypted with
      * the platform's public key. Kayle ID cannot decrypt it.
      */
-    payload: text("payload").notNull(),
+    payload: text("payload"),
 
     /**
      * When the last delivery attempt was made, if any.

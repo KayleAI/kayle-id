@@ -1,4 +1,4 @@
-import { CompactEncrypt, importSPKI } from "jose";
+import { CompactEncrypt, importJWK, importSPKI, type JWK } from "jose";
 
 type JWEAlg = "RSA-OAEP-256";
 
@@ -15,21 +15,29 @@ export async function createJWE(
   payload: string | Uint8Array,
   {
     keyId,
+    publicJwk,
     publicKey,
     algorithm = "RSA-OAEP-256",
     encryptionAlgorithm = "A256GCM",
   }: {
     keyId?: string;
+    publicJwk?: JWK;
     publicKey?: string;
     algorithm?: JWEAlg;
     encryptionAlgorithm?: JWEEnc;
   } = {}
 ): Promise<string> {
-  if (!(publicKey && publicKey.trim() !== "")) {
-    throw new Error("Public key is required");
+  let publicKeyObject: Awaited<ReturnType<typeof importJWK>> | null = null;
+
+  if (publicJwk) {
+    publicKeyObject = await importJWK(publicJwk, algorithm);
+  } else if (publicKey && publicKey.trim() !== "") {
+    publicKeyObject = await importSPKI(publicKey, algorithm);
   }
 
-  const publicKeyObject = await importSPKI(publicKey, algorithm);
+  if (!publicKeyObject) {
+    throw new Error("Public key is required");
+  }
 
   const bytes =
     typeof payload === "string" ? new TextEncoder().encode(payload) : payload;

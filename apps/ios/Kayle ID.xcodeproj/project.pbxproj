@@ -6,13 +6,36 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		B8ABF8A12F13073100ECA26E /* MRTDReader in Frameworks */ = {isa = PBXBuildFile; productRef = B8ABF8A02F13073100ECA26E /* MRTDReader */; };
+		B8F0012F2000010000000004 /* OpenSSL in Frameworks */ = {isa = PBXBuildFile; productRef = B8F0012F2000010000000005 /* OpenSSL */; };
+		B9A0C0A0A0A0A0A0A0A0A001 /* Capnp in Frameworks */ = {isa = PBXBuildFile; productRef = B9A0C0A0A0A0A0A0A0A0E001 /* Capnp */; };
+		B9A0C0A0A0A0A0A0A0A0A002 /* ../../packages/capnp/src/verify_capnp_c.cpp in Sources */ = {isa = PBXBuildFile; fileRef = B9A0C0A0A0A0A0A0A0A0B001 /* ../../packages/capnp/src/verify_capnp_c.cpp */; };
+		B9A0C0A0A0A0A0A0A0A0A003 /* ../../packages/capnp/generated/c/verify.capnp.c++ in Sources */ = {isa = PBXBuildFile; fileRef = B9A0C0A0A0A0A0A0A0A0B002 /* ../../packages/capnp/generated/c/verify.capnp.c++ */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXFileReference section */
 		B8ED7CF52F081CC700CD508D /* Kayle ID.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Kayle ID.app"; sourceTree = BUILT_PRODUCTS_DIR; };
+		B9A0C0A0A0A0A0A0A0A0B001 /* ../../packages/capnp/src/verify_capnp_c.cpp */ = {isa = PBXFileReference; explicitFileType = sourcecode.cpp.cpp; path = ../../packages/capnp/src/verify_capnp_c.cpp; sourceTree = SOURCE_ROOT; };
+		B9A0C0A0A0A0A0A0A0A0B002 /* ../../packages/capnp/generated/c/verify.capnp.c++ */ = {isa = PBXFileReference; explicitFileType = sourcecode.cpp.cpp; path = "../../packages/capnp/generated/c/verify.capnp.c++"; sourceTree = SOURCE_ROOT; };
 /* End PBXFileReference section */
+
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		B80099042F126F65006C9C15 /* Exceptions for "Kayle ID" folder in "Kayle ID" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = B8ED7CF42F081CC600CD508D /* Kayle ID */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		B8ED7CF72F081CC700CD508D /* Kayle ID */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				B80099042F126F65006C9C15 /* Exceptions for "Kayle ID" folder in "Kayle ID" target */,
+			);
 			path = "Kayle ID";
 			sourceTree = "<group>";
 		};
@@ -23,6 +46,9 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				B9A0C0A0A0A0A0A0A0A0A001 /* Capnp in Frameworks */,
+				B8F0012F2000010000000004 /* OpenSSL in Frameworks */,
+				B8ABF8A12F13073100ECA26E /* MRTDReader in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -32,6 +58,7 @@
 		B8ED7CEC2F081CC600CD508D = {
 			isa = PBXGroup;
 			children = (
+				B9A0C0A0A0A0A0A0A0A0C001 /* CapnpShim */,
 				B8ED7CF72F081CC700CD508D /* Kayle ID */,
 				B8ED7CF62F081CC700CD508D /* Products */,
 			);
@@ -43,6 +70,15 @@
 				B8ED7CF52F081CC700CD508D /* Kayle ID.app */,
 			);
 			name = Products;
+			sourceTree = "<group>";
+		};
+		B9A0C0A0A0A0A0A0A0A0C001 /* CapnpShim */ = {
+			isa = PBXGroup;
+			children = (
+				B9A0C0A0A0A0A0A0A0A0B001 /* ../../packages/capnp/src/verify_capnp_c.cpp */,
+				B9A0C0A0A0A0A0A0A0A0B002 /* ../../packages/capnp/generated/c/verify.capnp.c++ */,
+			);
+			name = CapnpShim;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -65,6 +101,9 @@
 			);
 			name = "Kayle ID";
 			packageProductDependencies = (
+				B9A0C0A0A0A0A0A0A0A0E001 /* Capnp */,
+				B8F0012F2000010000000005 /* OpenSSL */,
+				B8ABF8A02F13073100ECA26E /* MRTDReader */,
 			);
 			productName = "Kayle ID";
 			productReference = B8ED7CF52F081CC700CD508D /* Kayle ID.app */;
@@ -94,6 +133,11 @@
 			);
 			mainGroup = B8ED7CEC2F081CC600CD508D;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				B9A0C0A0A0A0A0A0A0A0D001 /* XCLocalSwiftPackageReference "../../../../Work/capnproto-swift" */,
+				B8F0012F2000010000000006 /* XCRemoteSwiftPackageReference "OpenSSL-Package" */,
+				B8ABF89F2F13073100ECA26E /* XCRemoteSwiftPackageReference "MRTDReader" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = B8ED7CF62F081CC700CD508D /* Products */;
 			projectDirPath = "";
@@ -119,6 +163,8 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				B9A0C0A0A0A0A0A0A0A0A002 /* ../../packages/capnp/src/verify_capnp_c.cpp in Sources */,
+				B9A0C0A0A0A0A0A0A0A0A003 /* ../../packages/capnp/generated/c/verify.capnp.c++ in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -178,7 +224,7 @@
 				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
-				IPHONEOS_DEPLOYMENT_TARGET = 26.2;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
 				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
@@ -236,7 +282,7 @@
 				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
-				IPHONEOS_DEPLOYMENT_TARGET = 26.2;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
 				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
@@ -251,11 +297,21 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = "Kayle ID/Kayle ID.entitlements";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = LM5NZ3CK58;
+				DEVELOPMENT_TEAM = K667TL7H29;
 				ENABLE_PREVIEWS = YES;
-				GENERATE_INFOPLIST_FILE = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				HEADER_SEARCH_PATHS = (
+					"$(inherited)",
+					"$(SRCROOT)/../../packages/capnp/include",
+					"$(SRCROOT)/../../packages/capnp/generated/c",
+					"/Users/arsen/Work/capnproto-swift/capnproto/c++/src",
+				);
+				INFOPLIST_FILE = "Kayle ID/Info.plist";
+				INFOPLIST_KEY_NFCReaderUsageDescription = "Used to read ePassport NFC data.";
+				INFOPLIST_KEY_NSCameraUsageDescription = "Used to scan the MRZ on your passport.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -266,7 +322,7 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = "kayle.Kayle-ID";
+				PRODUCT_BUNDLE_IDENTIFIER = kayle.id;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
@@ -283,11 +339,21 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = "Kayle ID/Kayle ID.entitlements";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = LM5NZ3CK58;
+				DEVELOPMENT_TEAM = K667TL7H29;
 				ENABLE_PREVIEWS = YES;
-				GENERATE_INFOPLIST_FILE = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				HEADER_SEARCH_PATHS = (
+					"$(inherited)",
+					"$(SRCROOT)/../../packages/capnp/include",
+					"$(SRCROOT)/../../packages/capnp/generated/c",
+					"/Users/arsen/Work/capnproto-swift/capnproto/c++/src",
+				);
+				INFOPLIST_FILE = "Kayle ID/Info.plist";
+				INFOPLIST_KEY_NFCReaderUsageDescription = "Used to read ePassport NFC data.";
+				INFOPLIST_KEY_NSCameraUsageDescription = "Used to scan the MRZ on your passport.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -298,7 +364,7 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = "kayle.Kayle-ID";
+				PRODUCT_BUNDLE_IDENTIFIER = kayle.id;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
@@ -332,6 +398,50 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCLocalSwiftPackageReference section */
+		B9A0C0A0A0A0A0A0A0A0D001 /* XCLocalSwiftPackageReference "../../../../Work/capnproto-swift" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = "../../../../Work/capnproto-swift";
+		};
+/* End XCLocalSwiftPackageReference section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		B8ABF89F2F13073100ECA26E /* XCRemoteSwiftPackageReference "MRTDReader" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/arsenstorm/MRTDReader";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 4.0.0;
+			};
+		};
+		B8F0012F2000010000000006 /* XCRemoteSwiftPackageReference "OpenSSL-Package" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/krzyzanowskim/OpenSSL-Package.git";
+			requirement = {
+				kind = upToNextMinorVersion;
+				minimumVersion = 3.3.1000;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		B8ABF8A02F13073100ECA26E /* MRTDReader */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = B8ABF89F2F13073100ECA26E /* XCRemoteSwiftPackageReference "MRTDReader" */;
+			productName = MRTDReader;
+		};
+		B8F0012F2000010000000005 /* OpenSSL */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = B8F0012F2000010000000006 /* XCRemoteSwiftPackageReference "OpenSSL-Package" */;
+			productName = OpenSSL;
+		};
+		B9A0C0A0A0A0A0A0A0A0E001 /* Capnp */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = B9A0C0A0A0A0A0A0A0A0D001 /* XCLocalSwiftPackageReference "../../../../Work/capnproto-swift" */;
+			productName = Capnp;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = B8ED7CED2F081CC600CD508D /* Project object */;
 }

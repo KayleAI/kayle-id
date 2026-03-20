@@ -5,7 +5,7 @@ import { WebhookEncryptionKey } from "@/openapi/models/webhook";
 
 export const deactivateWebhookEncryptionKey = createRoute({
   method: "post",
-  path: "/keys/:key_id/deactivate",
+  path: "/:key_id/deactivate",
   request: {
     params: z.object({
       key_id: z

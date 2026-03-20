@@ -37,6 +37,58 @@ type MagicOptions = {
   };
 };
 
+type MagicAdapterContext = {
+  context: {
+    internalAdapter: {
+      findUserByEmail: (email: string) => Promise<unknown>;
+      createUser: (input: {
+        email: string;
+        emailVerified: boolean;
+        name: string;
+      }) => Promise<unknown>;
+      updateUser: (
+        userId: string,
+        input: {
+          emailVerified: boolean;
+        }
+      ) => Promise<unknown>;
+    };
+  };
+};
+
+function isUserShape(value: unknown): value is User {
+  if (typeof value !== "object" || value === null) {
+    return false;
+  }
+
+  const maybeUser = value as {
+    id?: unknown;
+    email?: unknown;
+    emailVerified?: unknown;
+    name?: unknown;
+  };
+
+  return (
+    typeof maybeUser.id === "string" &&
+    typeof maybeUser.email === "string" &&
+    typeof maybeUser.emailVerified === "boolean" &&
+    typeof maybeUser.name === "string"
+  );
+}
+
+function toUser(value: unknown): User | null {
+  if (isUserShape(value)) {
+    return value;
+  }
+
+  if (typeof value === "object" && value !== null && "user" in value) {
+    const maybeUser = (value as { user?: unknown }).user;
+    return isUserShape(maybeUser) ? maybeUser : null;
+  }
+
+  return null;
+}
+
 export const magic = (options: MagicOptions): BetterAuthPlugin => {
   const opts = {
     expiresIn: 300,
@@ -95,8 +147,8 @@ export const magic = (options: MagicOptions): BetterAuthPlugin => {
 
           try {
             await opts.sendMagicOtpAuth({ email, url, otp, type }, ctx.request);
-          } catch (e) {
-            ctx.context.logger.error("Failed to send magic-otp auth", e);
+          } catch {
+            ctx.context.logger.error("Failed to send magic-otp auth");
             throw new APIError("INTERNAL_SERVER_ERROR", {
               message: "We couldn't send you a magic link. Please try again.",
             });
@@ -213,13 +265,15 @@ export const magic = (options: MagicOptions): BetterAuthPlugin => {
 };
 
 async function handleUserCreationOrUpdate(
-  // biome-ignore lint/suspicious/noExplicitAny: this is intentional
-  ctx: any,
+  ctx: MagicAdapterContext,
   opts: MagicOptions,
   email: string,
   type: "sign-in" | "email-verification"
 ): Promise<User> {
-  let user = await ctx.context.internalAdapter.findUserByEmail(email);
+  const existingUser = toUser(
+    await ctx.context.internalAdapter.findUserByEmail(email)
+  );
+  let user = existingUser;
 
   if (!user) {
     if (opts.disableSignUp) {
@@ -227,20 +281,36 @@ async function handleUserCreationOrUpdate(
         message: "We couldn't find a user with that email. Please try again.",
       });
     }
-    user = await ctx.context.internalAdapter.createUser({
-      email,
-      // The email is always verified when using magic links or entering the code
-      emailVerified: true,
-      name: "",
-    });
-  } else if (type === "email-verification") {
-    user = await ctx.context.internalAdapter.updateUser(user.id, {
-      emailVerified: true,
-    });
-  }
+    const createdUser = toUser(
+      await ctx.context.internalAdapter.createUser({
+        email,
+        // The email is always verified when using magic links or entering the code
+        emailVerified: true,
+        name: "",
+      })
+    );
 
-  if ("user" in user) {
-    return user.user;
+    if (!createdUser) {
+      throw new APIError("INTERNAL_SERVER_ERROR", {
+        message: "Failed to create user for magic auth.",
+      });
+    }
+
+    user = createdUser;
+  } else if (type === "email-verification") {
+    const updatedUser = toUser(
+      await ctx.context.internalAdapter.updateUser(user.id, {
+        emailVerified: true,
+      })
+    );
+
+    if (!updatedUser) {
+      throw new APIError("INTERNAL_SERVER_ERROR", {
+        message: "Failed to update user for email verification.",
+      });
+    }
+
+    user = updatedUser;
   }
 
   return user;

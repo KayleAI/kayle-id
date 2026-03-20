@@ -12,6 +12,28 @@ import {
 } from "drizzle-orm/pg-core";
 import { auth_organizations } from "./auth";
 
+export const verificationSessionStatuses = [
+  "created",
+  "in_progress",
+  "completed",
+  "expired",
+  "cancelled",
+] as const;
+
+export const verificationAttemptStatuses = [
+  "in_progress",
+  "succeeded",
+  "failed",
+  "cancelled",
+] as const;
+
+export const verificationAttemptFailureCodes = [
+  "session_expired",
+  "session_cancelled",
+  "passport_authenticity_failed",
+  "selfie_face_mismatch",
+] as const;
+
 export const api_keys = pgTable(
   "api_keys",
   {
@@ -63,10 +85,12 @@ export const verification_sessions = pgTable(
       .default("live")
       .notNull(),
     status: text({
-      enum: ["created", "in_progress", "completed", "expired", "cancelled"],
+      enum: verificationSessionStatuses,
     })
       .default("created")
       .notNull(),
+    contractVersion: integer("contract_version").default(1).notNull(),
+    shareFields: jsonb("share_fields").default({}).notNull(),
     redirectUrl: text("redirect_url"),
     /**
      * The expiration time of the verification session.
@@ -120,7 +144,7 @@ export const verification_attempts = pgTable(
      * and `failure_code` will be set to `session_expired`.
      */
     status: text({
-      enum: ["in_progress", "succeeded", "failed", "cancelled"],
+      enum: verificationAttemptStatuses,
     })
       .default("in_progress")
       .notNull(),
@@ -129,7 +153,53 @@ export const verification_attempts = pgTable(
      *
      * This is only set if the attempt is marked as `failed`.
      */
-    failureCode: text("failure_code"),
+    failureCode: text("failure_code", {
+      enum: verificationAttemptFailureCodes,
+    }),
+    /**
+     * Random seed used to derive a deterministic mobile write token for the current handoff credential.
+     *
+     * The seed itself is not accepted for authentication.
+     */
+    mobileWriteTokenSeed: text("mobile_write_token_seed"),
+    /**
+     * Hash of the mobile write token issued for this attempt handoff.
+     *
+     * Plaintext tokens are never persisted.
+     */
+    mobileWriteTokenHash: text("mobile_write_token_hash"),
+    /**
+     * Time when the current mobile write token was issued.
+     */
+    mobileWriteTokenIssuedAt: timestamp("mobile_write_token_issued_at"),
+    /**
+     * Time when the current mobile write token expires.
+     */
+    mobileWriteTokenExpiresAt: timestamp("mobile_write_token_expires_at"),
+    /**
+     * Time when the mobile write token was consumed by a successful mobile hello.
+     *
+     * Reserved for Phase 3 auth enforcement.
+     */
+    mobileWriteTokenConsumedAt: timestamp("mobile_write_token_consumed_at"),
+    /**
+     * Hash of the device identifier that first successfully authenticated hello for this attempt.
+     */
+    mobileHelloDeviceIdHash: text("mobile_hello_device_id_hash"),
+    /**
+     * App version reported by the device that authenticated hello for this attempt.
+     */
+    mobileHelloAppVersion: text("mobile_hello_app_version"),
+    /**
+     * Current lifecycle phase for this attempt.
+     *
+     * Stores phase metadata only, never MRZ/NFC/selfie payloads.
+     */
+    currentPhase: text("current_phase"),
+    /**
+     * Time when `current_phase` was last updated.
+     */
+    phaseUpdatedAt: timestamp("phase_updated_at"),
     /**
      * Degree of risk associated with the verification attempt.
      *

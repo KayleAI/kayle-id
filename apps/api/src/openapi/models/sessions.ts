@@ -1,4 +1,30 @@
 import { z } from "@hono/zod-openapi";
+import { verificationAttemptFailureCodes } from "@kayle-id/database/schema/core";
+
+export const RequestedShareField = z.object({
+  required: z.boolean().describe("Whether this field is required by the RC."),
+  reason: z
+    .string()
+    .min(1)
+    .max(200)
+    .describe("Human-readable reason for requesting this field."),
+});
+
+export const RequestedShareFields = z
+  .record(z.string(), RequestedShareField)
+  .describe("Requested share fields keyed by claim key.");
+
+export const SessionShareField = z.object({
+  required: z.boolean().describe("Whether this field must always be shared."),
+  reason: z.string().describe("Reason shown to the user for this field."),
+  source: z
+    .enum(["default", "rc"])
+    .describe("Whether the field came from defaults or RC request."),
+});
+
+export const SessionShareFields = z
+  .record(z.string(), SessionShareField)
+  .describe("Effective normalized share fields for this session.");
 
 export const Attempt = z.object({
   id: z.string().describe("The ID of the verification attempt"),
@@ -9,7 +35,7 @@ export const Attempt = z.object({
     .enum(["in_progress", "succeeded", "failed", "cancelled"])
     .describe("The status of the verification attempt"),
   failure_code: z
-    .string()
+    .enum(verificationAttemptFailureCodes)
     .nullable()
     .describe("The code of the failure reason"),
   risk_score: z
@@ -40,6 +66,13 @@ export const Session = z
     status: z
       .enum(["created", "in_progress", "completed", "expired", "cancelled"])
       .describe("The status of the verification session"),
+    contract_version: z
+      .number()
+      .int()
+      .describe("Version of the session share contract."),
+    share_fields: SessionShareFields.describe(
+      "Effective normalized share fields used by this session."
+    ),
     redirect_url: z
       .string()
       .nullable()
@@ -79,52 +112,32 @@ export const Session = z
       {
         id: "vs_live_mza7vecksrtyfw193ekcvl5vnws3bt1lz96buu3iw7zidckf8dga2zx2echb3t16",
         environment: "live",
-        status: "in_progress",
+        status: "created",
+        contract_version: 1,
+        share_fields: {
+          document_type_code: {
+            required: false,
+            reason: "Needed to know the document type code",
+            source: "rc",
+          },
+          date_of_birth: {
+            required: true,
+            reason: "Needed to verify age eligibility",
+            source: "rc",
+          },
+          kayle_document_id: {
+            required: true,
+            reason: 'Sharing "Kayle Document ID"',
+            source: "default",
+          },
+        },
         redirect_url: "https://example.com/redirect",
         verification_url:
-          "https://app.kayle.id/verify/session/vs_live_mza7vecksrtyfw193ekcvl5vnws3bt1lz96buu3iw7zidckf8dga2zx2echb3t16",
+          "https://verify.kayle.id/vs_live_mza7vecksrtyfw193ekcvl5vnws3bt1lz96buu3iw7zidckf8dga2zx2echb3t16",
         expires_at: "2025-01-01T00:00:00Z",
         completed_at: null,
         created_at: "2025-01-01T00:00:00Z",
         updated_at: "2025-01-01T00:00:00Z",
-        attempts: [
-          {
-            id: "va_live_mza7vecksrtyfw193ekcvl5vnws3bt1lz96buu3iw7zidckf8dga2zx2echb3t1a",
-            session_id:
-              "vs_live_mza7vecksrtyfw193ekcvl5vnws3bt1lz96buu3iw7zidckf8dga2zx2echb3t16",
-            status: "in_progress",
-            failure_code: null,
-            risk_score: 0.5,
-            completed_at: null,
-            created_at: "2025-01-01T00:00:00Z",
-            updated_at: "2025-01-01T00:00:00Z",
-          },
-        ],
-      },
-      {
-        id: "vs_live_mza7vecksrtyfw193ekcvl5vnac3bt1wz96buu3iw7zidckf8dga2zx2echb3t11",
-        environment: "live",
-        status: "completed",
-        redirect_url: "https://example.com/redirect",
-        verification_url:
-          "https://app.kayle.id/verify/session/vs_live_mza7vecksrtyfw193ekcvl5vnac3bt1wz96buu3iw7zidckf8dga2zx2echb3t11",
-        expires_at: "2025-01-01T00:00:00Z",
-        completed_at: "2025-01-01T00:30:00Z",
-        created_at: "2025-01-01T00:00:00Z",
-        updated_at: "2025-01-01T00:30:00Z",
-        attempts: [
-          {
-            id: "va_live_mza7vecksrtyfw193ekcvl5vnac3bt1wz96buu3iw7zidckf8dga2zx2echb3t16",
-            session_id:
-              "vs_live_mza7vecksrtyfw193ekcvl5vnac3bt1wz96buu3iw7zidckf8dga2zx2echb3t11",
-            status: "succeeded",
-            failure_code: null,
-            risk_score: 0,
-            completed_at: "2025-01-01T00:30:00Z",
-            created_at: "2025-01-01T00:00:00Z",
-            updated_at: "2025-01-01T00:30:00Z",
-          },
-        ],
       },
     ],
   });

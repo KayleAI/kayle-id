@@ -2,20 +2,19 @@ import { createRoute, z } from "@hono/zod-openapi";
 import { ErrorResponse } from "@/openapi/base";
 import { InternalServerErrorResponse } from "@/openapi/errors";
 import { Session } from "@/openapi/models/sessions";
+import { sessionIdSchema } from "@/shared/validation";
 
 export const getSession = createRoute({
   method: "get",
   path: "/:id",
   request: {
     params: z.object({
-      id: z
-        .string()
-        .describe(
-          "The ID of the verification session to retrieve (e.g. vs_live_...)."
-        ),
+      id: sessionIdSchema.describe(
+        "The ID of the verification session to retrieve (e.g. vs_live_...)."
+      ),
     }),
     query: z.object({
-      include_attempts: z
+      include_attempts: z.coerce
         .boolean()
         .optional()
         .describe(

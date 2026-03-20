@@ -1,0 +1,28 @@
+name: Generate Capnp
+
+on:
+  workflow_dispatch:
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install capnp compiler
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y capnproto
+
+      - name: Install capnp-es
+        run: npm install -g capnp-es
+
+      - name: Install capnpc-swift
+        run: |
+          echo "Install capnpc-swift and ensure it is on PATH."
+          echo "This step is a placeholder. Update it to your chosen capnpc-swift plugin."
+          exit 1
+
+      - name: Generate code
+        run: ./scripts/generate-capnp.sh

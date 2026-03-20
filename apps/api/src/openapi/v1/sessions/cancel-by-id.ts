@@ -1,17 +1,16 @@
 import { createRoute, z } from "@hono/zod-openapi";
 import { ErrorResponse } from "@/openapi/base";
 import { InternalServerErrorResponse } from "@/openapi/errors";
+import { sessionIdSchema } from "@/shared/validation";
 
 export const cancelSession = createRoute({
   method: "post",
   path: "/:id/cancel",
   request: {
     params: z.object({
-      id: z
-        .string()
-        .describe(
-          "The ID of the verification session to cancel (e.g. vs_live_...)."
-        ),
+      id: sessionIdSchema.describe(
+        "The ID of the verification session to cancel (e.g. vs_live_...)."
+      ),
     }),
   },
   tags: ["Sessions"],

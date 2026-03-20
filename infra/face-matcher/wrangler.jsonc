@@ -1,0 +1,41 @@
+{
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  "name": "kayle-id-face-matcher",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-03-20",
+  "preview_urls": false,
+  "observability": {
+    "enabled": true,
+    "head_sampling_rate": 1,
+    "logs": {
+      "invocation_logs": false
+    }
+  },
+  "compatibility_flags": ["nodejs_compat"],
+  "assets": {
+    "binding": "ASSETS",
+    "directory": "../../apps/api/public",
+    "run_worker_first": true
+  },
+  "containers": [
+    {
+      "class_name": "FaceMatcherContainer",
+      "image": "./Dockerfile",
+      "max_instances": 2
+    }
+  ],
+  "durable_objects": {
+    "bindings": [
+      {
+        "class_name": "FaceMatcherContainer",
+        "name": "FACE_MATCHER_CONTAINER"
+      }
+    ]
+  },
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": ["FaceMatcherContainer"]
+    }
+  ]
+}

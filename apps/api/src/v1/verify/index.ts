@@ -1,71 +1,151 @@
-import { db } from "@kayle-id/database/drizzle";
-import { verification_sessions } from "@kayle-id/database/schema/core";
-import { eq } from "drizzle-orm";
-import { Hono } from "hono";
+import { type Context, Hono } from "hono";
 import { validator } from "hono/validator";
 import { z } from "zod";
 import { sessionIdSchema } from "@/shared/validation";
-import { VerifySession } from "@/shared/verify";
-import { newRpcResponse, webSocketErrorResponse } from "./utils";
+import { createVerifyJsonErrorResponse } from "./error-response";
+import { issueHandoffPayload } from "./handoff";
+import { loadActiveVerifySession } from "./session-context";
+import { getPublicVerifySessionStatus } from "./session-status";
+import { startVerifySocketSession } from "./socket-controller";
+import { webSocketErrorResponse } from "./utils";
+import { configureVerifyAssetFetcherFromEnv } from "./verify-assets";
 
 const verify = new Hono<{ Bindings: CloudflareBindings }>();
+const sessionParamSchema = z.object({ id: sessionIdSchema });
+
+function validateSessionParam(
+  value: unknown
+): z.infer<typeof sessionParamSchema> | null {
+  const parsed = sessionParamSchema.safeParse(value);
+  return parsed.success ? parsed.data : null;
+}
+
+function sessionParamJsonValidator(value: unknown, c: Context) {
+  const parsed = validateSessionParam(value);
+
+  if (parsed) {
+    return parsed;
+  }
+
+  const response = createVerifyJsonErrorResponse({
+    code: "INVALID_SESSION_ID",
+    status: 400,
+  });
+
+  return c.json(
+    {
+      data: response.data,
+      error: response.error,
+    },
+    response.status
+  );
+}
+
+verify.post(
+  "/session/:id/handoff",
+  validator("param", sessionParamJsonValidator),
+  async (c) => {
+    const { id } = c.req.valid("param");
+    const handoff = await issueHandoffPayload(id);
+
+    if (!handoff.ok) {
+      const response = createVerifyJsonErrorResponse({
+        code: handoff.error.code,
+        status: handoff.error.status,
+      });
+
+      return c.json(
+        {
+          data: response.data,
+          error: response.error,
+        },
+        response.status
+      );
+    }
+
+    return c.json(
+      {
+        data: handoff.data,
+        error: null,
+      },
+      200
+    );
+  }
+);
+
+verify.get(
+  "/session/:id/status",
+  validator("param", sessionParamJsonValidator),
+  async (c) => {
+    const { id } = c.req.valid("param");
+    const status = await getPublicVerifySessionStatus({
+      sessionId: id,
+    });
+
+    if (!status) {
+      const response = createVerifyJsonErrorResponse({
+        code: "SESSION_NOT_FOUND",
+        status: 404,
+      });
+
+      return c.json(
+        {
+          data: response.data,
+          error: response.error,
+        },
+        response.status
+      );
+    }
+
+    return c.json(
+      {
+        data: status,
+        error: null,
+      },
+      200
+    );
+  }
+);
 
 verify.get(
   "/session/:id",
   validator("param", (value) => {
-    const parsed = z.object({ id: sessionIdSchema }).safeParse(value);
+    const parsed = validateSessionParam(value);
 
-    if (!parsed.success) {
+    if (!parsed) {
       return webSocketErrorResponse({
         code: "INVALID_SESSION_ID",
       });
     }
 
-    return parsed.data;
+    return parsed;
   }),
   async (c) => {
-    const { id } = c.req.valid("param");
+    configureVerifyAssetFetcherFromEnv(c.env);
 
-    const [session] = await db
-      .select({
-        id: verification_sessions.id,
-        organizationId: verification_sessions.organizationId,
-        environment: verification_sessions.environment,
-        status: verification_sessions.status,
-        redirectUrl: verification_sessions.redirectUrl,
-        expiresAt: verification_sessions.expiresAt,
-        completedAt: verification_sessions.completedAt,
-        createdAt: verification_sessions.createdAt,
-        updatedAt: verification_sessions.updatedAt,
-      })
-      .from(verification_sessions)
-      .where(eq(verification_sessions.id, id))
-      .limit(1);
+    if (c.req.header("upgrade")?.toLowerCase() !== "websocket") {
+      return c.json(
+        {
+          error: {
+            code: "WEBSOCKET_REQUIRED",
+            message: "This endpoint requires a WebSocket connection.",
+          },
+        },
+        426
+      );
+    }
 
-    if (!session) {
+    const activeSession = await loadActiveVerifySession(
+      c.req.valid("param").id
+    );
+
+    if (!activeSession.ok) {
       return webSocketErrorResponse({
-        code: "SESSION_NOT_FOUND",
+        code: activeSession.code,
       });
     }
 
-    if (
-      ["expired", "cancelled", "completed"].includes(session.status) ||
-      session.expiresAt.getTime() < Date.now()
-    ) {
-      return webSocketErrorResponse({
-        code: "SESSION_EXPIRED",
-      });
-    }
-
-    if (session.status === "in_progress") {
-      // NOTE: We must only move to the in_progress state if the user for this session is actively in the process of verifying their identity.
-      // If they're for example, switching devices we should not move to the in_progress state.
-      return webSocketErrorResponse({
-        code: "SESSION_IN_PROGRESS",
-      });
-    }
-
-    return newRpcResponse(c, new VerifySession(c.env, session));
+    return startVerifySocketSession(c, activeSession.value);
   }
 );
 

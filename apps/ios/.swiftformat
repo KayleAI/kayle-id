@@ -1,0 +1,6 @@
+--swift-version 6.2
+--indent 2
+--linebreaks lf
+--wrap-arguments before-first
+--wrap-parameters before-first
+--strip-unused-args closure-only

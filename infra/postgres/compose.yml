@@ -1,0 +1,16 @@
+name: kayle-id
+
+services:
+  postgres:
+    image: postgres:17.7
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: kayle-id
+    ports:
+      - "6432:5432"
+    volumes:
+      - kayle-id-data:/var/lib/postgresql/data
+
+volumes:
+  kayle-id-data:

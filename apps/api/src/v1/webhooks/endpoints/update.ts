@@ -55,6 +55,10 @@ updateEndpoint.openapi(updateWebhookEndpoint, async (c) => {
     updates.disabledAt = body.enabled ? null : new Date();
   }
 
+  if (body.subscribed_event_types !== undefined) {
+    updates.subscribedEventTypes = body.subscribed_event_types;
+  }
+
   if (Object.keys(updates).length === 0) {
     return c.json(
       {
@@ -62,7 +66,7 @@ updateEndpoint.openapi(updateWebhookEndpoint, async (c) => {
         error: {
           code: "BAD_REQUEST",
           message: "Bad request.",
-          hint: "At least one of `url` or `enabled` must be provided.",
+          hint: "At least one of `url`, `enabled` or `subscribed_event_types` must be provided.",
           docs: "https://kayle.id/docs/api/webhooks/endpoints#update",
         },
       },

@@ -2,18 +2,58 @@
   "$schema": "../../node_modules/wrangler/config-schema.json",
   "name": "kayle-id-api",
   "main": "src/index.ts",
-  "compatibility_date": "2025-12-23",
+  "compatibility_date": "2026-03-20",
+  "preview_urls": false,
   "observability": {
     "enabled": true,
-    "head_sampling_rate": 1
+    "head_sampling_rate": 1,
+    "logs": {
+      "invocation_logs": false
+    }
+  },
+  "triggers": {
+    "crons": ["* * * * *"]
   },
   "compatibility_flags": ["nodejs_compat"],
+  "assets": {
+    "binding": "ASSETS",
+    "directory": "./public",
+    "run_worker_first": true
+  },
+  "vars": {
+    "PUBLIC_AUTH_URL": "https://kayle.id"
+  },
+  "hyperdrive": [
+    {
+      "binding": "HYPERDRIVE",
+      "id": "576f2213d15149ad8746112f488ae37c",
+      "localConnectionString": "postgres://postgres:postgres@localhost:6432/kayle-id"
+    }
+  ],
+  "services": [
+    {
+      "binding": "FACE_MATCHER",
+      "service": "kayle-id-face-matcher"
+    }
+  ],
   "r2_buckets": [
     {
       "binding": "STORAGE",
       "bucket_name": "kayle-id-r2",
       "preview_bucket_name": "kayle-id-r2-preview",
       "remote": false
+    }
+  ],
+  "routes": [
+    {
+      "pattern": "api.kayle.id",
+      "zone_name": "kayle.id",
+      "custom_domain": true
+    },
+    {
+      "pattern": "api.kayle.id/*",
+      "zone_name": "kayle.id",
+      "custom_domain": false
     }
   ]
 }
