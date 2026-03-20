@@ -967,26 +967,9 @@ jobs:
           RELEASE_TAG: ${{ needs.detect_release.outputs.release_tag }}
         shell: bash
         run: |
-          notes_path="${RUNNER_TEMP}/release-assets/kayle-id-release-${APP_VERSION}-notes.md"
-
-          if gh release view "${RELEASE_TAG}" >/dev/null 2>&1; then
-            exit 0
-          fi
-
-          gh release create "${RELEASE_TAG}" \
-            --title "Kayle ID ${APP_VERSION}" \
-            --notes-file "${notes_path}" \
-            --verify-tag
-
-      - name: Upload release assets
-        env:
-          GH_TOKEN: ${{ github.token }}
-          APP_VERSION: ${{ needs.detect_release.outputs.app_version }}
-          RELEASE_TAG: ${{ needs.detect_release.outputs.release_tag }}
-        shell: bash
-        run: |
           set -euo pipefail
 
+          notes_path="${RUNNER_TEMP}/release-assets/kayle-id-release-${APP_VERSION}-notes.md"
           release_assets_dir="${RUNNER_TEMP}/release-assets"
           asset_paths=(
             "${release_assets_dir}/kayle-id-release-${APP_VERSION}.json"
@@ -1001,4 +984,49 @@ jobs:
             asset_paths+=("${worker_archives[@]}")
           fi
 
-          gh release upload "${RELEASE_TAG}" "${asset_paths[@]}" --clobber
+          if gh release view "${RELEASE_TAG}" >/dev/null 2>&1; then
+            mapfile -t existing_asset_names < <(gh release view "${RELEASE_TAG}" --json assets --jq '.assets[].name')
+            missing_asset_paths=()
+            missing_asset_names=()
+
+            release_has_asset() {
+              local asset_name="${1}"
+
+              for existing_asset_name in "${existing_asset_names[@]}"; do
+                if [[ "${existing_asset_name}" == "${asset_name}" ]]; then
+                  return 0
+                fi
+              done
+
+              return 1
+            }
+
+            for asset_path in "${asset_paths[@]}"; do
+              asset_name="$(basename "${asset_path}")"
+
+              if ! release_has_asset "${asset_name}"; then
+                missing_asset_paths+=("${asset_path}")
+                missing_asset_names+=("${asset_name}")
+              fi
+            done
+
+            if (( ${#missing_asset_paths[@]} == 0 )); then
+              exit 0
+            fi
+
+            is_immutable="$(gh release view "${RELEASE_TAG}" --json isImmutable --jq '.isImmutable')"
+            if [[ "${is_immutable}" == "true" ]]; then
+              printf 'Immutable release %s already exists but is missing required assets: %s\n' \
+                "${RELEASE_TAG}" "${missing_asset_names[*]}" >&2
+              echo "Delete the incomplete release and rerun, or publish a new version/tag." >&2
+              exit 1
+            fi
+
+            gh release upload "${RELEASE_TAG}" "${missing_asset_paths[@]}" --clobber
+            exit 0
+          fi
+
+          gh release create "${RELEASE_TAG}" "${asset_paths[@]}" \
+            --title "Kayle ID ${APP_VERSION}" \
+            --notes-file "${notes_path}" \
+            --verify-tag
