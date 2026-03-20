@@ -81,7 +81,7 @@ jobs:
 
       - name: Deploy platform worker
         working-directory: apps/platform
-        run: bun run deploy
+        run: bun run build && bun run deploy
 
   deploy-verify:
     name: Deploy Verify
@@ -101,4 +101,4 @@ jobs:
 
       - name: Deploy verify worker
         working-directory: apps/verify
-        run: bun run deploy
+        run: bun run build && bun run deploy
