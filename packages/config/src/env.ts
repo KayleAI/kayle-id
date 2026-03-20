@@ -31,7 +31,6 @@ export const env = createEnv({
 
   server: {
     KAYLE_INTERNAL_TOKEN: z.string().min(1),
-    DATABASE_URL: z.string().min(1),
     AUTH_SECRET: z.string().min(1),
 
     // Google OAuth
