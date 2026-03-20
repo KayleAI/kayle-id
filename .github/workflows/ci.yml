@@ -83,35 +83,96 @@ jobs:
 
       - name: Start API, run tests, and stop
         run: |
-          set -u
+          set -euo pipefail
 
-          cd infra/face-matcher
-          bun run test:dev > /tmp/face-matcher.log 2>&1 &
+          cleanup() {
+            local exit_code="$1"
+            trap - EXIT
+            set +e
+
+            if [[ "${exit_code}" -ne 0 ]]; then
+              echo "Face matcher log:"
+              cat /tmp/face-matcher.log || true
+              echo "API log:"
+              cat /tmp/api.log || true
+            fi
+
+            if [[ -n "${SERVER_PID:-}" ]]; then
+              echo "Stopping API server with PID ${SERVER_PID}"
+              kill "${SERVER_PID}" 2>/dev/null || true
+              wait "${SERVER_PID}" 2>/dev/null || true
+            fi
+
+            if [[ -n "${MATCHER_PID:-}" ]]; then
+              echo "Stopping face matcher with PID ${MATCHER_PID}"
+              kill "${MATCHER_PID}" 2>/dev/null || true
+              wait "${MATCHER_PID}" 2>/dev/null || true
+            fi
+
+            exit "${exit_code}"
+          }
+
+          wait_for_matcher() {
+            local start_time
+            start_time="$(date +%s)"
+
+            while true; do
+              if ! kill -0 "${MATCHER_PID}" 2>/dev/null; then
+                echo "Face matcher exited before becoming healthy."
+                return 1
+              fi
+
+              if response="$(curl -fsS http://127.0.0.1:8788/health 2>/dev/null)" && \
+                python3 -c 'import json,sys; payload=json.loads(sys.stdin.read()); raise SystemExit(0 if payload.get("data", {}).get("ready") is True else 1)' <<<"${response}"; then
+                return 0
+              fi
+
+              if [[ "$(($(date +%s) - start_time))" -ge 30 ]]; then
+                echo "Face matcher did not become healthy within 30 seconds."
+                return 1
+              fi
+
+              sleep 1
+            done
+          }
+
+          wait_for_api() {
+            local start_time
+            start_time="$(date +%s)"
+
+            while true; do
+              if ! kill -0 "${SERVER_PID}" 2>/dev/null; then
+                echo "API server exited before becoming ready."
+                return 1
+              fi
+
+              if curl -fsS http://127.0.0.1:8787/ >/dev/null 2>&1; then
+                return 0
+              fi
+
+              if [[ "$(($(date +%s) - start_time))" -ge 30 ]]; then
+                echo "API server did not become ready within 30 seconds."
+                return 1
+              fi
+
+              sleep 1
+            done
+          }
+
+          trap 'cleanup $?' EXIT
+
+          bun --cwd infra/face-matcher run test:dev > /tmp/face-matcher.log 2>&1 &
           MATCHER_PID=$!
-          echo "Face matcher started with PID $MATCHER_PID"
+          echo "Face matcher started with PID ${MATCHER_PID}"
+          wait_for_matcher
 
-          sleep 10
-
-          cd ../../apps/api
-
-          bun run test:setup
-          bun run test:dev > /tmp/api.log 2>&1 &
+          bun --cwd apps/api run test:setup
+          bun --cwd apps/api run test:dev > /tmp/api.log 2>&1 &
           SERVER_PID=$!
-          echo "API server started with PID $SERVER_PID"
+          echo "API server started with PID ${SERVER_PID}"
+          wait_for_api
 
-          sleep 10
-
-          bun test
-
-          echo "Stopping face matcher with PID $MATCHER_PID"
-          kill $MATCHER_PID || true
-          wait $MATCHER_PID 2>/dev/null || true
-          echo "Face matcher stopped"
-
-          echo "Stopping API server with PID $SERVER_PID"
-          kill $SERVER_PID || true
-          wait $SERVER_PID 2>/dev/null || true
-          echo "API server stopped"
+          bun --cwd apps/api test
 
   test-web:
     name: Test Web
