@@ -3,6 +3,7 @@
   "name": "kayle-id-platform",
   "compatibility_date": "2026-03-20",
   "preview_urls": false,
+  "workers_dev": false,
   "compatibility_flags": ["nodejs_compat"],
   "main": "src/server-entry.ts",
   "observability": {
