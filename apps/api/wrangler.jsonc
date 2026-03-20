@@ -19,6 +19,9 @@
     "directory": "./public",
     "run_worker_first": true
   },
+  "vars": {
+    "PUBLIC_AUTH_URL": "https://kayle.id"
+  },
   "services": [
     {
       "binding": "FACE_MATCHER",
