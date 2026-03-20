@@ -75,6 +75,24 @@ export const auth = betterAuth({
     database: {
       generateId: "uuid",
     },
+    crossSubDomainCookies: {
+      enabled: false,
+    },
+    defaultCookieAttributes: {
+      secure: true,
+      httpOnly: true,
+      sameSite: "strict",
+      partitioned: true,
+      path: "/",
+    },
+    ipAddress: {
+      ipAddressHeaders: [
+        "x-forwarded-client-ip",
+        "cf-connecting-ip",
+        "x-real-ip",
+        "x-forwarded-for",
+      ],
+    },
   },
   telemetry: {
     debug: false,
@@ -98,6 +116,14 @@ export const auth = betterAuth({
   },
   verification: {
     modelName: "auth_verifications",
+  },
+  socialProviders: {
+    google: {
+      clientId: env.GOOGLE_CLIENT_ID,
+      clientSecret: env.GOOGLE_CLIENT_SECRET,
+      scope: ["profile", "email", "openid"],
+      redirectURI: `${env.PUBLIC_AUTH_URL}/api/auth/callback/google`,
+    },
   },
   /*...(process.env.NODE_ENV === "production"
     ? // Only enable secondary storage in production

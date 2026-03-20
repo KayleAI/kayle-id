@@ -18,6 +18,8 @@
     "db:stop": "docker compose down",
     "db:logs": "docker compose logs -f",
     "db:clean": "docker compose down -v && docker volume rm kayle-id_kayle-id-data",
+    "auth:format": "bunx ultracite fix ./packages/database/src/schema/auth.ts",
+    "auth:generate": "bunx @better-auth/cli@latest generate --config ./packages/auth/src/server.ts --output ./packages/database/src/schema/auth.ts --yes && bun run auth:format",
     "prepare": "husky"
   },
   "devDependencies": {

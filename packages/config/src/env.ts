@@ -33,8 +33,14 @@ export const env = createEnv({
     KAYLE_INTERNAL_TOKEN: z.string().min(1),
     DATABASE_URL: z.string().min(1),
     AUTH_SECRET: z.string().min(1),
-    REDIS_URL: z.string().min(1),
-    REDIS_TOKEN: z.string().min(1),
+
+    // Google OAuth
+    GOOGLE_CLIENT_ID: z.string().min(1),
+    GOOGLE_CLIENT_SECRET: z.string().min(1),
+
+    // For Redis
+    REDIS_URL: z.string().min(1).optional(),
+    REDIS_TOKEN: z.string().min(1).optional(),
 
     // Cloudflare Specific Variables
     STORAGE: z.custom<R2Bucket>(),
@@ -54,6 +60,4 @@ export const env = createEnv({
   },
 
   emptyStringAsUndefined: true,
-
-  skipValidation: (process.env.NODE_ENV as string) !== "test-environment",
 });
