@@ -10,10 +10,13 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as MarketingRouteImport } from './routes/_marketing'
+import { Route as LegalRouteImport } from './routes/_legal'
 import { Route as AuthRouteImport } from './routes/_auth'
 import { Route as AppRouteImport } from './routes/_app'
 import { Route as MarketingIndexRouteImport } from './routes/_marketing/index'
 import { Route as MarketingDemoRouteImport } from './routes/_marketing/demo'
+import { Route as LegalTermsRouteImport } from './routes/_legal/terms'
+import { Route as LegalPrivacyRouteImport } from './routes/_legal/privacy'
 import { Route as AuthVerifyRouteImport } from './routes/_auth/verify'
 import { Route as AuthSignOutRouteImport } from './routes/_auth/sign-out'
 import { Route as AuthSignInRouteImport } from './routes/_auth/sign-in'
@@ -36,6 +39,10 @@ const MarketingRoute = MarketingRouteImport.update({
   id: '/_marketing',
   getParentRoute: () => rootRouteImport,
 } as any)
+const LegalRoute = LegalRouteImport.update({
+  id: '/_legal',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AuthRoute = AuthRouteImport.update({
   id: '/_auth',
   getParentRoute: () => rootRouteImport,
@@ -53,6 +60,16 @@ const MarketingDemoRoute = MarketingDemoRouteImport.update({
   id: '/demo',
   path: '/demo',
   getParentRoute: () => MarketingRoute,
+} as any)
+const LegalTermsRoute = LegalTermsRouteImport.update({
+  id: '/terms',
+  path: '/terms',
+  getParentRoute: () => LegalRoute,
+} as any)
+const LegalPrivacyRoute = LegalPrivacyRouteImport.update({
+  id: '/privacy',
+  path: '/privacy',
+  getParentRoute: () => LegalRoute,
 } as any)
 const AuthVerifyRoute = AuthVerifyRouteImport.update({
   id: '/verify',
@@ -147,6 +164,8 @@ export interface FileRoutesByFullPath {
   '/sign-in': typeof AuthSignInRoute
   '/sign-out': typeof AuthSignOutRoute
   '/verify': typeof AuthVerifyRoute
+  '/privacy': typeof LegalPrivacyRoute
+  '/terms': typeof LegalTermsRoute
   '/demo': typeof MarketingDemoRoute
   '/': typeof MarketingIndexRoute
   '/api-keys/$key': typeof AppApiKeysKeyRoute
@@ -168,6 +187,8 @@ export interface FileRoutesByTo {
   '/sign-in': typeof AuthSignInRoute
   '/sign-out': typeof AuthSignOutRoute
   '/verify': typeof AuthVerifyRoute
+  '/privacy': typeof LegalPrivacyRoute
+  '/terms': typeof LegalTermsRoute
   '/demo': typeof MarketingDemoRoute
   '/': typeof MarketingIndexRoute
   '/api-keys/$key': typeof AppApiKeysKeyRoute
@@ -188,11 +209,14 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/_app': typeof AppRouteWithChildren
   '/_auth': typeof AuthRouteWithChildren
+  '/_legal': typeof LegalRouteWithChildren
   '/_marketing': typeof MarketingRouteWithChildren
   '/_app/dashboard': typeof AppDashboardRoute
   '/_auth/sign-in': typeof AuthSignInRoute
   '/_auth/sign-out': typeof AuthSignOutRoute
   '/_auth/verify': typeof AuthVerifyRoute
+  '/_legal/privacy': typeof LegalPrivacyRoute
+  '/_legal/terms': typeof LegalTermsRoute
   '/_marketing/demo': typeof MarketingDemoRoute
   '/_marketing/': typeof MarketingIndexRoute
   '/_app/api-keys/$key': typeof AppApiKeysKeyRoute
@@ -216,6 +240,8 @@ export interface FileRouteTypes {
     | '/sign-in'
     | '/sign-out'
     | '/verify'
+    | '/privacy'
+    | '/terms'
     | '/demo'
     | '/'
     | '/api-keys/$key'
@@ -237,6 +263,8 @@ export interface FileRouteTypes {
     | '/sign-in'
     | '/sign-out'
     | '/verify'
+    | '/privacy'
+    | '/terms'
     | '/demo'
     | '/'
     | '/api-keys/$key'
@@ -256,11 +284,14 @@ export interface FileRouteTypes {
     | '__root__'
     | '/_app'
     | '/_auth'
+    | '/_legal'
     | '/_marketing'
     | '/_app/dashboard'
     | '/_auth/sign-in'
     | '/_auth/sign-out'
     | '/_auth/verify'
+    | '/_legal/privacy'
+    | '/_legal/terms'
     | '/_marketing/demo'
     | '/_marketing/'
     | '/_app/api-keys/$key'
@@ -281,6 +312,7 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   AppRoute: typeof AppRouteWithChildren
   AuthRoute: typeof AuthRouteWithChildren
+  LegalRoute: typeof LegalRouteWithChildren
   MarketingRoute: typeof MarketingRouteWithChildren
   ApiApiAuthSplatRoute: typeof ApiApiAuthSplatRoute
   ApiApiDemoSplatRoute: typeof ApiApiDemoSplatRoute
@@ -294,6 +326,13 @@ declare module '@tanstack/react-router' {
       path: ''
       fullPath: ''
       preLoaderRoute: typeof MarketingRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/_legal': {
+      id: '/_legal'
+      path: ''
+      fullPath: ''
+      preLoaderRoute: typeof LegalRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/_auth': {
@@ -323,6 +362,20 @@ declare module '@tanstack/react-router' {
       fullPath: '/demo'
       preLoaderRoute: typeof MarketingDemoRouteImport
       parentRoute: typeof MarketingRoute
+    }
+    '/_legal/terms': {
+      id: '/_legal/terms'
+      path: '/terms'
+      fullPath: '/terms'
+      preLoaderRoute: typeof LegalTermsRouteImport
+      parentRoute: typeof LegalRoute
+    }
+    '/_legal/privacy': {
+      id: '/_legal/privacy'
+      path: '/privacy'
+      fullPath: '/privacy'
+      preLoaderRoute: typeof LegalPrivacyRouteImport
+      parentRoute: typeof LegalRoute
     }
     '/_auth/verify': {
       id: '/_auth/verify'
@@ -490,6 +543,18 @@ const AuthRouteChildren: AuthRouteChildren = {
 
 const AuthRouteWithChildren = AuthRoute._addFileChildren(AuthRouteChildren)
 
+interface LegalRouteChildren {
+  LegalPrivacyRoute: typeof LegalPrivacyRoute
+  LegalTermsRoute: typeof LegalTermsRoute
+}
+
+const LegalRouteChildren: LegalRouteChildren = {
+  LegalPrivacyRoute: LegalPrivacyRoute,
+  LegalTermsRoute: LegalTermsRoute,
+}
+
+const LegalRouteWithChildren = LegalRoute._addFileChildren(LegalRouteChildren)
+
 interface MarketingRouteChildren {
   MarketingDemoRoute: typeof MarketingDemoRoute
   MarketingIndexRoute: typeof MarketingIndexRoute
@@ -507,6 +572,7 @@ const MarketingRouteWithChildren = MarketingRoute._addFileChildren(
 const rootRouteChildren: RootRouteChildren = {
   AppRoute: AppRouteWithChildren,
   AuthRoute: AuthRouteWithChildren,
+  LegalRoute: LegalRouteWithChildren,
   MarketingRoute: MarketingRouteWithChildren,
   ApiApiAuthSplatRoute: ApiApiAuthSplatRoute,
   ApiApiDemoSplatRoute: ApiApiDemoSplatRoute,

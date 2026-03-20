@@ -135,11 +135,6 @@ export function Footer({ className }: { readonly className?: string }) {
             </a>
           </div>
         </div>
-        <div className="mask-[linear-gradient(to_bottom,white_0%,transparent)] select-none overflow-hidden">
-          <div className="-ml-2 -mb-6 whitespace-nowrap text-9xl text-transparent leading-[100%] [text-shadow:1px_1px_1px_rgba(255,255,255,.1),-1px_-1px_1px_rgba(0,0,0,.5),-40px_-40px_0px_rgba(0,0,0,0)] sm:text-[12rem]">
-            <div>Kayle ID.</div>
-          </div>
-        </div>
       </div>
     </footer>
   );

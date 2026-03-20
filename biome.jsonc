@@ -5,6 +5,7 @@
     "includes": [
       "!bun.lock",
       "!**/.wrangler",
+      "!**/.wrangler-out",
       "!**/cloudflare-env.d.ts",
       "!**/routeTree.gen.ts"
     ]

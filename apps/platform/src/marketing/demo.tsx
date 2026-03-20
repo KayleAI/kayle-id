@@ -23,6 +23,7 @@ import {
   useState,
 } from "react";
 import { toast } from "sonner";
+import { PageHeading } from "@/components/page-heading";
 import {
   buildRequestedShareFields,
   demoClaimSections,
@@ -408,7 +409,7 @@ function DemoStepPanel({
     // biome-ignore lint/a11y: intentional
     <section
       className={cn(
-        "scroll-mt-[120px] px-4 py-4 sm:px-5 sm:py-5",
+        "scroll-mt-[240px] px-4 py-4 sm:px-5 sm:py-5",
         isLocked && "pointer-events-none blur-[2px]"
       )}
       id={getDemoStepSectionId(stepId)}
@@ -1080,11 +1081,20 @@ function useDemoStepProgression({
 
 function useDemoStepScroll({ openStep }: { openStep: DemoStepId }) {
   const hasMountedRef = useRef(false);
+  const hasProgressedRef = useRef(false);
 
   useEffect(() => {
     if (!hasMountedRef.current) {
       hasMountedRef.current = true;
       return;
+    }
+
+    // This is to prevent the scroll from happening on page load.
+    if (!hasProgressedRef.current && openStep === "step-1") {
+      return;
+    }
+    if (openStep === "step-2") {
+      hasProgressedRef.current = true;
     }
 
     const panel = document.getElementById(getDemoStepSectionId(openStep));
@@ -1698,17 +1708,10 @@ export function Demo() {
   return (
     <main className="relative min-h-screen overflow-hidden">
       <div className="relative mx-auto max-w-7xl px-6 py-24 lg:px-8">
-        <section className="grid gap-10 xl:grid-cols-[1.1fr_0.9fr] xl:items-end">
-          <div className="max-w-4xl">
-            <h1 className="mt-6 max-w-5xl text-balance font-light text-6xl text-neutral-950 tracking-tighter sm:text-7xl">
-              See how Kayle ID works with a demo.
-            </h1>
-            <p className="mt-6 max-w-3xl text-balance text-neutral-600 text-xl leading-relaxed">
-              Test Kayle ID in your local browser — no data is stored as part of
-              our privacy guarantee.
-            </p>
-          </div>
-        </section>
+        <PageHeading
+          description="Test Kayle ID in your local browser — no data is stored as part of our privacy guarantee."
+          title="See how Kayle ID works with a demo."
+        />
 
         <div className="mt-20 space-y-8" id="demo-flow">
           <DemoErrorAlert onReset={handleReset} runError={runError} />

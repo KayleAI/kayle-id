@@ -28,7 +28,7 @@ export function PageHeading({
           {title}
         </h1>
         {description && (
-          <p className="mb-6 text-balance font-medium text-2xl text-neutral-600">
+          <p className="mb-12 text-balance font-medium text-2xl text-neutral-600">
             {description}
           </p>
         )}
