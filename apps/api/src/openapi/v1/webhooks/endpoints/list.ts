@@ -12,12 +12,6 @@ export const listWebhookEndpoints = createRoute({
   path: "/",
   request: {
     query: z.object({
-      environment: z
-        .enum(["live", "test"])
-        .optional()
-        .describe(
-          "Filter webhook endpoints by environment. If omitted, endpoints from all environments are returned."
-        ),
       enabled: booleanQueryParam.describe(
         "Filter webhook endpoints by enabled state. If omitted, both enabled and disabled endpoints are returned."
       ),

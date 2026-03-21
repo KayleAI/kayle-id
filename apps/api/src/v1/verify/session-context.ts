@@ -1,7 +1,7 @@
 import type { VerifyShareRequest } from "@kayle-id/capnp/verify-codec";
 import { db } from "@kayle-id/database/drizzle";
 import { verification_sessions } from "@kayle-id/database/schema/core";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { expireVerificationSessionIfNeeded } from "@/v1/sessions/repo/session-repo";
 import { createShareRequestPayload } from "./share-manifest";
 import { isTerminalSessionStatus } from "./status";
@@ -26,7 +26,12 @@ export async function loadActiveVerifySession(sessionId: string): Promise<
   const [sessionRow] = await db
     .select()
     .from(verification_sessions)
-    .where(eq(verification_sessions.id, sessionId))
+    .where(
+      and(
+        eq(verification_sessions.id, sessionId),
+        eq(verification_sessions.environment, "live")
+      )
+    )
     .limit(1);
 
   if (!sessionRow) {

@@ -39,7 +39,6 @@ export function mapSessionRowToResponse({
 }) {
   return {
     id: row.id,
-    environment: row.environment,
     status: row.status,
     contract_version: row.contractVersion,
     share_fields: row.shareFields as ShareFields,

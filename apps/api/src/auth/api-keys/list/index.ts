@@ -42,6 +42,7 @@ listApiKeys.openapi(internalListApiKeys, async (c) => {
   try {
     const where = and(
       eq(api_keys.organizationId, organizationId),
+      eq(api_keys.environment, "live"),
       ...(query.starting_after ? [gt(api_keys.id, query.starting_after)] : [])
     );
 
@@ -50,7 +51,6 @@ listApiKeys.openapi(internalListApiKeys, async (c) => {
         id: api_keys.id,
         name: api_keys.name,
         enabled: api_keys.enabled,
-        environment: api_keys.environment,
         permissions: api_keys.permissions,
         metadata: api_keys.metadata,
         createdAt: api_keys.createdAt,

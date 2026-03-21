@@ -36,9 +36,7 @@ webhookDeliveries.openapi(listWebhookDeliveries, async (c) => {
     .where(
       and(
         eq(events.organizationId, organizationId),
-        ...(query.environment
-          ? [eq(events.environment, query.environment)]
-          : []),
+        eq(events.environment, "live"),
         ...(query.status ? [eq(webhook_deliveries.status, query.status)] : []),
         ...(query.endpoint_id
           ? [eq(webhook_deliveries.webhookEndpointId, query.endpoint_id)]

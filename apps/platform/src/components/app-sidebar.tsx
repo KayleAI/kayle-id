@@ -37,7 +37,6 @@ import { useQueryClient } from "@tanstack/react-query";
 import { Link, useRouterState } from "@tanstack/react-router";
 import {
   ChevronsUpDownIcon,
-  CodeSquare,
   EllipsisVerticalIcon,
   Key,
   LayoutDashboard,
@@ -67,11 +66,6 @@ const navItems = [
     title: "Webhooks",
     url: "/webhooks",
     icon: WebhookIcon,
-  },
-  {
-    title: "Sandbox",
-    url: "/sandbox",
-    icon: CodeSquare,
   },
 ];
 

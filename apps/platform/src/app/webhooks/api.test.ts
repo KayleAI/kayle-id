@@ -73,13 +73,12 @@ describe("webhook api helpers", () => {
     globalThis.fetch = fetchMock as typeof fetch;
 
     await listWebhookEndpoints({
-      environment: "live",
       limit: 10,
       startingAfter: "whe_123",
     });
 
     expect(fetchMock).toHaveBeenCalledWith(
-      "/api/webhooks/endpoints?environment=live&limit=10&starting_after=whe_123",
+      "/api/webhooks/endpoints?limit=10&starting_after=whe_123",
       expect.objectContaining({
         credentials: "include",
         method: "GET",
@@ -174,7 +173,6 @@ describe("webhook api helpers", () => {
           endpoint: {
             id: "whe_123",
             organization_id: "org_123",
-            environment: "live",
             name: "Primary production webhook",
             url: "https://example.com/webhooks/kayle",
             enabled: true,
@@ -193,7 +191,6 @@ describe("webhook api helpers", () => {
 
     await createWebhookEndpoint({
       enabled: true,
-      environment: "live",
       name: "Primary production webhook",
       subscribedEventTypes: ["verification.attempt.succeeded"],
       url: "https://example.com/webhooks/kayle",
@@ -211,7 +208,6 @@ describe("webhook api helpers", () => {
     const [, requestOptions] = fetchMock.mock.calls[0] ?? [];
     expect(JSON.parse(String(requestOptions?.body))).toEqual({
       enabled: true,
-      environment: "live",
       name: "Primary production webhook",
       subscribed_event_types: ["verification.attempt.succeeded"],
       url: "https://example.com/webhooks/kayle",

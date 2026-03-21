@@ -2,7 +2,7 @@ export type SessionsAppEnv = {
   Bindings: CloudflareBindings;
   Variables: {
     organizationId: string;
-    environment: "live" | "test" | "either";
+    environment: "live";
     type: "api" | "session";
   };
 };

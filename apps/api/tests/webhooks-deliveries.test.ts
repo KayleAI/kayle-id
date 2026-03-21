@@ -61,9 +61,9 @@ async function seedDelivery(): Promise<string> {
   const [endpoint] = await db
     .insert(webhook_endpoints)
     .values({
-      id: `whe_test_route_${crypto.randomUUID()}`,
+      id: `whe_live_route_${crypto.randomUUID()}`,
       organizationId: TEST_DATA?.organizationId ?? "",
-      environment: "test",
+      environment: "live",
       signingSecretCiphertext,
       subscribedEventTypes: ["verification.attempt.succeeded"],
       url: "https://example.com/webhooks/deliveries",
@@ -71,7 +71,7 @@ async function seedDelivery(): Promise<string> {
     .returning();
 
   await db.insert(webhook_encryption_keys).values({
-    id: `whk_test_route_${crypto.randomUUID()}`,
+    id: `whk_live_route_${crypto.randomUUID()}`,
     webhookEndpointId: endpoint.id,
     keyId: "rsa-key-route",
     algorithm: "RSA-OAEP-256",
@@ -82,18 +82,18 @@ async function seedDelivery(): Promise<string> {
   const [event] = await db
     .insert(events)
     .values({
-      id: `evt_test_route_${crypto.randomUUID()}`,
+      id: `evt_live_route_${crypto.randomUUID()}`,
       organizationId: TEST_DATA?.organizationId ?? "",
-      environment: "test",
+      environment: "live",
       type: "verification.attempt.succeeded",
-      triggerId: `va_test_route_${crypto.randomUUID()}`,
+      triggerId: `va_live_route_${crypto.randomUUID()}`,
       triggerType: "verification_attempt",
     })
     .returning();
 
   const [deliveryId] = await createWebhookDeliveriesForVerificationSucceeded({
-    attemptId: `va_test_delivery_${crypto.randomUUID()}`,
-    environment: "test",
+    attemptId: `va_live_delivery_${crypto.randomUUID()}`,
+    environment: "live",
     eventId: event.id,
     manifest: {
       claims: {
@@ -101,7 +101,7 @@ async function seedDelivery(): Promise<string> {
       },
       contractVersion: 1,
       selectedFieldKeys: ["family_name"],
-      sessionId: `vs_test_delivery_${crypto.randomUUID()}`,
+      sessionId: `vs_live_delivery_${crypto.randomUUID()}`,
     },
     organizationId: TEST_DATA?.organizationId ?? "",
   });
@@ -117,15 +117,12 @@ describe("/v1/webhooks/deliveries", () => {
   test("lists deliveries and retries a delivery", async () => {
     const deliveryId = await seedDelivery();
 
-    const listResponse = await app.request(
-      "/v1/webhooks/deliveries?environment=test&limit=10",
-      {
-        headers: {
-          Authorization: `Bearer ${TEST_DATA?.apiKey}`,
-        },
-        method: "GET",
-      }
-    );
+    const listResponse = await app.request("/v1/webhooks/deliveries?limit=10", {
+      headers: {
+        Authorization: `Bearer ${TEST_DATA?.apiKey}`,
+      },
+      method: "GET",
+    });
 
     expect(listResponse.status).toBe(200);
 

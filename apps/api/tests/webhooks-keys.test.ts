@@ -18,7 +18,6 @@ afterAll(async () => {
 async function createEndpoint(): Promise<string> {
   const response = await app.request("/v1/webhooks/endpoints", {
     body: JSON.stringify({
-      environment: "test",
       url: `https://example.com/webhooks/keys/${crypto.randomUUID()}`,
     }),
     headers: {

@@ -29,7 +29,8 @@ replayEvent.openapi(replayWebhookEvent, async (c) => {
     .where(
       and(
         eq(events.id, params.event_id),
-        eq(events.organizationId, organizationId)
+        eq(events.organizationId, organizationId),
+        eq(events.environment, "live")
       )
     )
     .limit(1);

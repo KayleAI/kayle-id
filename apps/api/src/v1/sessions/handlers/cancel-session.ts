@@ -14,6 +14,7 @@ export const cancelSessionHandler: RouteHandler<
   const params = c.req.valid("param");
 
   const row = await getVerificationSessionById({
+    environment: "live",
     id: params.id,
     organizationId,
   });

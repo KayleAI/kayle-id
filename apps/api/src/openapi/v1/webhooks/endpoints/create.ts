@@ -25,12 +25,6 @@ export const createWebhookEndpoint = createRoute({
                 .url()
                 .describe("The URL of the webhook endpoint.")
                 .openapi({ example: "https://example.com/webhooks/kayle" }),
-              environment: z
-                .enum(["live", "test"])
-                .optional()
-                .describe(
-                  'The environment for the endpoint. Defaults to "live".'
-                ),
               enabled: z
                 .boolean()
                 .optional()

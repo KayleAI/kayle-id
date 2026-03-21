@@ -11,12 +11,6 @@ export const listWebhookDeliveries = createRoute({
   path: "/",
   request: {
     query: z.object({
-      environment: z
-        .enum(["live", "test"])
-        .optional()
-        .describe(
-          "Filter webhook deliveries by environment of the underlying event."
-        ),
       status: z
         .enum(["pending", "delivering", "succeeded", "failed"])
         .optional()

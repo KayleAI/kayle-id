@@ -60,7 +60,7 @@ function PrivacyPage() {
                 </h3>
                 <LegalList
                   items={[
-                    "Verification session data such as session ID, requested share fields, human-readable sharing reasons, redirect URL, environment, timestamps, and terminal status.",
+                    "Verification session data such as session ID, requested share fields, human-readable sharing reasons, redirect URL, timestamps, and terminal status.",
                     "Verification attempt data such as attempt ID, lifecycle phase, app version, hashed handoff token material, hashed device identifier, failure code, completion timestamp, and risk score.",
                     "Raw verification inputs processed during an active session, including the passport MRZ scan used to unlock the chip, passport NFC data groups needed for verification, the passport chip portrait, and captured selfie images.",
                     "User sharing choices, including which optional claims the user selected and which required claims were mandated by the requesting platform.",

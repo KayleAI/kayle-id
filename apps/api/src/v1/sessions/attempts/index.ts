@@ -44,6 +44,7 @@ sessionAttempts.openapi(listSessionAttempts, async (c) => {
 
   const where = and(
     eq(verification_sessions.organizationId, organizationId),
+    eq(verification_sessions.environment, "live"),
     ...(query.session_id
       ? [eq(verification_sessions.id, query.session_id)]
       : []),

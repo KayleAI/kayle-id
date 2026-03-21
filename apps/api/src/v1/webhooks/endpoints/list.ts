@@ -30,9 +30,7 @@ listAndCreateEndpoints.openapi(listWebhookEndpoints, async (c) => {
 
   const where = and(
     eq(webhook_endpoints.organizationId, organizationId),
-    ...(query.environment
-      ? [eq(webhook_endpoints.environment, query.environment)]
-      : []),
+    eq(webhook_endpoints.environment, "live"),
     ...(typeof query.enabled === "boolean"
       ? [eq(webhook_endpoints.enabled, query.enabled)]
       : []),
@@ -74,7 +72,7 @@ listAndCreateEndpoints.openapi(createWebhookEndpoint, async (c) => {
   const organizationId = c.get("organizationId");
   const body = c.req.valid("json");
 
-  const environment: Environment = (body.environment as Environment) ?? "live";
+  const environment: Environment = "live";
   const enabled = body.enabled ?? true;
   const subscribedEventTypes = body.subscribed_event_types ?? [
     ...SUPPORTED_WEBHOOK_EVENT_TYPES,

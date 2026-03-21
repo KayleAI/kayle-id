@@ -34,7 +34,7 @@ const sessionMiddleware = createMiddleware<{
 const authenticate = createMiddleware<{
   Bindings: CloudflareBindings;
   Variables: {
-    environment: "live" | "test" | "either";
+    environment: "live";
     type: "api" | "session";
     organizationId?: string;
   };
@@ -62,12 +62,12 @@ const authenticate = createMiddleware<{
       .where(eq(api_keys.keyHash, keyHash))
       .limit(1);
 
-    if (!organizationId) {
+    if (!(organizationId && environment === "live")) {
       return unauthorized(c);
     }
 
     c.set("type", "api");
-    c.set("environment", environment);
+    c.set("environment", "live");
     c.set("organizationId", organizationId);
 
     return await next();
@@ -85,7 +85,7 @@ const authenticate = createMiddleware<{
   }
 
   c.set("type", "session");
-  c.set("environment", "either");
+  c.set("environment", "live");
   c.set("organizationId", response.session?.activeOrganizationId);
   await next();
 });

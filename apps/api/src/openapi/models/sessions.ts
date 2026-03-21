@@ -60,9 +60,6 @@ export const Attempt = z.object({
 export const Session = z
   .object({
     id: z.string().describe("The ID of the verification session"),
-    environment: z
-      .enum(["live", "test"])
-      .describe("The environment this verification session belongs to."),
     status: z
       .enum(["created", "in_progress", "completed", "expired", "cancelled"])
       .describe("The status of the verification session"),
@@ -111,7 +108,6 @@ export const Session = z
     examples: [
       {
         id: "vs_live_mza7vecksrtyfw193ekcvl5vnws3bt1lz96buu3iw7zidckf8dga2zx2echb3t16",
-        environment: "live",
         status: "created",
         contract_version: 1,
         share_fields: {

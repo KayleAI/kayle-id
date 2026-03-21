@@ -74,10 +74,6 @@ export function getDemoOrgSlug(bindings: DemoBindings): string {
   return bindings.KAYLE_DEMO_ORG_SLUG?.trim() || "kayle";
 }
 
-function inferApiKeyEnvironment(apiKey: string): "live" | "test" {
-  return apiKey.startsWith("kk_test_") ? "test" : "live";
-}
-
 async function parseEnvelope<T>(response: Response): Promise<ApiEnvelope<T>> {
   try {
     return (await response.json()) as ApiEnvelope<T>;
@@ -168,7 +164,6 @@ export async function createDemoWebhookEndpoint({
   runId: string;
   token: string;
 }): Promise<{ endpointId: string; signingSecret: string }> {
-  const environment = inferApiKeyEnvironment(getDemoApiKey(bindings));
   const data = await requestApi<{
     endpoint: {
       id: string;
@@ -181,7 +176,6 @@ export async function createDemoWebhookEndpoint({
     useAuth: true,
     body: {
       url: buildDemoWebhookUrl({ request, runId, token }),
-      environment,
       enabled: true,
       subscribed_event_types: ["verification.attempt.succeeded"],
     },

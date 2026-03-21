@@ -61,7 +61,6 @@ const setup = async (): Promise<TestData> => {
 
   const { apiKey, id: apiKeyId } = await createApiKey({
     name: "Test API Key",
-    environment: "test",
     organizationId,
   });
 

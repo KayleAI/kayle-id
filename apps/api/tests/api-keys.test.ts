@@ -20,7 +20,6 @@ type ApiKeysRouteTestData = SessionAuthTestData & {
 type ApiKeysListResponse = {
   data: Array<{
     enabled: boolean;
-    environment: "live" | "test";
     id: string;
     name: string;
   }>;
@@ -92,7 +91,6 @@ beforeAll(async () => {
   });
   const organizationId = requireOrganizationId(sessionTestData.organizationId);
   const { apiKey, id: apiKeyId } = await createApiKey({
-    environment: "test",
     name: "Test API Key",
     organizationId,
   });
@@ -135,7 +133,6 @@ describe("API Key Endpoints", () => {
     expect(payload.data).toContainEqual(
       expect.objectContaining({
         enabled: true,
-        environment: "test",
         id: testData.apiKeyId,
         name: "Test API Key",
       })
@@ -147,7 +144,6 @@ describe("API Key Endpoints", () => {
     const organizationId = requireOrganizationId(testData.organizationId);
     const response = await app.request("/v1/auth/api-keys", {
       body: JSON.stringify({
-        environment: "test",
         name: "Created API Key",
       }),
       headers: createJsonHeaders(testData.sessionCookie),
@@ -160,7 +156,7 @@ describe("API Key Endpoints", () => {
 
     expect(payload.error).toBeNull();
     expect(payload.data?.id).toBeString();
-    expect(payload.data?.key?.startsWith("kk_test_")).toBeTrue();
+    expect(payload.data?.key?.startsWith("kk_live_")).toBeTrue();
 
     const verification = await verifyApiKey(payload.data?.key ?? "");
     expect(verification).toEqual({
@@ -173,7 +169,6 @@ describe("API Key Endpoints", () => {
     const testData = requireTestData();
     const organizationId = requireOrganizationId(testData.organizationId);
     const { apiKey, id } = await createApiKey({
-      environment: "test",
       name: "Before Update",
       organizationId,
     });
@@ -221,7 +216,6 @@ describe("API Key Endpoints", () => {
     const testData = requireTestData();
     const organizationId = requireOrganizationId(testData.organizationId);
     const { apiKey, id } = await createApiKey({
-      environment: "test",
       name: "Delete Me",
       organizationId,
     });
@@ -280,7 +274,6 @@ describe("API Key Endpoints", () => {
     const testData = requireForbiddenTestData();
     const organizationId = requireOrganizationId(testData.organizationId);
     const { id } = await createApiKey({
-      environment: "test",
       name: "Forbidden API Key",
       organizationId,
     });
@@ -301,7 +294,6 @@ describe("API Key Endpoints", () => {
       }),
       app.request("/v1/auth/api-keys", {
         body: JSON.stringify({
-          environment: "test",
           name: "Forbidden Create",
         }),
         headers: createJsonHeaders(testData.sessionCookie),

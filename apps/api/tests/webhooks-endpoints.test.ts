@@ -20,7 +20,6 @@ describe("/v1/webhooks/endpoints", () => {
   test("creates an endpoint, returns the signing secret once, and persists subscriptions", async () => {
     const response = await app.request("/v1/webhooks/endpoints", {
       body: JSON.stringify({
-        environment: "test",
         name: "Primary verification webhook",
         subscribed_event_types: ["verification.attempt.succeeded"],
         url: "https://example.com/webhooks/kayle",
@@ -86,7 +85,6 @@ describe("/v1/webhooks/endpoints", () => {
   test("rotates the signing secret for an endpoint", async () => {
     const createResponse = await app.request("/v1/webhooks/endpoints", {
       body: JSON.stringify({
-        environment: "test",
         url: "https://example.com/webhooks/kayle/rotate",
       }),
       headers: {
@@ -137,7 +135,6 @@ describe("/v1/webhooks/endpoints", () => {
   test("reveals the current signing secret for an endpoint", async () => {
     const createResponse = await app.request("/v1/webhooks/endpoints", {
       body: JSON.stringify({
-        environment: "test",
         url: "https://example.com/webhooks/kayle/reveal",
       }),
       headers: {
@@ -189,7 +186,6 @@ describe("/v1/webhooks/endpoints", () => {
   test("returns 500 when the signing secret cannot be decrypted", async () => {
     const createResponse = await app.request("/v1/webhooks/endpoints", {
       body: JSON.stringify({
-        environment: "test",
         url: "https://example.com/webhooks/kayle/broken-secret",
       }),
       headers: {
@@ -230,7 +226,6 @@ describe("/v1/webhooks/endpoints", () => {
   test("updates endpoint name, url, enabled state, and subscriptions", async () => {
     const createResponse = await app.request("/v1/webhooks/endpoints", {
       body: JSON.stringify({
-        environment: "test",
         name: "Before rename",
         subscribed_event_types: ["verification.attempt.succeeded"],
         url: "https://example.com/webhooks/kayle/update-before",
@@ -292,7 +287,7 @@ describe("/v1/webhooks/endpoints", () => {
     ]);
 
     const listResponse = await app.request(
-      "/v1/webhooks/endpoints?environment=test&enabled=false&limit=10",
+      "/v1/webhooks/endpoints?enabled=false&limit=10",
       {
         headers: {
           Authorization: `Bearer ${TEST_DATA?.apiKey}`,
@@ -329,7 +324,6 @@ describe("/v1/webhooks/endpoints", () => {
   test("deletes an endpoint and returns not found afterwards", async () => {
     const createResponse = await app.request("/v1/webhooks/endpoints", {
       body: JSON.stringify({
-        environment: "test",
         url: "https://example.com/webhooks/kayle/delete-me",
       }),
       headers: {

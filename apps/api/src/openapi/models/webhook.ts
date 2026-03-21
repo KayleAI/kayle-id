@@ -50,9 +50,6 @@ export const WebhookEndpoint = z
     organization_id: z
       .string()
       .describe("The ID of the organization that owns this endpoint"),
-    environment: z
-      .enum(["live", "test"])
-      .describe("The environment this webhook endpoint belongs to."),
     name: z
       .string()
       .nullable()
@@ -171,9 +168,6 @@ export const WebhookEvent = z
       .describe(
         "The ID of the object that triggered this event (e.g. a verification session or attempt ID)."
       ),
-    environment: z
-      .enum(["live", "test"])
-      .describe("The environment this event belongs to."),
     created_at: z.string().describe("The time the event was created."),
     deliveries: z
       .array(WebhookEventDelivery)

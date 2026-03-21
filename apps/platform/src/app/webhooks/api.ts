@@ -7,8 +7,6 @@ export type ApiError = {
   docs?: string;
 };
 
-export type Environment = "live" | "test";
-
 export type DeliveryStatus = "pending" | "delivering" | "succeeded" | "failed";
 
 export type Pagination = {
@@ -31,7 +29,6 @@ type PaginatedApiEnvelope<T> = {
 export type WebhookEndpoint = {
   id: string;
   organization_id: string;
-  environment: Environment;
   name: string | null;
   url: string;
   enabled: boolean;
@@ -83,7 +80,6 @@ export type WebhookEvent = {
   type: string;
   trigger_type: "verification_session" | "verification_attempt";
   trigger_id: string;
-  environment: Environment;
   created_at: string;
   deliveries: WebhookEventDelivery[];
 };
@@ -236,12 +232,10 @@ export function parseJwkInput(input: string): JsonWebKey {
 
 export function listWebhookEndpoints({
   enabled,
-  environment,
   limit = 20,
   startingAfter,
 }: {
   enabled?: boolean;
-  environment?: Environment;
   limit?: number;
   startingAfter?: string | null;
 } = {}): Promise<{ data: WebhookEndpoint[]; pagination: Pagination }> {
@@ -249,7 +243,6 @@ export function listWebhookEndpoints({
     path: "/endpoints",
     query: {
       enabled,
-      environment,
       limit,
       starting_after: startingAfter,
     },
@@ -258,13 +251,11 @@ export function listWebhookEndpoints({
 
 export function createWebhookEndpoint({
   enabled,
-  environment,
   name,
   subscribedEventTypes,
   url,
 }: {
   enabled: boolean;
-  environment: Environment;
   name?: string | null;
   subscribedEventTypes: string[];
   url: string;
@@ -275,7 +266,6 @@ export function createWebhookEndpoint({
     body: {
       name,
       url,
-      environment,
       enabled,
       subscribed_event_types: subscribedEventTypes,
     },
@@ -395,18 +385,15 @@ export function reactivateWebhookKey(
 }
 
 export function listWebhookEvents({
-  environment,
   limit = 20,
   startingAfter,
 }: {
-  environment?: Environment;
   limit?: number;
   startingAfter?: string | null;
 } = {}): Promise<{ data: WebhookEvent[]; pagination: Pagination }> {
   return requestWebhookPage<WebhookEvent>({
     path: "/events",
     query: {
-      environment,
       limit,
       starting_after: startingAfter,
     },
@@ -422,13 +409,11 @@ export function replayWebhookEvent(eventId: string): Promise<WebhookEvent> {
 
 export function listWebhookDeliveries({
   endpointId,
-  environment,
   limit = 20,
   startingAfter,
   status,
 }: {
   endpointId?: string;
-  environment?: Environment;
   limit?: number;
   startingAfter?: string | null;
   status?: DeliveryStatus;
@@ -436,7 +421,6 @@ export function listWebhookDeliveries({
   return requestWebhookPage<WebhookDelivery>({
     path: "/deliveries",
     query: {
-      environment,
       endpoint_id: endpointId,
       limit,
       starting_after: startingAfter,

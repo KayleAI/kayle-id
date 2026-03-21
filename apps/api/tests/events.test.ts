@@ -34,7 +34,6 @@ type WebhookEventResponse = {
     status: "delivering" | "failed" | "pending" | "succeeded";
     webhook_endpoint_id: string;
   }>;
-  environment: "live" | "test";
   id: string;
   trigger_id: string;
   trigger_type: "verification_attempt" | "verification_session";
@@ -78,16 +77,16 @@ async function seedWebhookEvent(): Promise<{
     plaintext: "whsec_events_secret",
     secret: env.AUTH_SECRET,
   });
-  const endpointId = `whe_test_events_${crypto.randomUUID()}`;
-  const keyId = `whk_test_events_${crypto.randomUUID()}`;
-  const eventId = `evt_test_events_${crypto.randomUUID()}`;
+  const endpointId = `whe_live_events_${crypto.randomUUID()}`;
+  const keyId = `whk_live_events_${crypto.randomUUID()}`;
+  const eventId = `evt_live_events_${crypto.randomUUID()}`;
 
   const [endpoint] = await db
     .insert(webhook_endpoints)
     .values({
       id: endpointId,
       organizationId: TEST_DATA?.organizationId ?? "",
-      environment: "test",
+      environment: "live",
       signingSecretCiphertext,
       subscribedEventTypes: ["verification.attempt.succeeded"],
       url: "https://example.com/webhooks/events",
@@ -106,15 +105,15 @@ async function seedWebhookEvent(): Promise<{
   await db.insert(coreEvents).values({
     id: eventId,
     organizationId: TEST_DATA?.organizationId ?? "",
-    environment: "test",
+    environment: "live",
     type: "verification.attempt.succeeded",
-    triggerId: `va_test_events_${crypto.randomUUID()}`,
+    triggerId: `va_live_events_${crypto.randomUUID()}`,
     triggerType: "verification_attempt",
   });
 
   const [deliveryId] = await createWebhookDeliveriesForVerificationSucceeded({
-    attemptId: `va_test_events_${crypto.randomUUID()}`,
-    environment: "test",
+    attemptId: `va_live_events_${crypto.randomUUID()}`,
+    environment: "live",
     eventId,
     manifest: {
       claims: {
@@ -122,7 +121,7 @@ async function seedWebhookEvent(): Promise<{
       },
       contractVersion: 1,
       selectedFieldKeys: ["family_name"],
-      sessionId: `vs_test_events_${crypto.randomUUID()}`,
+      sessionId: `vs_live_events_${crypto.randomUUID()}`,
     },
     organizationId: TEST_DATA?.organizationId ?? "",
   });
@@ -144,15 +143,12 @@ describe("/v1/webhooks/events", () => {
     async () => {
       const seeded = await seedWebhookEvent();
 
-      const response = await app.request(
-        "/v1/webhooks/events?environment=test&limit=10",
-        {
-          headers: {
-            Authorization: `Bearer ${TEST_DATA?.apiKey}`,
-          },
-          method: "GET",
-        }
-      );
+      const response = await app.request("/v1/webhooks/events?limit=10", {
+        headers: {
+          Authorization: `Bearer ${TEST_DATA?.apiKey}`,
+        },
+        method: "GET",
+      });
 
       expect(response.status).toBe(200);
 

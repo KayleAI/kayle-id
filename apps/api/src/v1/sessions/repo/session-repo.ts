@@ -49,9 +49,11 @@ export function listVerificationSessions({
 }
 
 export async function getVerificationSessionById({
+  environment,
   id,
   organizationId,
 }: {
+  environment: "live" | "test";
   id: string;
   organizationId: string;
 }) {
@@ -61,7 +63,8 @@ export async function getVerificationSessionById({
     .where(
       and(
         eq(verification_sessions.id, id),
-        eq(verification_sessions.organizationId, organizationId)
+        eq(verification_sessions.organizationId, organizationId),
+        eq(verification_sessions.environment, environment)
       )
     )
     .limit(1);

@@ -35,7 +35,7 @@ final class APIService: NSObject, URLSessionDelegate, URLSessionTaskDelegate {
     _ = urlSession
   }
 
-  /// Construct base URL from session ID environment prefix.
+  /// Construct the API base URL for the current app environment.
   static func baseURL(from _: String) -> String {
     #if DEBUG
     if let configuredBaseURL = configuredDevelopmentBaseURL() {

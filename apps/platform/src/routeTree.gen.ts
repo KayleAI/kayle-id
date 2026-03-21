@@ -23,7 +23,6 @@ import { Route as AuthSignInRouteImport } from './routes/_auth/sign-in'
 import { Route as AppDashboardRouteImport } from './routes/_app/dashboard'
 import { Route as AuthAccountIndexRouteImport } from './routes/_auth/account/index'
 import { Route as AppWebhooksIndexRouteImport } from './routes/_app/webhooks/index'
-import { Route as AppSandboxIndexRouteImport } from './routes/_app/sandbox/index'
 import { Route as AppApiKeysIndexRouteImport } from './routes/_app/api-keys/index'
 import { Route as AuthOrganizationsSelectRouteImport } from './routes/_auth/organizations/select'
 import { Route as AuthOrganizationsCreateRouteImport } from './routes/_auth/organizations/create'
@@ -101,11 +100,6 @@ const AuthAccountIndexRoute = AuthAccountIndexRouteImport.update({
 const AppWebhooksIndexRoute = AppWebhooksIndexRouteImport.update({
   id: '/webhooks/',
   path: '/webhooks/',
-  getParentRoute: () => AppRoute,
-} as any)
-const AppSandboxIndexRoute = AppSandboxIndexRouteImport.update({
-  id: '/sandbox/',
-  path: '/sandbox/',
   getParentRoute: () => AppRoute,
 } as any)
 const AppApiKeysIndexRoute = AppApiKeysIndexRouteImport.update({
@@ -186,7 +180,6 @@ export interface FileRoutesByFullPath {
   '/organizations/create': typeof AuthOrganizationsCreateRoute
   '/organizations/select': typeof AuthOrganizationsSelectRoute
   '/api-keys': typeof AppApiKeysIndexRoute
-  '/sandbox': typeof AppSandboxIndexRoute
   '/webhooks': typeof AppWebhooksIndexRoute
   '/account': typeof AuthAccountIndexRoute
   '/api/auth/$': typeof ApiApiAuthSplatRoute
@@ -211,7 +204,6 @@ export interface FileRoutesByTo {
   '/organizations/create': typeof AuthOrganizationsCreateRoute
   '/organizations/select': typeof AuthOrganizationsSelectRoute
   '/api-keys': typeof AppApiKeysIndexRoute
-  '/sandbox': typeof AppSandboxIndexRoute
   '/webhooks': typeof AppWebhooksIndexRoute
   '/account': typeof AuthAccountIndexRoute
   '/api/auth/$': typeof ApiApiAuthSplatRoute
@@ -241,7 +233,6 @@ export interface FileRoutesById {
   '/_auth/organizations/create': typeof AuthOrganizationsCreateRoute
   '/_auth/organizations/select': typeof AuthOrganizationsSelectRoute
   '/_app/api-keys/': typeof AppApiKeysIndexRoute
-  '/_app/sandbox/': typeof AppSandboxIndexRoute
   '/_app/webhooks/': typeof AppWebhooksIndexRoute
   '/_auth/account/': typeof AuthAccountIndexRoute
   '/_api/api/auth/$': typeof ApiApiAuthSplatRoute
@@ -268,7 +259,6 @@ export interface FileRouteTypes {
     | '/organizations/create'
     | '/organizations/select'
     | '/api-keys'
-    | '/sandbox'
     | '/webhooks'
     | '/account'
     | '/api/auth/$'
@@ -293,7 +283,6 @@ export interface FileRouteTypes {
     | '/organizations/create'
     | '/organizations/select'
     | '/api-keys'
-    | '/sandbox'
     | '/webhooks'
     | '/account'
     | '/api/auth/$'
@@ -322,7 +311,6 @@ export interface FileRouteTypes {
     | '/_auth/organizations/create'
     | '/_auth/organizations/select'
     | '/_app/api-keys/'
-    | '/_app/sandbox/'
     | '/_app/webhooks/'
     | '/_auth/account/'
     | '/_api/api/auth/$'
@@ -443,13 +431,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppWebhooksIndexRouteImport
       parentRoute: typeof AppRoute
     }
-    '/_app/sandbox/': {
-      id: '/_app/sandbox/'
-      path: '/sandbox'
-      fullPath: '/sandbox'
-      preLoaderRoute: typeof AppSandboxIndexRouteImport
-      parentRoute: typeof AppRoute
-    }
     '/_app/api-keys/': {
       id: '/_app/api-keys/'
       path: '/api-keys'
@@ -542,7 +523,6 @@ interface AppRouteChildren {
   AppApiKeysKeyRoute: typeof AppApiKeysKeyRoute
   AppWebhooksEndpointRoute: typeof AppWebhooksEndpointRoute
   AppApiKeysIndexRoute: typeof AppApiKeysIndexRoute
-  AppSandboxIndexRoute: typeof AppSandboxIndexRoute
   AppWebhooksIndexRoute: typeof AppWebhooksIndexRoute
   AppWebhooksEventsEventRoute: typeof AppWebhooksEventsEventRoute
 }
@@ -552,7 +532,6 @@ const AppRouteChildren: AppRouteChildren = {
   AppApiKeysKeyRoute: AppApiKeysKeyRoute,
   AppWebhooksEndpointRoute: AppWebhooksEndpointRoute,
   AppApiKeysIndexRoute: AppApiKeysIndexRoute,
-  AppSandboxIndexRoute: AppSandboxIndexRoute,
   AppWebhooksIndexRoute: AppWebhooksIndexRoute,
   AppWebhooksEventsEventRoute: AppWebhooksEventsEventRoute,
 }

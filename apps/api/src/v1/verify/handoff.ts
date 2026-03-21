@@ -3,7 +3,7 @@ import {
   verification_attempts,
   verification_sessions,
 } from "@kayle-id/database/schema/core";
-import { desc, eq } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 import { generateId } from "@/utils/generate-id";
 import { expireVerificationSessionIfNeeded } from "@/v1/sessions/repo/session-repo";
 import { isTerminalSessionStatus } from "./status";
@@ -59,7 +59,12 @@ export async function issueHandoffPayload(
       updatedAt: verification_sessions.updatedAt,
     })
     .from(verification_sessions)
-    .where(eq(verification_sessions.id, sessionId))
+    .where(
+      and(
+        eq(verification_sessions.id, sessionId),
+        eq(verification_sessions.environment, "live")
+      )
+    )
     .limit(1);
 
   if (!session) {

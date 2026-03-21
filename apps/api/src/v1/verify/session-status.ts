@@ -3,7 +3,7 @@ import {
   verification_attempts,
   verification_sessions,
 } from "@kayle-id/database/schema/core";
-import { desc, eq } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 import { expireVerificationSessionIfNeeded } from "@/v1/sessions/repo/session-repo";
 import { isTerminalAttemptStatus, isTerminalSessionStatus } from "./status";
 
@@ -33,7 +33,12 @@ export async function getPublicVerifySessionStatus({
   const [rawSession] = await db
     .select()
     .from(verification_sessions)
-    .where(eq(verification_sessions.id, sessionId))
+    .where(
+      and(
+        eq(verification_sessions.id, sessionId),
+        eq(verification_sessions.environment, "live")
+      )
+    )
     .limit(1);
 
   if (!rawSession) {

@@ -11,12 +11,6 @@ export const listWebhookEvents = createRoute({
   path: "/",
   request: {
     query: z.object({
-      environment: z
-        .enum(["live", "test"])
-        .optional()
-        .describe(
-          "Filter events by environment. If omitted, events from all environments are returned."
-        ),
       type: z
         .string()
         .optional()

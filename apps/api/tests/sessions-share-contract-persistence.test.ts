@@ -140,7 +140,6 @@ describe("/v1/sessions share contract persistence", () => {
     const { apiKey: otherOrgApiKey } = await createApiKey({
       name: "Isolation API Key",
       organizationId: otherOrgId,
-      environment: "test",
     });
 
     try {

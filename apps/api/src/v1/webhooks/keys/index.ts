@@ -41,8 +41,6 @@ async function findWebhookKeyByIdForOrganization({
   const [row] = await db
     .select({
       key: webhook_encryption_keys,
-      endpointOrganizationId: webhook_endpoints.organizationId,
-      endpointEnvironment: webhook_endpoints.environment,
     })
     .from(webhook_encryption_keys)
     .innerJoin(
@@ -52,7 +50,8 @@ async function findWebhookKeyByIdForOrganization({
     .where(
       and(
         eq(webhook_encryption_keys.id, keyId),
-        eq(webhook_endpoints.organizationId, organizationId)
+        eq(webhook_endpoints.organizationId, organizationId),
+        eq(webhook_endpoints.environment, "live")
       )
     )
     .limit(1);

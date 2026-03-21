@@ -64,7 +64,6 @@ export function mapEndpointRowToResponse(
   return {
     id: row.id,
     organization_id: organizationId,
-    environment: row.environment as Environment,
     name: row.name,
     url: row.url,
     enabled: row.enabled,

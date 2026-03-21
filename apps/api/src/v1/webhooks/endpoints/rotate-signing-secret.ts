@@ -27,7 +27,8 @@ rotateSigningSecretEndpoint.openapi(
       .where(
         and(
           eq(webhook_endpoints.id, params.endpoint_id),
-          eq(webhook_endpoints.organizationId, organizationId)
+          eq(webhook_endpoints.organizationId, organizationId),
+          eq(webhook_endpoints.environment, "live")
         )
       )
       .limit(1);

@@ -21,7 +21,7 @@ listEvents.openapi(listWebhookEvents, async (c) => {
 
   const where = and(
     eq(events.organizationId, organizationId),
-    ...(query.environment ? [eq(events.environment, query.environment)] : []),
+    eq(events.environment, "live"),
     ...(query.type ? [eq(events.type, query.type)] : []),
     ...(query.created_from
       ? [gte(events.createdAt, new Date(query.created_from))]
@@ -37,7 +37,6 @@ listEvents.openapi(listWebhookEvents, async (c) => {
       type: events.type,
       trigger_type: events.triggerType,
       trigger_id: events.triggerId,
-      environment: events.environment,
       created_at: events.createdAt,
     })
     .from(events)
@@ -51,7 +50,6 @@ listEvents.openapi(listWebhookEvents, async (c) => {
           type: events.type,
           trigger_type: events.triggerType,
           trigger_id: events.triggerId,
-          environment: events.environment,
           created_at: events.createdAt,
         })
         .from(events)
@@ -107,7 +105,6 @@ listEvents.openapi(listWebhookEvents, async (c) => {
     type: row.type,
     trigger_type: row.trigger_type as WebhookEventResponse["trigger_type"],
     trigger_id: row.trigger_id,
-    environment: row.environment as WebhookEventResponse["environment"],
     created_at: row.created_at.toISOString(),
     deliveries: deliveriesByEvent.get(row.id) ?? [],
   }));

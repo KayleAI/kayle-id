@@ -78,7 +78,6 @@ import {
   type DeliveryStatus,
   deactivateWebhookKey,
   deleteWebhookEndpoint,
-  type Environment,
   listWebhookDeliveries,
   listWebhookEndpoints,
   listWebhookEvents,
@@ -101,7 +100,6 @@ const DEFAULT_EVENT_TYPE = SUPPORTED_WEBHOOK_EVENT_TYPES[0];
 
 type WebhooksTab = "endpoints" | "events";
 type EndpointDetailTab = "overview" | "performance" | "deliveries";
-type EnvironmentFilter = Environment | "all";
 type EndpointDeliveryStats = {
   failed: number;
   inFlight: number;
@@ -120,7 +118,6 @@ type CreateEndpointInitialPublicKey = {
 };
 type CreateEndpointSubmission = {
   enabled: boolean;
-  environment: Environment;
   initialPublicKey: CreateEndpointInitialPublicKey | null;
   name: string | null;
   subscribedEventTypes: string[];
@@ -162,15 +159,6 @@ const tabOptions: Array<{
     value: "events",
     label: "Events",
   },
-];
-
-const environmentOptions: Array<{
-  label: string;
-  value: EnvironmentFilter;
-}> = [
-  { label: "All", value: "all" },
-  { label: "Live", value: "live" },
-  { label: "Test", value: "test" },
 ];
 
 const EMPTY_ENDPOINT_DELIVERY_STATS: EndpointDeliveryStats = {
@@ -557,12 +545,6 @@ function getWebhookEventReplayDisabledReason(
   return null;
 }
 
-function getEnvironmentBadgeClass(environment: Environment): string {
-  return environment === "live"
-    ? "border-blue-500/20 bg-blue-500/10 text-blue-700 dark:bg-blue-500/20 dark:text-blue-400"
-    : "border-amber-500/20 bg-amber-500/10 text-amber-700 dark:bg-amber-500/20 dark:text-amber-400";
-}
-
 function getStatusBadgeClass(
   status: DeliveryStatus | "active" | "disabled" | "inactive"
 ): string {
@@ -595,20 +577,6 @@ function getResponseCodeClass(statusCode: number | null): string {
   }
 
   return "border-red-500/20 bg-red-500/10 text-red-700 dark:bg-red-500/20 dark:text-red-400";
-}
-
-function EnvironmentBadge({ environment }: { environment: Environment }) {
-  return (
-    <Badge
-      className={cn(
-        "px-2.5 py-1 text-xs capitalize",
-        getEnvironmentBadgeClass(environment)
-      )}
-      variant="outline"
-    >
-      {environment}
-    </Badge>
-  );
 }
 
 function StatusBadge({
@@ -857,13 +825,7 @@ function PublicKeyFields({
   );
 }
 
-function WebhooksToolbar({
-  environmentFilter,
-  onEnvironmentChange,
-}: {
-  environmentFilter: EnvironmentFilter;
-  onEnvironmentChange: (value: EnvironmentFilter) => void;
-}) {
+function WebhooksToolbar() {
   return (
     <div className="flex flex-col gap-4 border-border/70 border-b pb-4 lg:flex-row lg:items-center lg:justify-between">
       <TabsList
@@ -880,21 +842,6 @@ function WebhooksToolbar({
           </TabsTrigger>
         ))}
       </TabsList>
-
-      <div className="flex shrink-0 items-center gap-2 self-start lg:self-auto">
-        {environmentOptions.map((option) => (
-          <Button
-            className="shrink-0"
-            key={option.value}
-            onClick={() => onEnvironmentChange(option.value)}
-            size="sm"
-            type="button"
-            variant={environmentFilter === option.value ? "default" : "outline"}
-          >
-            {option.label}
-          </Button>
-        ))}
-      </div>
     </div>
   );
 }
@@ -1721,8 +1668,7 @@ function EventsTabContent({
           <TableHeader className="bg-muted/40">
             <TableRow>
               <TableHead className="w-[42%]">Event</TableHead>
-              <TableHead className="w-[10%]">Environment</TableHead>
-              <TableHead className="w-[22%]">Origin</TableHead>
+              <TableHead className="w-[32%]">Origin</TableHead>
               <TableHead className="w-[12%]">Deliveries</TableHead>
               <TableHead className="w-[14%]">Created</TableHead>
             </TableRow>
@@ -1744,9 +1690,6 @@ function EventsTabContent({
                       {event.id}
                     </div>
                   </div>
-                </TableCell>
-                <TableCell className="align-top">
-                  <EnvironmentBadge environment={event.environment} />
                 </TableCell>
                 <TableCell>
                   <div className="min-w-0 space-y-1">
@@ -2051,7 +1994,6 @@ function EventOverviewCard({
     <div className="space-y-4 rounded-md border border-border/70 p-5">
       <div className="flex items-center justify-between gap-3">
         <h2 className="font-medium text-sm">Replay options</h2>
-        <EnvironmentBadge environment={event.environment} />
       </div>
 
       <dl className="space-y-3 text-sm">
@@ -2123,21 +2065,15 @@ export function WebhooksPage({
   const queryClient = useQueryClient();
   const [internalActiveTab, setInternalActiveTab] =
     useState<WebhooksTab>("endpoints");
-  const [environmentFilter, setEnvironmentFilter] =
-    useState<EnvironmentFilter>("all");
   const [secretDialog, setSecretDialog] = useState<SecretDialogState>(
     INITIAL_SECRET_DIALOG_STATE
   );
   const activeTab = activeTabProp ?? internalActiveTab;
 
-  const normalizedEnvironment =
-    environmentFilter === "all" ? undefined : environmentFilter;
-
   const endpointsQuery = useQuery({
-    queryKey: ["webhooks", "endpoints", normalizedEnvironment],
+    queryKey: ["webhooks", "endpoints"],
     queryFn: () =>
       listWebhookEndpoints({
-        environment: normalizedEnvironment,
         limit: 50,
       }),
   });
@@ -2145,19 +2081,17 @@ export function WebhooksPage({
   const endpoints = endpointsQuery.data?.data ?? [];
 
   const eventsQuery = useQuery({
-    queryKey: ["webhooks", "events", normalizedEnvironment],
+    queryKey: ["webhooks", "events"],
     queryFn: () =>
       listWebhookEvents({
-        environment: normalizedEnvironment,
         limit: 50,
       }),
   });
 
   const deliveriesQuery = useQuery({
-    queryKey: ["webhooks", "deliveries", normalizedEnvironment],
+    queryKey: ["webhooks", "deliveries"],
     queryFn: () =>
       listWebhookDeliveries({
-        environment: normalizedEnvironment,
         limit: 50,
       }),
   });
@@ -2206,7 +2140,6 @@ export function WebhooksPage({
   ): Promise<CreateEndpointSubmissionResult> {
     const result = await createEndpointMutation.mutateAsync({
       enabled: input.enabled,
-      environment: input.environment,
       name: input.name,
       subscribedEventTypes: input.subscribedEventTypes,
       url: input.url,
@@ -2291,10 +2224,7 @@ export function WebhooksPage({
         onValueChange={(value) => handleActiveTabChange(value as WebhooksTab)}
         value={activeTab}
       >
-        <WebhooksToolbar
-          environmentFilter={environmentFilter}
-          onEnvironmentChange={setEnvironmentFilter}
-        />
+        <WebhooksToolbar />
 
         <TabsContent value="endpoints">
           <EndpointsTabContent
@@ -2344,20 +2274,18 @@ export function WebhookEventPage({ eventId }: { eventId: string }) {
 
   const endpointsQuery = useQuery({
     enabled: Boolean(event),
-    queryKey: ["webhooks", "endpoints", event?.environment],
+    queryKey: ["webhooks", "endpoints"],
     queryFn: () =>
       listWebhookEndpoints({
-        environment: event?.environment,
         limit: 100,
       }),
   });
 
   const deliveriesQuery = useQuery({
     enabled: Boolean(event),
-    queryKey: ["webhooks", "deliveries", event?.environment],
+    queryKey: ["webhooks", "deliveries"],
     queryFn: () =>
       listWebhookDeliveries({
-        environment: event?.environment,
         limit: 100,
       }),
   });
@@ -2465,7 +2393,6 @@ export function WebhookEventPage({ eventId }: { eventId: string }) {
       <AppHeading title={event.type} />
 
       <div className="mt-3 flex flex-wrap items-center gap-3">
-        <EnvironmentBadge environment={event.environment} />
         <span className="text-muted-foreground text-sm">
           {getEventTriggerLabel(event)}
         </span>
@@ -2985,7 +2912,6 @@ function CreateEndpointDrawer({
   const [isOpen, setIsOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isMoreOptionsOpen, setIsMoreOptionsOpen] = useState(false);
-  const [environment, setEnvironment] = useState<Environment>("live");
   const [enabled, setEnabled] = useState(true);
   const [name, setName] = useState("");
   const [selectedEventTypes, setSelectedEventTypes] = useState<string[]>([
@@ -3001,7 +2927,6 @@ function CreateEndpointDrawer({
   function resetState() {
     setIsSubmitting(false);
     setIsMoreOptionsOpen(false);
-    setEnvironment("live");
     setEnabled(true);
     setName("");
     setSelectedEventTypes([...SUPPORTED_WEBHOOK_EVENT_TYPES]);
@@ -3027,7 +2952,6 @@ function CreateEndpointDrawer({
       setIsSubmitting(true);
       const result = await onSubmit({
         enabled,
-        environment,
         initialPublicKey: getCreateEndpointInitialPublicKey({
           publicKeyId,
           publicKeyInput,
@@ -3116,23 +3040,6 @@ function CreateEndpointDrawer({
               placeholder="https://example.com/webhooks/kayle"
               value={url}
             />
-          </div>
-
-          <div className="space-y-2">
-            <Label>Environment</Label>
-            <div className="flex flex-wrap gap-2">
-              {(["live", "test"] as Environment[]).map((option) => (
-                <Button
-                  className="capitalize"
-                  key={option}
-                  onClick={() => setEnvironment(option)}
-                  type="button"
-                  variant={environment === option ? "default" : "outline"}
-                >
-                  {option}
-                </Button>
-              ))}
-            </div>
           </div>
 
           <div className="space-y-2">
