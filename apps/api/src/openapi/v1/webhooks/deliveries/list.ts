@@ -1,5 +1,9 @@
 import { createRoute, z } from "@hono/zod-openapi";
-import { ErrorResponseWithPagination, Pagination } from "@/openapi/base";
+import {
+  ErrorResponseWithPagination,
+  Pagination,
+  paginationLimitQuery,
+} from "@/openapi/base";
 import { WebhookDelivery } from "@/openapi/models/webhook";
 
 export const listWebhookDeliveries = createRoute({
@@ -25,15 +29,9 @@ export const listWebhookDeliveries = createRoute({
         .string()
         .optional()
         .describe("Filter webhook deliveries by event ID."),
-      limit: z
-        .number()
-        .int()
-        .min(1)
-        .max(100)
-        .optional()
-        .describe(
-          "Maximum number of webhook deliveries to return. Defaults to 10 if not specified."
-        ),
+      limit: paginationLimitQuery.describe(
+        "Maximum number of webhook deliveries to return. Defaults to 10 if not specified."
+      ),
       starting_after: z
         .string()
         .optional()

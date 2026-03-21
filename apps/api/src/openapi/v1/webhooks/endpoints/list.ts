@@ -1,5 +1,10 @@
 import { createRoute, z } from "@hono/zod-openapi";
-import { ErrorResponseWithPagination, Pagination } from "@/openapi/base";
+import {
+  booleanQueryParam,
+  ErrorResponseWithPagination,
+  Pagination,
+  paginationLimitQuery,
+} from "@/openapi/base";
 import { WebhookEndpoint } from "@/openapi/models/webhook";
 
 export const listWebhookEndpoints = createRoute({
@@ -13,21 +18,12 @@ export const listWebhookEndpoints = createRoute({
         .describe(
           "Filter webhook endpoints by environment. If omitted, endpoints from all environments are returned."
         ),
-      enabled: z
-        .boolean()
-        .optional()
-        .describe(
-          "Filter webhook endpoints by enabled state. If omitted, both enabled and disabled endpoints are returned."
-        ),
-      limit: z
-        .number()
-        .int()
-        .min(1)
-        .max(100)
-        .optional()
-        .describe(
-          "Maximum number of webhook endpoints to return. Defaults to 10 if not specified."
-        ),
+      enabled: booleanQueryParam.describe(
+        "Filter webhook endpoints by enabled state. If omitted, both enabled and disabled endpoints are returned."
+      ),
+      limit: paginationLimitQuery.describe(
+        "Maximum number of webhook endpoints to return. Defaults to 10 if not specified."
+      ),
       starting_after: z
         .string()
         .optional()

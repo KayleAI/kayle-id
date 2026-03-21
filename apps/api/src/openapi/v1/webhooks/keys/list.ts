@@ -1,5 +1,10 @@
 import { createRoute, z } from "@hono/zod-openapi";
-import { ErrorResponseWithPagination, Pagination } from "@/openapi/base";
+import {
+  booleanQueryParam,
+  ErrorResponseWithPagination,
+  Pagination,
+  paginationLimitQuery,
+} from "@/openapi/base";
 import { WebhookEncryptionKey } from "@/openapi/models/webhook";
 
 export const listWebhookEncryptionKeys = createRoute({
@@ -14,21 +19,12 @@ export const listWebhookEncryptionKeys = createRoute({
         ),
     }),
     query: z.object({
-      is_active: z
-        .boolean()
-        .optional()
-        .describe(
-          "Filter keys by active state. If omitted, both active and inactive keys are returned."
-        ),
-      limit: z
-        .number()
-        .int()
-        .min(1)
-        .max(100)
-        .optional()
-        .describe(
-          "Maximum number of keys to return. Defaults to 10 if not specified."
-        ),
+      is_active: booleanQueryParam.describe(
+        "Filter keys by active state. If omitted, both active and inactive keys are returned."
+      ),
+      limit: paginationLimitQuery.describe(
+        "Maximum number of keys to return. Defaults to 10 if not specified."
+      ),
       starting_after: z
         .string()
         .optional()

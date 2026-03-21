@@ -1,5 +1,26 @@
 import { z } from "@hono/zod-openapi";
 
+export const booleanQueryParam = z
+  .preprocess((value) => {
+    if (value === "true") {
+      return true;
+    }
+
+    if (value === "false") {
+      return false;
+    }
+
+    return value;
+  }, z.boolean())
+  .optional();
+
+export const paginationLimitQuery = z.coerce
+  .number()
+  .int()
+  .min(1)
+  .max(100)
+  .optional();
+
 export const Pagination = z
   .object({
     /**

@@ -1,5 +1,9 @@
 import { createRoute, z } from "@hono/zod-openapi";
-import { ErrorResponseWithPagination, Pagination } from "@/openapi/base";
+import {
+  ErrorResponseWithPagination,
+  Pagination,
+  paginationLimitQuery,
+} from "@/openapi/base";
 import { WebhookEvent } from "@/openapi/models/webhook";
 
 export const listWebhookEvents = createRoute({
@@ -31,15 +35,9 @@ export const listWebhookEvents = createRoute({
         .describe(
           "Return events created at or before this ISO 8601 timestamp."
         ),
-      limit: z
-        .number()
-        .int()
-        .min(1)
-        .max(100)
-        .optional()
-        .describe(
-          "Maximum number of events to return. Defaults to 10 if not specified."
-        ),
+      limit: paginationLimitQuery.describe(
+        "Maximum number of events to return. Defaults to 10 if not specified."
+      ),
       starting_after: z
         .string()
         .optional()

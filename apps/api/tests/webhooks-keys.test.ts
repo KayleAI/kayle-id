@@ -94,7 +94,7 @@ describe("/v1/webhooks/keys", () => {
     expect(createPayload.data.jwk.kty).toBe("RSA");
 
     const listResponse = await app.request(
-      `/v1/webhooks/endpoints/${endpointId}/keys`,
+      `/v1/webhooks/endpoints/${endpointId}/keys?is_active=true&limit=10`,
       {
         headers: {
           Authorization: `Bearer ${TEST_DATA?.apiKey}`,
@@ -150,5 +150,35 @@ describe("/v1/webhooks/keys", () => {
     expect(deactivatePayload.data.id).toBe(createPayload.data.id);
     expect(deactivatePayload.data.is_active).toBeFalse();
     expect(deactivatePayload.data.disabled_at).toBeString();
+
+    const inactiveListResponse = await app.request(
+      `/v1/webhooks/endpoints/${endpointId}/keys?is_active=false&limit=10`,
+      {
+        headers: {
+          Authorization: `Bearer ${TEST_DATA?.apiKey}`,
+        },
+        method: "GET",
+      }
+    );
+
+    expect(inactiveListResponse.status).toBe(200);
+
+    const inactiveListPayload = (await inactiveListResponse.json()) as {
+      data: Array<{
+        id: string;
+        is_active: boolean;
+      }>;
+      error: null;
+      pagination: {
+        has_more: boolean;
+        limit: number;
+        next_cursor: string | null;
+      };
+    };
+
+    expect(inactiveListPayload.error).toBeNull();
+    expect(inactiveListPayload.data).toHaveLength(1);
+    expect(inactiveListPayload.data[0]?.id).toBe(createPayload.data.id);
+    expect(inactiveListPayload.data[0]?.is_active).toBeFalse();
   });
 });

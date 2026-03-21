@@ -117,12 +117,15 @@ describe("/v1/webhooks/deliveries", () => {
   test("lists deliveries and retries a delivery", async () => {
     const deliveryId = await seedDelivery();
 
-    const listResponse = await app.request("/v1/webhooks/deliveries", {
-      headers: {
-        Authorization: `Bearer ${TEST_DATA?.apiKey}`,
-      },
-      method: "GET",
-    });
+    const listResponse = await app.request(
+      "/v1/webhooks/deliveries?environment=test&limit=10",
+      {
+        headers: {
+          Authorization: `Bearer ${TEST_DATA?.apiKey}`,
+        },
+        method: "GET",
+      }
+    );
 
     expect(listResponse.status).toBe(200);
 

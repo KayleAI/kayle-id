@@ -119,7 +119,7 @@ export function Footer({ className }: { readonly className?: string }) {
             </a>
             <a
               className="text-neutral-400 transition-colors hover:text-neutral-900"
-              href="https://git.new/kayle"
+              href="https://github.com/kayleai/kayle-id"
               rel="noopener noreferrer"
               target="_blank"
             >

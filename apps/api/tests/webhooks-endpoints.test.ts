@@ -278,5 +278,39 @@ describe("/v1/webhooks/endpoints", () => {
     expect(updatePayload.data.subscribed_event_types).toEqual([
       "verification.attempt.succeeded",
     ]);
+
+    const listResponse = await app.request(
+      "/v1/webhooks/endpoints?environment=test&enabled=false&limit=10",
+      {
+        headers: {
+          Authorization: `Bearer ${TEST_DATA?.apiKey}`,
+        },
+        method: "GET",
+      }
+    );
+
+    expect(listResponse.status).toBe(200);
+
+    const listPayload = (await listResponse.json()) as {
+      data: Array<{
+        enabled: boolean;
+        id: string;
+      }>;
+      error: null;
+      pagination: {
+        has_more: boolean;
+        limit: number;
+        next_cursor: string | null;
+      };
+    };
+
+    expect(listPayload.error).toBeNull();
+    expect(
+      listPayload.data.some(
+        (endpoint) =>
+          endpoint.id === createdPayload.data.endpoint.id &&
+          endpoint.enabled === false
+      )
+    ).toBeTrue();
   });
 });

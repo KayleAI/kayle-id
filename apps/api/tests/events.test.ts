@@ -144,12 +144,15 @@ describe("/v1/webhooks/events", () => {
     async () => {
       const seeded = await seedWebhookEvent();
 
-      const response = await app.request("/v1/webhooks/events", {
-        headers: {
-          Authorization: `Bearer ${TEST_DATA?.apiKey}`,
-        },
-        method: "GET",
-      });
+      const response = await app.request(
+        "/v1/webhooks/events?environment=test&limit=10",
+        {
+          headers: {
+            Authorization: `Bearer ${TEST_DATA?.apiKey}`,
+          },
+          method: "GET",
+        }
+      );
 
       expect(response.status).toBe(200);
 
