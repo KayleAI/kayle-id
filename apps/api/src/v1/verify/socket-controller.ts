@@ -1,5 +1,5 @@
 import { decodeClientMessage } from "@kayle-id/capnp/verify-codec";
-import { buildSafeErrorContext } from "@kayle-id/config/logging";
+import { logSafeError } from "@kayle-id/config/logging";
 import type { Context } from "hono";
 import {
   emitRequestLog,
@@ -129,14 +129,12 @@ export function startVerifySocketSession(
         return handleDecodedMessage(decoded);
       })
       .catch((error) => {
-        log.warn("verify.ws.internal_error", {
+        logSafeError(log, {
+          code: "verify_ws_internal_error",
+          error,
           event: "verify.ws.internal_error",
-          ...buildSafeErrorContext({
-            code: "verify_ws_internal_error",
-            error,
-            message: "WebSocket message handling failed.",
-            status: 500,
-          }),
+          message: "WebSocket message handling failed.",
+          status: 500,
         });
         context.transport.sendError(
           "INTERNAL_ERROR",

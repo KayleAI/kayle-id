@@ -2,6 +2,8 @@ import { expect, test } from "bun:test";
 import {
   buildSafeErrorContext,
   createSafeRequestLogger,
+  logEvent,
+  logSafeError,
   type SafeRequestLogger,
 } from "@kayle-id/config/logging";
 import { matchFaces } from "@/v1/verify/face-matcher-client";
@@ -81,6 +83,28 @@ test("createSafeRequestLogger strips query strings and does not include extra re
   expect(logger.getContext()).not.toHaveProperty("traceparent");
 });
 
+test("createSafeRequestLogger accepts a Request instance", () => {
+  const request = new Request(
+    "https://api.kayle.id/v1/verify/session/vs_test_456?token=secret-value",
+    {
+      headers: {
+        "x-request-id": "req-456",
+      },
+      method: "POST",
+    }
+  );
+
+  const logger = createSafeRequestLogger(request);
+
+  expect(logger.getContext()).toEqual(
+    expect.objectContaining({
+      method: "POST",
+      path: "/v1/verify/session/vs_test_456",
+      request_id: "req-456",
+    })
+  );
+});
+
 test("buildSafeErrorContext uses explicit safe messages", () => {
   const unsafeError = new Error("token=secret-value");
   unsafeError.name = "SyntaxError";
@@ -96,6 +120,53 @@ test("buildSafeErrorContext uses explicit safe messages", () => {
     error_message: "Face matcher returned invalid JSON.",
     error_name: "SyntaxError",
   });
+});
+
+test("logEvent includes the event in info log context", () => {
+  const logger = createMockLogger();
+
+  logEvent(logger, {
+    details: {
+      duration_ms: 12,
+    },
+    event: "verify.face_matcher.request_succeeded",
+  });
+
+  expect(logger.infoCalls[0]).toEqual({
+    context: {
+      duration_ms: 12,
+      event: "verify.face_matcher.request_succeeded",
+    },
+    message: "verify.face_matcher.request_succeeded",
+  });
+});
+
+test("logSafeError emits safe warn events", () => {
+  const logger = createMockLogger();
+  const unsafeError = new Error("token=secret-value");
+  unsafeError.name = "SyntaxError";
+
+  logSafeError(logger, {
+    code: "face_matcher_invalid_json",
+    details: {
+      duration_ms: 12,
+    },
+    error: unsafeError,
+    event: "verify.face_matcher.invalid_json",
+    message: "Face matcher returned invalid JSON.",
+  });
+
+  expect(logger.warnCalls[0]).toEqual({
+    context: expect.objectContaining({
+      duration_ms: 12,
+      error_code: "face_matcher_invalid_json",
+      error_message: "Face matcher returned invalid JSON.",
+      error_name: "SyntaxError",
+      event: "verify.face_matcher.invalid_json",
+    }),
+    message: "verify.face_matcher.invalid_json",
+  });
+  expect(logger.warnCalls[0]?.context).not.toHaveProperty("error_stack");
 });
 
 test("matchFaces does not log upstream response bodies on HTTP errors", async () => {

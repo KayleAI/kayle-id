@@ -1,10 +1,9 @@
 import {
-  buildSafeErrorContext,
   createSafeRequestLogger,
   emitSafeRequestLog,
   getSafeErrorStatus,
   initStructuredLogger,
-  type SafeErrorContextInput,
+  logSafeError,
   type SafeRequestLogger,
 } from "@kayle-id/config/logging";
 import type { Context, MiddlewareHandler } from "hono";
@@ -58,13 +57,6 @@ export function getRequestLogger(c: Context): ApiRequestLogger {
   return getLoggingContext(c).get(REQUEST_LOG_KEY);
 }
 
-export function logSafeError(
-  logger: ApiRequestLogger,
-  input: SafeErrorContextInput
-): void {
-  logger.warn(input.code, buildSafeErrorContext(input));
-}
-
 export function markRequestLogForManualEmit(c: Context): void {
   getLoggingContext(c).set(REQUEST_LOG_MANUAL_EMIT_KEY, true);
 }
@@ -79,11 +71,7 @@ export function requestLoggingMiddleware(): MiddlewareHandler {
       return;
     }
 
-    const logger = createSafeRequestLogger({
-      headers: c.req.raw.headers,
-      method: c.req.method,
-      path: c.req.path,
-    });
+    const logger = createSafeRequestLogger(c.req.raw);
 
     loggingContext.set(REQUEST_LOG_KEY, logger);
     loggingContext.set(REQUEST_LOG_EMITTED_KEY, false);
@@ -103,6 +91,7 @@ export function requestLoggingMiddleware(): MiddlewareHandler {
       logSafeError(logger, {
         code: "request_failed",
         error,
+        event: "request_failed",
         message: "The request failed before a response was returned.",
         status,
       });

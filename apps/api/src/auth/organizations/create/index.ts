@@ -1,7 +1,7 @@
 import { OpenAPIHono } from "@hono/zod-openapi";
 import { auth } from "@kayle-id/auth/server";
 import { env } from "@kayle-id/config/env";
-import { buildSafeErrorContext } from "@kayle-id/config/logging";
+import { logSafeError } from "@kayle-id/config/logging";
 import { getRequestLogger } from "@/logging";
 import { internalCreateOrganization } from "./openapi";
 
@@ -65,14 +65,12 @@ createOrganizationRoute.openapi(internalCreateOrganization, async (c) => {
       200
     );
   } catch (error) {
-    log.warn("organizations.create.failed", {
+    logSafeError(log, {
+      code: "organization_create_failed",
+      error,
       event: "organizations.create.failed",
-      ...buildSafeErrorContext({
-        code: "organization_create_failed",
-        error,
-        message: "The organization could not be created.",
-        status: 500,
-      }),
+      message: "The organization could not be created.",
+      status: 500,
     });
     return c.json(
       {

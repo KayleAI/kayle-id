@@ -8,6 +8,15 @@ export type SafeRequestLogger = Pick<
   RequestLogger,
   "emit" | "getContext" | "info" | "set" | "warn"
 >;
+type SafeLogWriter = Pick<SafeRequestLogger, "info" | "warn">;
+export type SafeLogLevel = "info" | "warn";
+export type SafeRequestLoggerInput =
+  | Request
+  | {
+      headers: Headers;
+      method: string;
+      path: string;
+    };
 
 export type SafeErrorContext = {
   error_code: string;
@@ -28,6 +37,17 @@ export type SafeErrorContextInput = {
   status?: number;
   why?: string;
 };
+
+export type SafeLogEventInput = {
+  details?: Record<string, unknown>;
+  event: string;
+  level?: SafeLogLevel;
+};
+
+export type SafeLogErrorInput = SafeErrorContextInput &
+  Omit<SafeLogEventInput, "level"> & {
+    level?: SafeLogLevel;
+  };
 
 function asRecord(value: unknown): Record<string, unknown> | null {
   return value && typeof value === "object"
@@ -95,15 +115,26 @@ export function isErrorStatus(status: number | null | undefined): boolean {
   return typeof status === "number" && status >= MIN_ERROR_STATUS;
 }
 
-export function createSafeRequestLogger({
-  headers,
-  method,
-  path,
-}: {
+function resolveSafeRequestLoggerInput(input: SafeRequestLoggerInput): {
   headers: Headers;
   method: string;
   path: string;
-}): SafeRequestLogger {
+} {
+  if (input instanceof Request) {
+    return {
+      headers: input.headers,
+      method: input.method,
+      path: input.url,
+    };
+  }
+
+  return input;
+}
+
+export function createSafeRequestLogger(
+  input: SafeRequestLoggerInput
+): SafeRequestLogger {
+  const { headers, method, path } = resolveSafeRequestLoggerInput(input);
   const logger = createRequestLogger({
     method,
     path: sanitizeLogPath(path),
@@ -114,6 +145,57 @@ export function createSafeRequestLogger({
   });
 
   return logger;
+}
+
+export function logEvent(
+  logger: SafeLogWriter | null | undefined,
+  { details, event, level = "info" }: SafeLogEventInput
+): void {
+  if (!logger) {
+    return;
+  }
+
+  const context = details ? { ...details, event } : { event };
+
+  if (level === "warn") {
+    logger.warn(event, context);
+    return;
+  }
+
+  logger.info(event, context);
+}
+
+export function logSafeError(
+  logger: SafeLogWriter | null | undefined,
+  {
+    code,
+    details,
+    error,
+    event,
+    fix,
+    level,
+    link,
+    message,
+    status,
+    why,
+  }: SafeLogErrorInput
+): void {
+  logEvent(logger, {
+    details: {
+      ...(details ?? {}),
+      ...buildSafeErrorContext({
+        code,
+        error,
+        fix,
+        link,
+        message,
+        status,
+        why,
+      }),
+    },
+    event,
+    level: level ?? "warn",
+  });
 }
 
 export function emitSafeRequestLog(

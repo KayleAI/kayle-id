@@ -3,41 +3,13 @@ import {
   FACE_MATCHER_AUTH_HEADER,
   faceMatcherResponseSchema,
 } from "@kayle-id/config/face-matcher";
-import { buildSafeErrorContext } from "@kayle-id/config/logging";
+import { logEvent, logSafeError } from "@kayle-id/config/logging";
 import type { ApiRequestLogger } from "@/logging";
 import type { FaceScoreResult } from "./validation-types";
 
 type FaceMatcherServiceBinding = {
   fetch: typeof fetch;
 };
-
-function logFaceMatcherEvent({
-  event,
-  logger,
-  level = "warn",
-  details,
-}: {
-  event: string;
-  logger?: ApiRequestLogger;
-  level?: "info" | "warn";
-  details: Record<string, unknown>;
-}): void {
-  if (!logger) {
-    return;
-  }
-
-  const context = {
-    event: `verify.face_matcher.${event}`,
-    ...details,
-  };
-
-  if (level === "info") {
-    logger.info(context.event, context);
-    return;
-  }
-
-  logger.warn(context.event, context);
-}
 
 function createUnavailableFaceScore(reason: string): FaceScoreResult {
   return {
@@ -125,32 +97,29 @@ async function requestFaceMatcher({
     )) as Response;
 
     if (!response.ok) {
-      logFaceMatcherEvent({
-        event: "http_error",
-        logger,
+      logEvent(logger, {
         details: {
           attempt_id: attemptId ?? null,
           error_code: "face_matcher_http_error",
           status: response.status,
           duration_ms: Date.now() - startedAt,
         },
+        event: "verify.face_matcher.http_error",
+        level: "warn",
       });
       return createUnavailableFaceScore("face_matcher_unavailable");
     }
 
     const json = await response.json().catch((error) => {
-      logFaceMatcherEvent({
-        event: "invalid_json",
-        logger,
+      logSafeError(logger, {
+        code: "face_matcher_invalid_json",
         details: {
           attempt_id: attemptId ?? null,
           duration_ms: Date.now() - startedAt,
-          ...buildSafeErrorContext({
-            code: "face_matcher_invalid_json",
-            error,
-            message: "Face matcher returned invalid JSON.",
-          }),
         },
+        error,
+        event: "verify.face_matcher.invalid_json",
+        message: "Face matcher returned invalid JSON.",
       });
       return null;
     });
@@ -162,23 +131,20 @@ async function requestFaceMatcher({
     const payload = faceMatcherResponseSchema.safeParse(json);
 
     if (!payload.success) {
-      logFaceMatcherEvent({
-        event: "invalid_response",
-        logger,
+      logEvent(logger, {
         details: {
           attempt_id: attemptId ?? null,
           duration_ms: Date.now() - startedAt,
           error_code: "face_matcher_invalid_response",
           issue_count: payload.error.issues.length,
         },
+        event: "verify.face_matcher.invalid_response",
+        level: "warn",
       });
       return createUnavailableFaceScore("face_matcher_unavailable");
     }
 
-    logFaceMatcherEvent({
-      event: "request_succeeded",
-      logger,
-      level: "info",
+    logEvent(logger, {
       details: {
         attempt_id: attemptId ?? null,
         duration_ms: Date.now() - startedAt,
@@ -187,6 +153,7 @@ async function requestFaceMatcher({
         used_fallback: payload.data.usedFallback,
         reason: payload.data.reason ?? null,
       },
+      event: "verify.face_matcher.request_succeeded",
     });
 
     return {
@@ -196,18 +163,15 @@ async function requestFaceMatcher({
       reason: payload.data.reason,
     };
   } catch (error) {
-    logFaceMatcherEvent({
-      event: "request_failed",
-      logger,
+    logSafeError(logger, {
+      code: "face_matcher_request_failed",
       details: {
         attempt_id: attemptId ?? null,
         duration_ms: Date.now() - startedAt,
-        ...buildSafeErrorContext({
-          code: "face_matcher_request_failed",
-          error,
-          message: "Face matcher request failed.",
-        }),
       },
+      error,
+      event: "verify.face_matcher.request_failed",
+      message: "Face matcher request failed.",
     });
     return createUnavailableFaceScore("face_matcher_unavailable");
   }
@@ -232,9 +196,7 @@ export function matchFaces({
   const matcherSecret = resolveFaceMatcherSecret(env);
 
   if (!matcherBinding) {
-    logFaceMatcherEvent({
-      event: "config_missing",
-      logger,
+    logEvent(logger, {
       details: {
         attempt_id: attemptId ?? null,
         error_code: "face_matcher_config_missing",
@@ -245,6 +207,8 @@ export function matchFaces({
           0
         ),
       },
+      event: "verify.face_matcher.config_missing",
+      level: "warn",
     });
 
     return Promise.resolve(

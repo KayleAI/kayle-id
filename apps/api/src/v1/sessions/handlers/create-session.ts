@@ -1,4 +1,5 @@
 import type { RouteHandler } from "@hono/zod-openapi";
+import { logEvent } from "@kayle-id/config/logging";
 import { getRequestLogger } from "@/logging";
 import type { createSession } from "@/openapi/v1/sessions/create";
 import { generateId } from "@/utils/generate-id";
@@ -23,11 +24,14 @@ export const createSessionHandler: RouteHandler<
 
   const normalized = normalizeShareFields(body?.share_fields);
   if (!normalized.ok) {
-    log.warn("sessions.create.validation_failed", {
+    logEvent(log, {
+      details: {
+        organization_id: organizationId,
+        error_code: normalized.error.code,
+        status: normalized.error.status,
+      },
       event: "sessions.create.validation_failed",
-      organization_id: organizationId,
-      error_code: normalized.error.code,
-      status: normalized.error.status,
+      level: "warn",
     });
 
     return c.json(

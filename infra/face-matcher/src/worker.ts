@@ -5,13 +5,16 @@ import {
   faceMatcherResponseSchema,
   parseFaceMatcherRequestFormData,
 } from "@kayle-id/config/face-matcher";
-import { buildSafeErrorContext } from "@kayle-id/config/logging";
-import { configureVerifyAssetFetcherFromEnv } from "../../../apps/api/src/v1/verify/verify-assets";
 import {
-  createFaceMatcherRequestLogger,
-  emitFaceMatcherRequestLog,
-  type FaceMatcherRequestLogger,
-} from "./logging";
+  createSafeRequestLogger,
+  emitSafeRequestLog,
+  initStructuredLogger,
+  logEvent,
+  logSafeError,
+  type SafeRequestLogger,
+} from "@kayle-id/config/logging";
+import { configureVerifyAssetFetcherFromEnv } from "../../../apps/api/src/v1/verify/verify-assets";
+import pkg from "../package.json" with { type: "json" };
 import { matchFacesWithContainer } from "./matcher";
 
 export const FACE_MATCHER_MODEL_PATH = "/app/models/w600k_mbf.onnx";
@@ -27,30 +30,13 @@ export type ContainerFetcher = {
 };
 
 type GetContainer = (env: unknown) => Promise<ContainerFetcher | null>;
+type FaceMatcherRequestLogger = SafeRequestLogger;
 
-function logFaceMatcherEvent({
-  event,
-  logger,
-  level = "info",
-  details,
-}: {
-  details?: Record<string, unknown>;
-  event: string;
-  logger: FaceMatcherRequestLogger;
-  level?: "info" | "warn";
-}): void {
-  const context = {
-    event: `face_matcher.${event}`,
-    ...(details ?? {}),
-  };
-
-  if (level === "warn") {
-    logger.warn(context.event, context);
-    return;
-  }
-
-  logger.info(context.event, context);
-}
+initStructuredLogger({
+  environment: process.env.NODE_ENV,
+  service: pkg.name,
+  version: pkg.version,
+});
 
 function jsonResponse(payload: unknown, status = 200): Response {
   return new Response(JSON.stringify(payload), {
@@ -91,13 +77,12 @@ async function proxyHealth(
   logger: FaceMatcherRequestLogger
 ): Promise<Response> {
   if (!container) {
-    logFaceMatcherEvent({
-      event: "health_unavailable",
-      logger,
-      level: "warn",
+    logEvent(logger, {
       details: {
         error_code: "face_matcher_container_binding_missing",
       },
+      event: "face_matcher.health_unavailable",
+      level: "warn",
     });
 
     return jsonResponse(
@@ -119,18 +104,12 @@ async function proxyHealth(
   try {
     return await container.fetch("http://container/health");
   } catch (error) {
-    logFaceMatcherEvent({
-      event: "health_unavailable",
-      logger,
-      level: "warn",
-      details: {
-        ...buildSafeErrorContext({
-          code: "face_matcher_health_unavailable",
-          error,
-          message: "Face matcher health check failed.",
-          status: 503,
-        }),
-      },
+    logSafeError(logger, {
+      code: "face_matcher_health_unavailable",
+      error,
+      event: "face_matcher.health_unavailable",
+      message: "Face matcher health check failed.",
+      status: 503,
     });
 
     return jsonResponse(
@@ -160,18 +139,12 @@ async function parseMatchPayload({
   try {
     return await parseFaceMatcherRequestFormData(await request.formData());
   } catch (error) {
-    logFaceMatcherEvent({
-      event: "invalid_request",
-      logger,
-      level: "warn",
-      details: {
-        ...buildSafeErrorContext({
-          code: "face_matcher_invalid_request",
-          error,
-          message: "Face matcher request payload is invalid.",
-          status: 400,
-        }),
-      },
+    logSafeError(logger, {
+      code: "face_matcher_invalid_request",
+      error,
+      event: "face_matcher.invalid_request",
+      message: "Face matcher request payload is invalid.",
+      status: 400,
     });
 
     return jsonResponse(
@@ -201,14 +174,13 @@ async function handleMatchRequest({
     resolveStringEnvValue(env, "FACE_MATCHER_SECRET") ?? undefined;
 
   if (!isInternalRequestAuthorized(request, matcherSecret)) {
-    logFaceMatcherEvent({
-      event: "unauthorized",
-      logger,
-      level: "warn",
+    logEvent(logger, {
       details: {
         error_code: "face_matcher_unauthorized",
         status: 401,
       },
+      event: "face_matcher.unauthorized",
+      level: "warn",
     });
 
     return jsonResponse(
@@ -250,9 +222,7 @@ async function handleMatchRequest({
     createFaceMatcherResponse(result)
   );
 
-  logFaceMatcherEvent({
-    event: "completed",
-    logger,
+  logEvent(logger, {
     details: {
       duration_ms: Date.now() - startedAt,
       dg2_bytes: payload.dg2Image.length,
@@ -266,6 +236,7 @@ async function handleMatchRequest({
       used_fallback: response.usedFallback,
       reason: response.reason ?? null,
     },
+    event: "face_matcher.completed",
   });
 
   return jsonResponse(response);
@@ -278,12 +249,12 @@ export function createFaceMatcherWorker(
 ): Required<Pick<ExportedHandler<FaceMatcherBindings>, "fetch">> {
   return {
     fetch: async (request, env) => {
-      const logger = createFaceMatcherRequestLogger(request);
+      const logger = createSafeRequestLogger(request);
       const url = new URL(request.url);
       try {
         if (request.method === "GET" && url.pathname === "/health") {
           const response = await proxyHealth(await getContainer(env), logger);
-          emitFaceMatcherRequestLog(logger, response.status);
+          emitSafeRequestLog(logger, response.status);
           return response;
         }
 
@@ -294,13 +265,17 @@ export function createFaceMatcherWorker(
             logger,
             request,
           });
-          emitFaceMatcherRequestLog(logger, response.status);
+          emitSafeRequestLog(logger, response.status);
           return response;
         }
 
-        logger.warn("face_matcher.not_found", {
-          error_code: "face_matcher_route_not_found",
-          status: 404,
+        logEvent(logger, {
+          details: {
+            error_code: "face_matcher_route_not_found",
+            status: 404,
+          },
+          event: "face_matcher.not_found",
+          level: "warn",
         });
 
         const response = jsonResponse(
@@ -312,19 +287,17 @@ export function createFaceMatcherWorker(
           },
           404
         );
-        emitFaceMatcherRequestLog(logger, response.status);
+        emitSafeRequestLog(logger, response.status);
         return response;
       } catch (error) {
-        logger.warn(
-          "face_matcher.request_failed",
-          buildSafeErrorContext({
-            code: "face_matcher_request_failed",
-            error,
-            message: "Face matcher request failed.",
-            status: 500,
-          })
-        );
-        emitFaceMatcherRequestLog(logger, 500);
+        logSafeError(logger, {
+          code: "face_matcher_request_failed",
+          error,
+          event: "face_matcher.request_failed",
+          message: "Face matcher request failed.",
+          status: 500,
+        });
+        emitSafeRequestLog(logger, 500);
         throw error;
       }
     },

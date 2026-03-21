@@ -1,3 +1,4 @@
+import { logEvent } from "@kayle-id/config/logging";
 import { attemptWebhookDelivery } from "@/v1/webhooks/deliveries/service";
 import { getNfcTransferStatus, getSelfieTransferStatus } from "./data-payload";
 import { resolveVerifyErrorMessage } from "./error-response";
@@ -177,12 +178,15 @@ export async function runPhaseValidation(
     attemptId,
     logger: context.log,
   });
-  context.log.info("verify.ws.face_score_evaluated", {
-    attempt_id: attemptId,
-    face_score: result.faceScore,
-    passed: result.passed,
-    reason: result.reason ?? null,
-    used_fallback: result.usedFallback,
+  logEvent(context.log, {
+    details: {
+      attempt_id: attemptId,
+      face_score: result.faceScore,
+      passed: result.passed,
+      reason: result.reason ?? null,
+      used_fallback: result.usedFallback,
+    },
+    event: "verify.ws.face_score_evaluated",
   });
 
   if (result.usedFallback) {

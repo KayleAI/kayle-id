@@ -7,6 +7,7 @@ import {
   type VerifyServerVerdict,
   type VerifyShareRequest,
 } from "@kayle-id/capnp/verify-codec";
+import { logEvent } from "@kayle-id/config/logging";
 import type { ApiRequestLogger } from "@/logging";
 import { resolveVerifyErrorMessage } from "./error-response";
 import type { VerifySocketTransport } from "./socket-context";
@@ -25,7 +26,10 @@ export function createVerifySocketTransport({
       return;
     }
 
-    log.info(`verify.ws.${label}`, details);
+    logEvent(log, {
+      details,
+      event: `verify.ws.${label}`,
+    });
   };
 
   const sendAck = (message: string) => {
@@ -85,10 +89,13 @@ export function createVerifySocketTransport({
     sendAck,
     sendAuthErrorAndClose: (code) => {
       const message = resolveVerifyErrorMessage(code);
-      log.warn(`verify.ws.auth_error.${code}`, {
-        event: "verify.ws.auth_error",
-        error_code: code,
-        error_message: message,
+      logEvent(log, {
+        details: {
+          error_code: code,
+          error_message: message,
+        },
+        event: `verify.ws.auth_error.${code}`,
+        level: "warn",
       });
       sendError(code, message);
       closeSocket(1008, code);

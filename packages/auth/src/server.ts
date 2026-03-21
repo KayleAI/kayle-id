@@ -1,4 +1,5 @@
 import { env } from "@kayle-id/config/env";
+import { createSafeRequestLogger, logEvent } from "@kayle-id/config/logging";
 import { db } from "@kayle-id/database/drizzle";
 //import { redis } from "@kayle-id/database/redis";
 import { auth as authSchema } from "@kayle-id/database/schema";
@@ -23,6 +24,36 @@ const user = {
 
 const magicLinkExpiryInSeconds = 15 * 60;
 const magicLinkExpiryInMinutes = magicLinkExpiryInSeconds / 60;
+const magicOtpSignInPath = "/v1/auth/magic/sign-in";
+
+type MagicOtpPayload = {
+  email: string;
+  otp: string;
+  type: "sign-in" | "email-verification";
+};
+
+function logDevelopmentMagicOtp(
+  payload: MagicOtpPayload,
+  request?: Request
+): void {
+  const logger = createSafeRequestLogger(
+    request ??
+      new Request(`https://kayle.invalid${magicOtpSignInPath}`, {
+        method: "POST",
+      })
+  );
+  const event = "auth.magic_otp.generated";
+
+  logEvent(logger, {
+    details: {
+      email: payload.email,
+      otp: payload.otp,
+      type: payload.type,
+    },
+    event,
+  });
+  logger.emit({ _forceKeep: true });
+}
 
 const plugins = [
   ...(process.env.NODE_ENV !== "production" ? [openAPI()] : []),
@@ -44,9 +75,9 @@ const plugins = [
   }),
   magic({
     expiresIn: magicLinkExpiryInSeconds,
-    sendMagicOtpAuth: async (payload) => {
+    sendMagicOtpAuth: async (payload, request) => {
       if (process.env.NODE_ENV !== "production") {
-        console.log("Sending OTP to", payload.email, ":", payload.otp);
+        logDevelopmentMagicOtp(payload, request);
         return;
       }
 
