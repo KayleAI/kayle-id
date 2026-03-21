@@ -215,20 +215,3 @@ export async function markAttemptSucceeded({
 
   return result;
 }
-
-export async function emitFaceScoreUnavailableEvent({
-  session,
-  attemptId,
-}: {
-  session: SessionContext;
-  attemptId: string;
-}): Promise<void> {
-  await db.insert(events).values({
-    id: generateId({ type: "evt", environment: session.environment }),
-    organizationId: session.organizationId,
-    environment: session.environment,
-    type: "verification.attempt.face_score_unavailable",
-    triggerId: attemptId,
-    triggerType: "verification_attempt",
-  });
-}

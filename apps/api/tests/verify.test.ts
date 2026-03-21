@@ -2238,7 +2238,7 @@ describe("Verification Flows", () => {
   );
 
   test.serial(
-    "Rejects selfie_complete when similarity cannot be computed and records an unavailability event",
+    "Rejects selfie_complete when similarity cannot be computed",
     async () => {
       const sessionId = await createSession();
       const handoff = await createHandoff(sessionId);
@@ -2292,22 +2292,9 @@ describe("Verification Flows", () => {
         .where(eq(verification_attempts.id, handoff.attempt_id))
         .limit(1);
 
-      const fallbackEvents = await db
-        .select({
-          type: events.type,
-        })
-        .from(events)
-        .where(eq(events.triggerId, handoff.attempt_id));
-
       expect(attempt?.status).toBe("failed");
       expect(attempt?.failureCode).toBe("selfie_face_mismatch");
       expect(attempt?.riskScore).toBe(1);
-      expect(
-        fallbackEvents.some(
-          (event) =>
-            event.type === "verification.attempt.face_score_unavailable"
-        )
-      ).toBeTrue();
     },
     20_000
   );

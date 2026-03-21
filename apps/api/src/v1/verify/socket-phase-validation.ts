@@ -3,11 +3,7 @@ import { attemptWebhookDelivery } from "@/v1/webhooks/deliveries/service";
 import { getNfcTransferStatus, getSelfieTransferStatus } from "./data-payload";
 import { resolveVerifyErrorMessage } from "./error-response";
 import { matchFaces } from "./face-matcher-client";
-import {
-  emitFaceScoreUnavailableEvent,
-  MAX_FAILED_ATTEMPTS,
-  markAttemptFailed,
-} from "./outcome";
+import { MAX_FAILED_ATTEMPTS, markAttemptFailed } from "./outcome";
 import type { VerifySocketContext } from "./socket-context";
 import { validateAuthenticity } from "./validation";
 import type { FaceScoreResult } from "./validation-types";
@@ -188,13 +184,6 @@ export async function runPhaseValidation(
     },
     event: "verify.ws.face_score_evaluated",
   });
-
-  if (result.usedFallback) {
-    await emitFaceScoreUnavailableEvent({
-      session: context.session,
-      attemptId,
-    });
-  }
 
   return resolveSelfieVerdict(context, attemptId, result);
 }
