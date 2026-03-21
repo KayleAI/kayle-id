@@ -53,6 +53,10 @@ export const WebhookEndpoint = z
     environment: z
       .enum(["live", "test"])
       .describe("The environment this webhook endpoint belongs to."),
+    name: z
+      .string()
+      .nullable()
+      .describe("An optional display name for the webhook endpoint."),
     url: z.string().url().describe("The URL of the webhook endpoint"),
     enabled: z.boolean().describe("Whether the webhook endpoint is enabled"),
     subscribed_event_types: z

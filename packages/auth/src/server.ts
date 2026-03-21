@@ -45,9 +45,10 @@ const plugins = [
   magic({
     expiresIn: magicLinkExpiryInSeconds,
     sendMagicOtpAuth: async (payload) => {
-      /* if (process.env.NODE_ENV !== "production") {
+      if (process.env.NODE_ENV !== "production") {
+        console.log("Sending OTP to", payload.email, ":", payload.otp);
         return;
-      }*/
+      }
 
       await sendMagicLinkEmail({
         apiKey: env.RESEND_API_KEY,

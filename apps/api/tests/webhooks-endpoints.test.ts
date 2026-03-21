@@ -21,6 +21,7 @@ describe("/v1/webhooks/endpoints", () => {
     const response = await app.request("/v1/webhooks/endpoints", {
       body: JSON.stringify({
         environment: "test",
+        name: "Primary verification webhook",
         subscribed_event_types: ["verification.attempt.succeeded"],
         url: "https://example.com/webhooks/kayle",
       }),
@@ -37,6 +38,7 @@ describe("/v1/webhooks/endpoints", () => {
       data: {
         endpoint: {
           id: string;
+          name: string | null;
           subscribed_event_types: string[];
         };
         signing_secret: string;
@@ -45,10 +47,12 @@ describe("/v1/webhooks/endpoints", () => {
     };
 
     expect(payload.error).toBeNull();
+    expect(payload.data.endpoint.name).toBe("Primary verification webhook");
     expect(payload.data.endpoint.subscribed_event_types).toEqual([
       "verification.attempt.succeeded",
     ]);
     expect(payload.data.signing_secret.startsWith("whsec_")).toBeTrue();
+    expect(payload.data.signing_secret).toHaveLength(38);
 
     const getResponse = await app.request(
       `/v1/webhooks/endpoints/${payload.data.endpoint.id}`,
@@ -64,6 +68,7 @@ describe("/v1/webhooks/endpoints", () => {
     const getPayload = (await getResponse.json()) as {
       data: {
         id: string;
+        name: string | null;
         signing_secret?: string;
         subscribed_event_types: string[];
       };
@@ -71,6 +76,7 @@ describe("/v1/webhooks/endpoints", () => {
     };
 
     expect(getPayload.data.id).toBe(payload.data.endpoint.id);
+    expect(getPayload.data.name).toBe("Primary verification webhook");
     expect(getPayload.data.subscribed_event_types).toEqual([
       "verification.attempt.succeeded",
     ]);
@@ -125,6 +131,7 @@ describe("/v1/webhooks/endpoints", () => {
     expect(rotatePayload.data.signing_secret).not.toBe(
       createdPayload.data.signing_secret
     );
+    expect(rotatePayload.data.signing_secret).toHaveLength(38);
   });
 
   test("reveals the current signing secret for an endpoint", async () => {
@@ -176,6 +183,7 @@ describe("/v1/webhooks/endpoints", () => {
     expect(revealPayload.data.signing_secret).toBe(
       createdPayload.data.signing_secret
     );
+    expect(revealPayload.data.signing_secret).toHaveLength(38);
   });
 
   test("returns 500 when the signing secret cannot be decrypted", async () => {
@@ -219,10 +227,11 @@ describe("/v1/webhooks/endpoints", () => {
     expect(revealResponse.status).toBe(500);
   });
 
-  test("updates endpoint url, enabled state, and subscriptions", async () => {
+  test("updates endpoint name, url, enabled state, and subscriptions", async () => {
     const createResponse = await app.request("/v1/webhooks/endpoints", {
       body: JSON.stringify({
         environment: "test",
+        name: "Before rename",
         subscribed_event_types: ["verification.attempt.succeeded"],
         url: "https://example.com/webhooks/kayle/update-before",
       }),
@@ -245,6 +254,7 @@ describe("/v1/webhooks/endpoints", () => {
       `/v1/webhooks/endpoints/${createdPayload.data.endpoint.id}`,
       {
         body: JSON.stringify({
+          name: "After rename",
           url: "https://example.com/webhooks/kayle/update-after",
           enabled: false,
           subscribed_event_types: ["verification.attempt.succeeded"],
@@ -263,6 +273,7 @@ describe("/v1/webhooks/endpoints", () => {
       data: {
         disabled_at: string | null;
         enabled: boolean;
+        name: string | null;
         subscribed_event_types: string[];
         url: string;
       };
@@ -270,6 +281,7 @@ describe("/v1/webhooks/endpoints", () => {
     };
 
     expect(updatePayload.error).toBeNull();
+    expect(updatePayload.data.name).toBe("After rename");
     expect(updatePayload.data.url).toBe(
       "https://example.com/webhooks/kayle/update-after"
     );
@@ -312,5 +324,69 @@ describe("/v1/webhooks/endpoints", () => {
           endpoint.enabled === false
       )
     ).toBeTrue();
+  });
+
+  test("deletes an endpoint and returns not found afterwards", async () => {
+    const createResponse = await app.request("/v1/webhooks/endpoints", {
+      body: JSON.stringify({
+        environment: "test",
+        url: "https://example.com/webhooks/kayle/delete-me",
+      }),
+      headers: {
+        Authorization: `Bearer ${TEST_DATA?.apiKey}`,
+        "Content-Type": "application/json",
+      },
+      method: "POST",
+    });
+    const createdPayload = (await createResponse.json()) as {
+      data: {
+        endpoint: {
+          id: string;
+        };
+      };
+      error: null;
+    };
+
+    const deleteResponse = await app.request(
+      `/v1/webhooks/endpoints/${createdPayload.data.endpoint.id}`,
+      {
+        headers: {
+          Authorization: `Bearer ${TEST_DATA?.apiKey}`,
+        },
+        method: "DELETE",
+      }
+    );
+
+    expect(deleteResponse.status).toBe(200);
+
+    const deletePayload = (await deleteResponse.json()) as {
+      data: {
+        message: string;
+        status: "success";
+      };
+      error: null;
+    };
+
+    expect(deletePayload.error).toBeNull();
+    expect(deletePayload.data.status).toBe("success");
+
+    const [deletedRow] = await db
+      .select()
+      .from(webhook_endpoints)
+      .where(eq(webhook_endpoints.id, createdPayload.data.endpoint.id))
+      .limit(1);
+
+    expect(deletedRow).toBeUndefined();
+
+    const getResponse = await app.request(
+      `/v1/webhooks/endpoints/${createdPayload.data.endpoint.id}`,
+      {
+        headers: {
+          Authorization: `Bearer ${TEST_DATA?.apiKey}`,
+        },
+      }
+    );
+
+    expect(getResponse.status).toBe(404);
   });
 });

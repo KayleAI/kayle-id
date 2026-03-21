@@ -20,6 +20,14 @@ export const updateWebhookEndpoint = createRoute({
         "application/json": {
           schema: z
             .object({
+              name: z
+                .string()
+                .trim()
+                .min(1)
+                .max(120)
+                .nullable()
+                .optional()
+                .describe("Updated display name for the webhook endpoint."),
               url: z
                 .string()
                 .url()
@@ -36,12 +44,13 @@ export const updateWebhookEndpoint = createRoute({
             })
             .refine(
               (body) =>
+                body.name !== undefined ||
                 body.url !== undefined ||
                 body.enabled !== undefined ||
                 body.subscribed_event_types !== undefined,
               {
                 message:
-                  "At least one of `url`, `enabled` or `subscribed_event_types` must be provided.",
+                  "At least one of `name`, `url`, `enabled` or `subscribed_event_types` must be provided.",
               }
             )
             .openapi("UpdateWebhookEndpointRequest"),
@@ -74,7 +83,7 @@ export const updateWebhookEndpoint = createRoute({
               error: {
                 code: "BAD_REQUEST",
                 message: "Bad request.",
-                hint: "At least one of `url`, `enabled` or `subscribed_event_types` must be provided.",
+                hint: "At least one of `name`, `url`, `enabled` or `subscribed_event_types` must be provided.",
                 docs: "https://kayle.id/docs/api/webhooks/endpoints#update",
               },
             },

@@ -49,7 +49,7 @@ async function loadPublicJwk(): Promise<JsonWebKey> {
 }
 
 describe("/v1/webhooks/keys", () => {
-  test("creates, lists, and deactivates webhook encryption keys", async () => {
+  test("creates, lists, deactivates, and reactivates webhook encryption keys", async () => {
     const endpointId = await createEndpoint();
     const publicJwk = await loadPublicJwk();
 
@@ -180,5 +180,61 @@ describe("/v1/webhooks/keys", () => {
     expect(inactiveListPayload.data).toHaveLength(1);
     expect(inactiveListPayload.data[0]?.id).toBe(createPayload.data.id);
     expect(inactiveListPayload.data[0]?.is_active).toBeFalse();
+
+    const reactivateResponse = await app.request(
+      `/v1/webhooks/keys/${createPayload.data.id}/reactivate`,
+      {
+        headers: {
+          Authorization: `Bearer ${TEST_DATA?.apiKey}`,
+        },
+        method: "POST",
+      }
+    );
+
+    expect(reactivateResponse.status).toBe(200);
+
+    const reactivatePayload = (await reactivateResponse.json()) as {
+      data: {
+        disabled_at: string | null;
+        id: string;
+        is_active: boolean;
+      };
+      error: null;
+    };
+
+    expect(reactivatePayload.error).toBeNull();
+    expect(reactivatePayload.data.id).toBe(createPayload.data.id);
+    expect(reactivatePayload.data.is_active).toBeTrue();
+    expect(reactivatePayload.data.disabled_at).toBeNull();
+
+    const reactivatedListResponse = await app.request(
+      `/v1/webhooks/endpoints/${endpointId}/keys?is_active=true&limit=10`,
+      {
+        headers: {
+          Authorization: `Bearer ${TEST_DATA?.apiKey}`,
+        },
+        method: "GET",
+      }
+    );
+
+    expect(reactivatedListResponse.status).toBe(200);
+
+    const reactivatedListPayload = (await reactivatedListResponse.json()) as {
+      data: Array<{
+        id: string;
+        is_active: boolean;
+      }>;
+      error: null;
+      pagination: {
+        has_more: boolean;
+        limit: number;
+        next_cursor: string | null;
+      };
+    };
+
+    expect(reactivatedListPayload.error).toBeNull();
+    expect(reactivatedListPayload.data).toHaveLength(1);
+    expect(reactivatedListPayload.data[0]?.id).toBe(createPayload.data.id);
+    expect(reactivatedListPayload.data[0]?.is_active).toBeTrue();
   });
 });

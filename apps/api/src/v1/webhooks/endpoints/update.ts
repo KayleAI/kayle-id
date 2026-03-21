@@ -46,6 +46,10 @@ updateEndpoint.openapi(updateWebhookEndpoint, async (c) => {
 
   const updates: Partial<typeof webhook_endpoints.$inferInsert> = {};
 
+  if (body.name !== undefined) {
+    updates.name = body.name?.trim() ?? null;
+  }
+
   if (body.url !== undefined) {
     updates.url = body.url;
   }
@@ -66,7 +70,7 @@ updateEndpoint.openapi(updateWebhookEndpoint, async (c) => {
         error: {
           code: "BAD_REQUEST",
           message: "Bad request.",
-          hint: "At least one of `url`, `enabled` or `subscribed_event_types` must be provided.",
+          hint: "At least one of `name`, `url`, `enabled` or `subscribed_event_types` must be provided.",
           docs: "https://kayle.id/docs/api/webhooks/endpoints#update",
         },
       },

@@ -13,6 +13,13 @@ export const createWebhookEndpoint = createRoute({
         "application/json": {
           schema: z
             .object({
+              name: z
+                .string()
+                .trim()
+                .min(1)
+                .max(120)
+                .optional()
+                .describe("An optional display name for the webhook endpoint."),
               url: z
                 .string()
                 .url()

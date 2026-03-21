@@ -94,6 +94,7 @@ listAndCreateEndpoints.openapi(createWebhookEndpoint, async (c) => {
       id,
       organizationId,
       environment,
+      name: body.name?.trim() ?? null,
       url: body.url,
       enabled,
       subscribedEventTypes,

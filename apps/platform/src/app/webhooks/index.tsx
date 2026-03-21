@@ -1,15 +1,7 @@
-import { useAuth } from "@kayle-id/auth/client/provider";
 import { SUPPORTED_WEBHOOK_EVENT_TYPES } from "@kayle-id/config/webhook-events";
 import { Alert, AlertDescription, AlertTitle } from "@kayleai/ui/alert";
 import { Badge } from "@kayleai/ui/badge";
 import { Button } from "@kayleai/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@kayleai/ui/card";
 import {
   Dialog,
   DialogContent,
@@ -18,9 +10,31 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@kayleai/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@kayleai/ui/dropdown-menu";
+import {
+  Empty,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from "@kayleai/ui/empty";
 import { Input } from "@kayleai/ui/input";
 import { Label } from "@kayleai/ui/label";
-import { Separator } from "@kayleai/ui/separator";
+import {
+  Sheet,
+  SheetContent,
+  SheetTitle,
+  SheetTrigger,
+} from "@kayleai/ui/sheet";
 import { Switch } from "@kayleai/ui/switch";
 import {
   Table,
@@ -30,21 +44,31 @@ import {
   TableHeader,
   TableRow,
 } from "@kayleai/ui/table";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@kayleai/ui/tabs";
 import { Textarea } from "@kayleai/ui/textarea";
 import { cn } from "@kayleai/ui/utils/cn";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Link, useNavigate } from "@tanstack/react-router";
 import {
+  ChevronDownIcon,
+  ChevronLeftIcon,
   CopyIcon,
+  EllipsisVerticalIcon,
   EyeIcon,
   KeyRoundIcon,
   Loader2Icon,
+  PauseIcon,
+  PlayIcon,
   PlusIcon,
   RefreshCwIcon,
   ShieldAlertIcon,
+  TrashIcon,
+  WebhookIcon,
 } from "lucide-react";
 import { type ReactNode, useEffect, useState } from "react";
 import { toast } from "sonner";
 import { AppHeading } from "@/components/app-heading";
+import InfoCard from "@/components/info";
 import { Loading } from "@/components/loading";
 import { formatDate } from "@/utils/format-date";
 import { useCopyToClipboard } from "@/utils/use-copy";
@@ -53,12 +77,14 @@ import {
   createWebhookKey,
   type DeliveryStatus,
   deactivateWebhookKey,
+  deleteWebhookEndpoint,
   type Environment,
   listWebhookDeliveries,
   listWebhookEndpoints,
   listWebhookEvents,
   listWebhookKeys,
   parseJwkInput,
+  reactivateWebhookKey,
   replayWebhookEvent,
   retryWebhookDelivery,
   revealWebhookSigningSecret,
@@ -73,8 +99,36 @@ import {
 
 const DEFAULT_EVENT_TYPE = SUPPORTED_WEBHOOK_EVENT_TYPES[0];
 
-type WebhooksTab = "deliveries" | "endpoints" | "events";
+type WebhooksTab = "endpoints" | "events";
+type EndpointDetailTab = "overview" | "performance" | "deliveries";
 type EnvironmentFilter = Environment | "all";
+type EndpointDeliveryStats = {
+  failed: number;
+  inFlight: number;
+  lastAttemptAt: string | null;
+  lastStatusCode: number | null;
+  total: number;
+};
+type DeliveryTrendPoint = {
+  failed: number;
+  label: string;
+  total: number;
+};
+type CreateEndpointInitialPublicKey = {
+  jwk: JsonWebKey;
+  keyId: string;
+};
+type CreateEndpointSubmission = {
+  enabled: boolean;
+  environment: Environment;
+  initialPublicKey: CreateEndpointInitialPublicKey | null;
+  name: string | null;
+  subscribedEventTypes: string[];
+  url: string;
+};
+type CreateEndpointSubmissionResult = {
+  publicKeyError: string | null;
+};
 type SecretDialogState =
   | {
       endpointId: string;
@@ -97,24 +151,16 @@ const INITIAL_SECRET_DIALOG_STATE: SecretDialogState = {
 };
 
 const tabOptions: Array<{
-  description: string;
-  value: WebhooksTab;
   label: string;
+  value: WebhooksTab;
 }> = [
   {
     value: "endpoints",
     label: "Endpoints",
-    description: "Configure webhook destinations and signing secrets.",
   },
   {
     value: "events",
     label: "Events",
-    description: "Inspect emitted webhook events and replay them.",
-  },
-  {
-    value: "deliveries",
-    label: "Deliveries",
-    description: "Review delivery attempts and retry them.",
   },
 ];
 
@@ -122,31 +168,393 @@ const environmentOptions: Array<{
   label: string;
   value: EnvironmentFilter;
 }> = [
-  { label: "All environments", value: "all" },
+  { label: "All", value: "all" },
   { label: "Live", value: "live" },
   { label: "Test", value: "test" },
 ];
+
+const EMPTY_ENDPOINT_DELIVERY_STATS: EndpointDeliveryStats = {
+  failed: 0,
+  inFlight: 0,
+  lastAttemptAt: null,
+  lastStatusCode: null,
+  total: 0,
+};
+const WWW_PREFIX_REGEX = /^www\./;
 
 function formatOptionalDate(dateString: string | null): string {
   return dateString ? formatDate(dateString) : "Never";
 }
 
-function summarizeDeliveryStatuses(
-  deliveries: WebhookEvent["deliveries"]
-): string {
-  if (deliveries.length === 0) {
-    return "No deliveries";
-  }
+function formatCount(value: number): string {
+  return value.toLocaleString();
+}
 
-  const counts = new Map<DeliveryStatus, number>();
+function formatCountLabel(
+  count: number,
+  singular: string,
+  plural = `${singular}s`
+): string {
+  return `${formatCount(count)} ${count === 1 ? singular : plural}`;
+}
+
+function getEndpointHostLabel(url: string): string {
+  try {
+    return new URL(url).host.replace(WWW_PREFIX_REGEX, "");
+  } catch {
+    return url;
+  }
+}
+
+function getEndpointPathLabel(url: string): string {
+  try {
+    const parsedUrl = new URL(url);
+    return parsedUrl.pathname === "/" ? parsedUrl.host : parsedUrl.pathname;
+  } catch {
+    return url;
+  }
+}
+
+function getEndpointDisplayName(
+  endpoint: Pick<WebhookEndpoint, "name" | "url">
+): string {
+  return endpoint.name?.trim() || getEndpointPathLabel(endpoint.url);
+}
+
+function getEndpointPageTitle(
+  endpoint: Pick<WebhookEndpoint, "name" | "url">
+): string {
+  return endpoint.name?.trim() || getEndpointHostLabel(endpoint.url);
+}
+
+function getEndpointSecondaryLabel(
+  endpoint: Pick<WebhookEndpoint, "name" | "url">
+): string {
+  return endpoint.name?.trim()
+    ? endpoint.url
+    : getEndpointHostLabel(endpoint.url);
+}
+
+function getEndpointPageSubtitle(
+  endpoint: Pick<WebhookEndpoint, "name" | "url">
+): string {
+  return endpoint.url;
+}
+
+function getDeliveryActivityTimestamp(delivery: WebhookDelivery): string {
+  return delivery.last_attempt_at ?? delivery.updated_at ?? delivery.created_at;
+}
+
+function getEndpointDeliveryStats(
+  deliveries: WebhookDelivery[]
+): Record<string, EndpointDeliveryStats> {
+  const statsByEndpoint = new Map<string, EndpointDeliveryStats>();
+  const latestActivityByEndpoint = new Map<string, string>();
 
   for (const delivery of deliveries) {
-    counts.set(delivery.status, (counts.get(delivery.status) ?? 0) + 1);
+    const current =
+      statsByEndpoint.get(delivery.webhook_endpoint_id) ??
+      EMPTY_ENDPOINT_DELIVERY_STATS;
+    const currentActivityTime = latestActivityByEndpoint.get(
+      delivery.webhook_endpoint_id
+    );
+    const nextActivityTime = getDeliveryActivityTimestamp(delivery);
+    const useLatestDetails =
+      !currentActivityTime || currentActivityTime <= nextActivityTime;
+
+    statsByEndpoint.set(delivery.webhook_endpoint_id, {
+      failed: current.failed + (delivery.status === "failed" ? 1 : 0),
+      inFlight:
+        current.inFlight +
+        (delivery.status === "pending" || delivery.status === "delivering"
+          ? 1
+          : 0),
+      lastAttemptAt: useLatestDetails
+        ? delivery.last_attempt_at
+        : current.lastAttemptAt,
+      lastStatusCode: useLatestDetails
+        ? delivery.last_status_code
+        : current.lastStatusCode,
+      total: current.total + 1,
+    });
+
+    if (useLatestDetails) {
+      latestActivityByEndpoint.set(
+        delivery.webhook_endpoint_id,
+        nextActivityTime
+      );
+    }
   }
 
-  return Array.from(counts.entries())
-    .map(([status, count]) => `${count} ${status}`)
-    .join(", ");
+  return Object.fromEntries(statsByEndpoint);
+}
+
+function getSelectedEndpointDeliveryStats(
+  deliveries: WebhookDelivery[],
+  endpoint: WebhookEndpoint | null
+): EndpointDeliveryStats {
+  if (!endpoint) {
+    return EMPTY_ENDPOINT_DELIVERY_STATS;
+  }
+
+  return (
+    getEndpointDeliveryStats(deliveries)[endpoint.id] ??
+    EMPTY_ENDPOINT_DELIVERY_STATS
+  );
+}
+
+function getEndpointsById(
+  endpoints: WebhookEndpoint[]
+): Record<string, WebhookEndpoint> {
+  return Object.fromEntries(
+    endpoints.map((endpoint) => [endpoint.id, endpoint] as const)
+  );
+}
+
+function getDeliveriesForEvent(
+  deliveries: WebhookDelivery[],
+  eventId: string
+): WebhookDelivery[] {
+  return deliveries
+    .filter((delivery) => delivery.event_id === eventId)
+    .sort((left, right) =>
+      getDeliveryActivityTimestamp(right).localeCompare(
+        getDeliveryActivityTimestamp(left)
+      )
+    );
+}
+
+function getAttachedEndpointIds(event: WebhookEvent): string[] {
+  return Array.from(
+    new Set(event.deliveries.map((delivery) => delivery.webhook_endpoint_id))
+  );
+}
+
+function getRecentDeliveriesForEndpoint(
+  deliveries: WebhookDelivery[],
+  endpointId: string,
+  limit = 10
+): WebhookDelivery[] {
+  return deliveries
+    .filter((delivery) => delivery.webhook_endpoint_id === endpointId)
+    .sort((left, right) =>
+      getDeliveryActivityTimestamp(right).localeCompare(
+        getDeliveryActivityTimestamp(left)
+      )
+    )
+    .slice(0, limit);
+}
+
+function formatDateKey(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+
+  return `${year}-${month}-${day}`;
+}
+
+function getDeliveryTrendAnchorDate(
+  deliveries: WebhookDelivery[],
+  endpointId: string
+): Date {
+  const endpointDeliveries = deliveries.filter(
+    (delivery) => delivery.webhook_endpoint_id === endpointId
+  );
+
+  if (endpointDeliveries.length === 0) {
+    return new Date();
+  }
+
+  const latestTimestamp = endpointDeliveries.reduce((latest, delivery) => {
+    const nextTimestamp = Date.parse(getDeliveryActivityTimestamp(delivery));
+    return Number.isNaN(nextTimestamp)
+      ? latest
+      : Math.max(latest, nextTimestamp);
+  }, 0);
+
+  return latestTimestamp > 0 ? new Date(latestTimestamp) : new Date();
+}
+
+function getEndpointDeliveryTrend(
+  deliveries: WebhookDelivery[],
+  endpointId: string,
+  days = 7
+): DeliveryTrendPoint[] {
+  const anchorDate = getDeliveryTrendAnchorDate(deliveries, endpointId);
+  const points = new Map<string, DeliveryTrendPoint>();
+
+  for (let offset = days - 1; offset >= 0; offset -= 1) {
+    const date = new Date(anchorDate);
+    date.setDate(anchorDate.getDate() - offset);
+
+    const key = formatDateKey(date);
+    points.set(key, {
+      failed: 0,
+      label: date.toLocaleDateString("en-US", {
+        day: "numeric",
+        month: "numeric",
+      }),
+      total: 0,
+    });
+  }
+
+  for (const delivery of deliveries) {
+    if (delivery.webhook_endpoint_id !== endpointId) {
+      continue;
+    }
+
+    const activityDate = new Date(getDeliveryActivityTimestamp(delivery));
+    const point = points.get(formatDateKey(activityDate));
+
+    if (!point) {
+      continue;
+    }
+
+    point.total += 1;
+
+    if (delivery.status === "failed") {
+      point.failed += 1;
+    }
+  }
+
+  return Array.from(points.values());
+}
+
+function isWebhookEndpointDirty({
+  endpoint,
+  endpointEnabled,
+  endpointName,
+  endpointSubscribedEventTypes,
+  endpointUrl,
+}: {
+  endpoint: WebhookEndpoint | null;
+  endpointEnabled: boolean;
+  endpointName: string;
+  endpointSubscribedEventTypes: string[];
+  endpointUrl: string;
+}): boolean {
+  if (!endpoint) {
+    return false;
+  }
+
+  return (
+    (endpoint.name ?? "") !== endpointName.trim() ||
+    endpoint.url !== endpointUrl ||
+    endpoint.enabled !== endpointEnabled ||
+    !areEventSelectionsEqual(
+      endpoint.subscribed_event_types,
+      endpointSubscribedEventTypes
+    )
+  );
+}
+
+function shouldShowMissingKeyAlert({
+  endpoint,
+  isKeysLoading,
+  keys,
+}: {
+  endpoint: WebhookEndpoint | null;
+  isKeysLoading: boolean;
+  keys: WebhookEncryptionKey[];
+}): boolean {
+  return (
+    endpoint !== null && !isKeysLoading && keys.every((key) => !key.is_active)
+  );
+}
+
+function getEventTriggerLabel(event: WebhookEvent): string {
+  return event.trigger_type.replace("_", " ");
+}
+
+function areEventSelectionsEqual(left: string[], right: string[]): boolean {
+  const normalizedLeft = [...left].sort();
+  const normalizedRight = [...right].sort();
+
+  if (normalizedLeft.length !== normalizedRight.length) {
+    return false;
+  }
+
+  return normalizedLeft.every(
+    (eventType, index) => eventType === normalizedRight[index]
+  );
+}
+
+function toggleEventSelection(
+  selectedEventTypes: string[],
+  eventType: string
+): string[] {
+  if (selectedEventTypes.includes(eventType)) {
+    if (selectedEventTypes.length === 1) {
+      return selectedEventTypes;
+    }
+
+    return selectedEventTypes.filter(
+      (selectedEventType) => selectedEventType !== eventType
+    );
+  }
+
+  return [...selectedEventTypes, eventType];
+}
+
+function getWebhookEventTypeDescription(eventType: string): string {
+  if (eventType === "verification.attempt.succeeded") {
+    return "Dispatch completed verification attempts to this endpoint.";
+  }
+
+  return "Dispatch this event type to the endpoint when it is emitted.";
+}
+
+function getEventSubscriptionSummary(selectedEventTypes: string[]): string {
+  if (selectedEventTypes.length === SUPPORTED_WEBHOOK_EVENT_TYPES.length) {
+    return "All supported events";
+  }
+
+  return formatCountLabel(selectedEventTypes.length, "event");
+}
+
+function getEventSubscriptionDetail(selectedEventTypes: string[]): string {
+  if (selectedEventTypes.length === SUPPORTED_WEBHOOK_EVENT_TYPES.length) {
+    return "Receive every supported webhook event.";
+  }
+
+  return selectedEventTypes.join(", ");
+}
+
+function getCreateEndpointInitialPublicKey({
+  publicKeyId,
+  publicKeyInput,
+  shouldConfigurePublicKey,
+}: {
+  publicKeyId: string;
+  publicKeyInput: string;
+  shouldConfigurePublicKey: boolean;
+}): CreateEndpointInitialPublicKey | null {
+  if (!shouldConfigurePublicKey) {
+    return null;
+  }
+
+  if (!publicKeyId.trim()) {
+    throw new Error("Key ID is required.");
+  }
+
+  return {
+    jwk: parseJwkInput(publicKeyInput),
+    keyId: publicKeyId.trim(),
+  };
+}
+
+function getWebhookEventReplayDisabledReason(
+  event: WebhookEvent
+): string | null {
+  if (event.type !== DEFAULT_EVENT_TYPE) {
+    return "Only verification.attempt.succeeded events can be replayed.";
+  }
+
+  if (event.deliveries.length === 0) {
+    return "This event has no deliveries to replay.";
+  }
+
+  return null;
 }
 
 function getEnvironmentBadgeClass(environment: Environment): string {
@@ -156,10 +564,14 @@ function getEnvironmentBadgeClass(environment: Environment): string {
 }
 
 function getStatusBadgeClass(
-  status: DeliveryStatus | "active" | "inactive"
+  status: DeliveryStatus | "active" | "disabled" | "inactive"
 ): string {
   if (status === "active" || status === "succeeded") {
     return "border-emerald-500/20 bg-emerald-500/10 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-400";
+  }
+
+  if (status === "disabled") {
+    return "border-border bg-muted/50 text-muted-foreground";
   }
 
   if (status === "pending" || status === "delivering") {
@@ -169,11 +581,27 @@ function getStatusBadgeClass(
   return "border-red-500/20 bg-red-500/10 text-red-700 dark:bg-red-500/20 dark:text-red-400";
 }
 
+function getResponseCodeClass(statusCode: number | null): string {
+  if (statusCode === null) {
+    return "border-border bg-muted/50 text-muted-foreground";
+  }
+
+  if (statusCode < 300) {
+    return "border-emerald-500/20 bg-emerald-500/10 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-400";
+  }
+
+  if (statusCode < 500) {
+    return "border-amber-500/20 bg-amber-500/10 text-amber-700 dark:bg-amber-500/20 dark:text-amber-400";
+  }
+
+  return "border-red-500/20 bg-red-500/10 text-red-700 dark:bg-red-500/20 dark:text-red-400";
+}
+
 function EnvironmentBadge({ environment }: { environment: Environment }) {
   return (
     <Badge
       className={cn(
-        "px-2.5 py-1 text-xs",
+        "px-2.5 py-1 text-xs capitalize",
         getEnvironmentBadgeClass(environment)
       )}
       variant="outline"
@@ -186,11 +614,14 @@ function EnvironmentBadge({ environment }: { environment: Environment }) {
 function StatusBadge({
   status,
 }: {
-  status: DeliveryStatus | "active" | "inactive";
+  status: DeliveryStatus | "active" | "disabled" | "inactive";
 }) {
   return (
     <Badge
-      className={cn("px-2.5 py-1 text-xs", getStatusBadgeClass(status))}
+      className={cn(
+        "px-2.5 py-1 text-xs capitalize",
+        getStatusBadgeClass(status)
+      )}
       variant="outline"
     >
       {status.replace("_", " ")}
@@ -206,12 +637,15 @@ function SectionMessage({
   title: string;
 }) {
   return (
-    <div className="flex min-h-56 items-center justify-center rounded-lg border border-dashed">
-      <div className="max-w-md space-y-2 px-6 py-10 text-center">
-        <h3 className="font-medium text-lg">{title}</h3>
-        <p className="text-muted-foreground text-sm">{description}</p>
-      </div>
-    </div>
+    <Empty className="min-h-56 rounded-md border border-border/80 border-dashed bg-muted/10">
+      <EmptyHeader>
+        <EmptyMedia variant="icon">
+          <WebhookIcon className="size-5" />
+        </EmptyMedia>
+        <EmptyTitle>{title}</EmptyTitle>
+        <EmptyDescription>{description}</EmptyDescription>
+      </EmptyHeader>
+    </Empty>
   );
 }
 
@@ -265,269 +699,846 @@ function LoadingState({ minHeight = "min-h-56" }: { minHeight?: string }) {
   );
 }
 
-function WebhooksControls({
-  activeTab,
-  environmentFilter,
-  onEnvironmentChange,
-  onTabChange,
+function ResponseCodeBadge({ statusCode }: { statusCode: number | null }) {
+  return (
+    <Badge
+      className={cn(
+        "px-2.5 py-1 font-mono text-xs",
+        getResponseCodeClass(statusCode)
+      )}
+      variant="outline"
+    >
+      {statusCode ?? "n/a"}
+    </Badge>
+  );
+}
+
+function EventDeliverySummary({
+  deliveries,
 }: {
-  activeTab: WebhooksTab;
-  environmentFilter: EnvironmentFilter;
-  onEnvironmentChange: (value: EnvironmentFilter) => void;
-  onTabChange: (value: WebhooksTab) => void;
+  deliveries: WebhookEvent["deliveries"];
+}) {
+  if (deliveries.length === 0) {
+    return <p className="text-muted-foreground text-sm">No deliveries</p>;
+  }
+
+  const failedCount = deliveries.filter(
+    (delivery) => delivery.status === "failed"
+  ).length;
+  const inFlightCount = deliveries.filter(
+    (delivery) =>
+      delivery.status === "pending" || delivery.status === "delivering"
+  ).length;
+  const endpointCount = new Set(
+    deliveries.map((delivery) => delivery.webhook_endpoint_id)
+  ).size;
+
+  let secondaryLabel = formatCountLabel(deliveries.length, "delivery");
+
+  if (failedCount > 0) {
+    secondaryLabel = formatCountLabel(failedCount, "failure");
+  } else if (inFlightCount > 0) {
+    secondaryLabel = formatCountLabel(
+      inFlightCount,
+      "in-flight attempt",
+      "in-flight attempts"
+    );
+  }
+
+  return (
+    <div className="space-y-1">
+      <p className="text-sm tabular-nums">
+        {formatCountLabel(endpointCount, "endpoint")}
+      </p>
+      <p className="truncate text-muted-foreground text-xs">{secondaryLabel}</p>
+    </div>
+  );
+}
+
+function EventSubscriptionMenu({
+  selectedEventTypes,
+  onToggleEventType,
+}: {
+  selectedEventTypes: string[];
+  onToggleEventType: (eventType: string) => void;
 }) {
   return (
-    <div className="mb-6 grid gap-6 lg:grid-cols-[minmax(0,1fr)_auto]">
-      <Card>
-        <CardHeader className="pb-4">
-          <CardTitle>Control surface</CardTitle>
-          <CardDescription>
-            Switch between configuration and operational views without leaving
-            the page.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="flex flex-wrap gap-2">
-          {tabOptions.map((tab) => (
-            <Button
-              className="justify-start"
-              key={tab.value}
-              onClick={() => onTabChange(tab.value)}
-              type="button"
-              variant={activeTab === tab.value ? "default" : "outline"}
+    <DropdownMenu>
+      <DropdownMenuTrigger
+        render={
+          <Button
+            className="h-auto min-h-11 w-full items-start justify-between gap-3 px-3 py-2 text-left"
+            type="button"
+            variant="outline"
+          >
+            <div className="min-w-0">
+              <div className="font-normal text-sm">
+                {getEventSubscriptionSummary(selectedEventTypes)}
+              </div>
+              <div className="truncate text-muted-foreground text-xs">
+                {getEventSubscriptionDetail(selectedEventTypes)}
+              </div>
+            </div>
+            <ChevronDownIcon className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+          </Button>
+        }
+      />
+      <DropdownMenuContent
+        align="start"
+        className="w-96 max-w-[calc(100vw-3rem)] rounded-sm!"
+      >
+        <DropdownMenuGroup>
+          <DropdownMenuLabel>Event subscriptions</DropdownMenuLabel>
+          <DropdownMenuSeparator />
+          {SUPPORTED_WEBHOOK_EVENT_TYPES.map((eventType) => (
+            <DropdownMenuCheckboxItem
+              checked={selectedEventTypes.includes(eventType)}
+              className="items-start py-2.5"
+              closeOnClick={false}
+              key={eventType}
+              onCheckedChange={() => onToggleEventType(eventType)}
             >
-              {tab.label}
-            </Button>
+              <div className="min-w-0 space-y-1 pr-4">
+                <div className="font-mono text-sm">{eventType}</div>
+                <p className="text-muted-foreground text-xs">
+                  {getWebhookEventTypeDescription(eventType)}
+                </p>
+              </div>
+            </DropdownMenuCheckboxItem>
           ))}
-        </CardContent>
-      </Card>
+        </DropdownMenuGroup>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
 
-      <Card>
-        <CardHeader className="pb-4">
-          <CardTitle>Environment</CardTitle>
-          <CardDescription>
-            Filter the current view by environment.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="flex flex-wrap gap-2">
-          {environmentOptions.map((option) => (
-            <Button
-              key={option.value}
-              onClick={() => onEnvironmentChange(option.value)}
-              type="button"
-              variant={
-                environmentFilter === option.value ? "default" : "outline"
-              }
-            >
-              {option.label}
-            </Button>
-          ))}
-        </CardContent>
-      </Card>
+function PublicKeyFields({
+  jwkInput,
+  jwkInputId,
+  keyId,
+  keyIdId,
+  onJwkInputChange,
+  onKeyIdChange,
+}: {
+  jwkInput: string;
+  jwkInputId: string;
+  keyId: string;
+  keyIdId: string;
+  onJwkInputChange: (value: string) => void;
+  onKeyIdChange: (value: string) => void;
+}) {
+  return (
+    <div className="space-y-4">
+      <div className="space-y-2">
+        <Label htmlFor={keyIdId}>Key ID</Label>
+        <Input
+          id={keyIdId}
+          onChange={(event) => onKeyIdChange(event.target.value)}
+          placeholder="rsa-key-2026-03"
+          value={keyId}
+        />
+      </div>
+
+      <div className="space-y-2">
+        <Label htmlFor={jwkInputId}>Public JWK</Label>
+        <Textarea
+          className="min-h-[220px] font-mono text-sm"
+          id={jwkInputId}
+          onChange={(event) => onJwkInputChange(event.target.value)}
+          placeholder={`{\n  "kty": "RSA",\n  "n": "...",\n  "e": "AQAB",\n  "alg": "RSA-OAEP-256"\n}`}
+          value={jwkInput}
+        />
+        <p className="text-muted-foreground text-sm">
+          The uploaded key becomes the active encryption key for new deliveries
+          to this endpoint.
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function WebhooksToolbar({
+  environmentFilter,
+  onEnvironmentChange,
+}: {
+  environmentFilter: EnvironmentFilter;
+  onEnvironmentChange: (value: EnvironmentFilter) => void;
+}) {
+  return (
+    <div className="flex flex-col gap-4 border-border/70 border-b pb-4 lg:flex-row lg:items-center lg:justify-between">
+      <TabsList
+        className="h-auto w-full justify-start gap-5 rounded-none bg-transparent p-0"
+        variant="line"
+      >
+        {tabOptions.map((tab) => (
+          <TabsTrigger
+            className="h-10 flex-none rounded-none px-0 pb-2 data-active:bg-transparent"
+            key={tab.value}
+            value={tab.value}
+          >
+            {tab.label}
+          </TabsTrigger>
+        ))}
+      </TabsList>
+
+      <div className="flex shrink-0 items-center gap-2 self-start lg:self-auto">
+        {environmentOptions.map((option) => (
+          <Button
+            className="shrink-0"
+            key={option.value}
+            onClick={() => onEnvironmentChange(option.value)}
+            size="sm"
+            type="button"
+            variant={environmentFilter === option.value ? "default" : "outline"}
+          >
+            {option.label}
+          </Button>
+        ))}
+      </div>
     </div>
   );
 }
 
 function EndpointListCard({
+  deliveryStatsByEndpoint,
   endpoints,
-  onSelectEndpoint,
-  selectedEndpointId,
+  isMutatingEndpointId,
+  onDeleteEndpoint,
+  onToggleEndpointEnabled,
 }: {
+  deliveryStatsByEndpoint: Record<string, EndpointDeliveryStats>;
   endpoints: WebhookEndpoint[];
-  onSelectEndpoint: (endpointId: string) => void;
-  selectedEndpointId: string | null;
+  isMutatingEndpointId: string | null;
+  onDeleteEndpoint: (endpoint: WebhookEndpoint) => Promise<void>;
+  onToggleEndpointEnabled: (endpoint: WebhookEndpoint) => Promise<void>;
 }) {
+  if (endpoints.length === 0) {
+    return (
+      <SectionMessage
+        description="Create your first webhook endpoint to start receiving verification events."
+        title="No webhook endpoints yet"
+      />
+    );
+  }
+
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Endpoints</CardTitle>
-        <CardDescription>
-          Each endpoint owns its own signing secret and encryption keys.
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
-        {endpoints.length === 0 ? (
-          <SectionMessage
-            description="Create your first webhook endpoint to start receiving verification events."
-            title="No webhook endpoints yet"
-          />
-        ) : (
-          <div className="overflow-hidden rounded-md border">
-            <Table>
-              <TableHeader className="bg-muted">
-                <TableRow>
-                  <TableHead>Endpoint</TableHead>
-                  <TableHead>Environment</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Subscriptions</TableHead>
-                  <TableHead>Updated</TableHead>
-                  <TableHead>
-                    <span className="sr-only">Actions</span>
-                  </TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {endpoints.map((endpoint) => (
-                  <TableRow
-                    className={cn(
-                      endpoint.id === selectedEndpointId
-                        ? "bg-muted/40"
-                        : undefined
-                    )}
-                    key={endpoint.id}
-                  >
-                    <TableCell className="min-w-72">
-                      <div className="space-y-1">
-                        <div className="font-medium">{endpoint.url}</div>
-                        <div className="font-mono text-muted-foreground text-xs">
-                          {endpoint.id}
-                        </div>
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <EnvironmentBadge environment={endpoint.environment} />
-                    </TableCell>
-                    <TableCell>
-                      <StatusBadge
-                        status={endpoint.enabled ? "active" : "inactive"}
-                      />
-                    </TableCell>
-                    <TableCell className="text-muted-foreground text-sm">
-                      {endpoint.subscribed_event_types.join(", ") || "None"}
-                    </TableCell>
-                    <TableCell className="text-muted-foreground text-sm tabular-nums">
-                      {formatDate(endpoint.updated_at)}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <Button
-                        onClick={() => onSelectEndpoint(endpoint.id)}
-                        size="sm"
-                        type="button"
-                        variant={
-                          endpoint.id === selectedEndpointId
-                            ? "default"
-                            : "outline"
-                        }
-                      >
-                        Manage
-                      </Button>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
-        )}
-      </CardContent>
-    </Card>
+    <div className="overflow-x-auto rounded-md border border-border/70">
+      <Table className="w-full table-fixed">
+        <TableHeader className="bg-muted/30">
+          <TableRow>
+            <TableHead>Destination</TableHead>
+            <TableHead>Listening to</TableHead>
+            <TableHead>Status</TableHead>
+            <TableHead>Last delivery</TableHead>
+            <TableHead className="w-14 text-right">
+              <span className="sr-only">More actions</span>
+            </TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {endpoints.map((endpoint) => {
+            const deliveryStats =
+              deliveryStatsByEndpoint[endpoint.id] ??
+              EMPTY_ENDPOINT_DELIVERY_STATS;
+
+            return (
+              <TableRow key={endpoint.id}>
+                <TableCell className="w-[42%]">
+                  <div className="min-w-0 space-y-1.5">
+                    <Link
+                      className="block truncate font-medium transition-colors hover:text-foreground/80 hover:underline"
+                      params={{ endpoint: endpoint.id }}
+                      to="/webhooks/$endpoint"
+                    >
+                      {getEndpointDisplayName(endpoint)}
+                    </Link>
+                    <div className="truncate text-muted-foreground text-xs">
+                      {getEndpointSecondaryLabel(endpoint)}
+                    </div>
+                  </div>
+                </TableCell>
+                <TableCell className="w-[24%]">
+                  <div className="min-w-0 space-y-1.5">
+                    <div className="font-medium text-sm">
+                      {getEventSubscriptionSummary(
+                        endpoint.subscribed_event_types
+                      )}
+                    </div>
+                    <div className="truncate text-muted-foreground text-xs">
+                      {getEventSubscriptionDetail(
+                        endpoint.subscribed_event_types
+                      )}
+                    </div>
+                  </div>
+                </TableCell>
+                <TableCell className="w-[14%]">
+                  <StatusBadge
+                    status={endpoint.enabled ? "active" : "disabled"}
+                  />
+                </TableCell>
+                <TableCell className="w-[16%]">
+                  <div className="flex items-center gap-2">
+                    <div className="truncate text-muted-foreground text-sm tabular-nums">
+                      {formatOptionalDate(deliveryStats.lastAttemptAt)}
+                    </div>
+                    <ResponseCodeBadge
+                      statusCode={deliveryStats.lastStatusCode}
+                    />
+                  </div>
+                </TableCell>
+                <TableCell className="w-14 text-right">
+                  <EndpointActionsMenu
+                    endpoint={endpoint}
+                    isMutating={isMutatingEndpointId === endpoint.id}
+                    onDeleteEndpoint={onDeleteEndpoint}
+                    onToggleEndpointEnabled={onToggleEndpointEnabled}
+                  />
+                </TableCell>
+              </TableRow>
+            );
+          })}
+        </TableBody>
+      </Table>
+    </div>
   );
 }
 
-function EndpointDetailsCard({
+function EndpointActionsMenu({
+  align = "end",
   endpoint,
-  endpointEnabled,
-  endpointSubscribed,
-  endpointUrl,
-  isDirty,
-  isRevealing,
-  isRotating,
-  isSaving,
-  onEndpointEnabledChange,
-  onEndpointSubscribedChange,
-  onEndpointUrlChange,
-  onRevealSecret,
-  onRotateSecret,
-  onSaveEndpoint,
-  showMissingKeyAlert,
+  isMutating,
+  onDeleteEndpoint,
+  onToggleEndpointEnabled,
+  showViewDetails = true,
+  triggerVariant = "ghost",
 }: {
+  align?: "end" | "start";
   endpoint: WebhookEndpoint;
-  endpointEnabled: boolean;
-  endpointSubscribed: boolean;
-  endpointUrl: string;
-  isDirty: boolean;
-  isRevealing: boolean;
-  isRotating: boolean;
-  isSaving: boolean;
-  onEndpointEnabledChange: (enabled: boolean) => void;
-  onEndpointSubscribedChange: (enabled: boolean) => void;
-  onEndpointUrlChange: (value: string) => void;
-  onRevealSecret: () => Promise<void>;
-  onRotateSecret: () => Promise<void>;
-  onSaveEndpoint: () => Promise<void>;
-  showMissingKeyAlert: boolean;
+  isMutating: boolean;
+  onDeleteEndpoint: (endpoint: WebhookEndpoint) => Promise<void>;
+  onToggleEndpointEnabled: (endpoint: WebhookEndpoint) => Promise<void>;
+  showViewDetails?: boolean;
+  triggerVariant?: "ghost" | "outline";
 }) {
   return (
-    <Card>
-      <CardHeader>
-        <div className="flex flex-wrap items-center gap-3">
-          <CardTitle>Endpoint details</CardTitle>
-          <EnvironmentBadge environment={endpoint.environment} />
-          <StatusBadge status={endpoint.enabled ? "active" : "inactive"} />
-        </div>
-        <CardDescription>
-          Update the destination, enablement, and subscribed events for{" "}
-          <span className="font-mono">{endpoint.id}</span>.
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-6">
-        {showMissingKeyAlert ? (
-          <Alert>
-            <ShieldAlertIcon className="size-4" />
-            <AlertTitle>No active public key</AlertTitle>
-            <AlertDescription>
-              New deliveries to this endpoint will fail until an active
-              encryption key is added.
-            </AlertDescription>
-          </Alert>
+    <DropdownMenu>
+      <DropdownMenuTrigger
+        render={
+          <Button
+            aria-label={`More actions for ${getEndpointDisplayName(endpoint)}`}
+            size="icon"
+            variant={triggerVariant}
+          />
+        }
+      >
+        <EllipsisVerticalIcon className="size-4" />
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align={align}>
+        {showViewDetails ? (
+          <DropdownMenuItem
+            render={
+              <Button
+                className="flex w-full items-center justify-start"
+                render={
+                  <Link
+                    params={{ endpoint: endpoint.id }}
+                    to="/webhooks/$endpoint"
+                  />
+                }
+                variant="ghost"
+              />
+            }
+          >
+            <EyeIcon className="size-4" />
+            View details
+          </DropdownMenuItem>
         ) : null}
+        <DropdownMenuItem
+          disabled={isMutating}
+          onClick={() => {
+            toast.promise(onToggleEndpointEnabled(endpoint), {
+              loading: endpoint.enabled
+                ? "Pausing destination..."
+                : "Enabling destination...",
+              success: endpoint.enabled
+                ? "Destination paused"
+                : "Destination enabled",
+              error: endpoint.enabled
+                ? "Failed to pause destination"
+                : "Failed to enable destination",
+            });
+          }}
+          render={
+            <Button
+              className="flex w-full items-center justify-start"
+              variant="ghost"
+            />
+          }
+        >
+          {endpoint.enabled ? (
+            <PauseIcon className="size-4" />
+          ) : (
+            <PlayIcon className="size-4" />
+          )}
+          {endpoint.enabled ? "Pause destination" : "Enable destination"}
+        </DropdownMenuItem>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem
+          disabled={isMutating}
+          onClick={() => {
+            toast.promise(onDeleteEndpoint(endpoint), {
+              loading: "Deleting destination...",
+              success: "Destination deleted",
+              error: "Failed to delete destination",
+            });
+          }}
+          render={
+            <Button
+              className="flex w-full items-center justify-start"
+              variant="ghost"
+            />
+          }
+          variant="destructive"
+        >
+          <TrashIcon className="size-4" />
+          Delete destination
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
 
+function EndpointPerformancePanel({
+  endpointDeliveryStats,
+  isDeliveriesLoading,
+  trendPoints,
+}: {
+  endpointDeliveryStats: EndpointDeliveryStats;
+  isDeliveriesLoading: boolean;
+  trendPoints: DeliveryTrendPoint[];
+}) {
+  if (isDeliveriesLoading) {
+    return (
+      <div className="overflow-hidden rounded-md border border-border/70">
+        <div className="border-border/70 border-b px-4 py-4">
+          <h2 className="font-medium text-sm">Performance</h2>
+        </div>
+        <LoadingState minHeight="min-h-64" />
+      </div>
+    );
+  }
+
+  const maxValue = Math.max(
+    1,
+    ...trendPoints.map((point) => Math.max(point.total, point.failed))
+  );
+  const succeededCount = Math.max(
+    endpointDeliveryStats.total -
+      endpointDeliveryStats.failed -
+      endpointDeliveryStats.inFlight,
+    0
+  );
+
+  return (
+    <div className="overflow-hidden rounded-md border border-border/70">
+      <div className="flex items-start justify-between gap-4 border-border/70 border-b px-4 py-4">
+        <div className="space-y-1">
+          <h2 className="font-medium text-sm">Performance</h2>
+          <p className="text-muted-foreground text-sm">
+            Delivery activity over the last 7 days.
+          </p>
+        </div>
+        <span className="text-muted-foreground text-xs uppercase tracking-[0.14em]">
+          Last 7 days
+        </span>
+      </div>
+
+      <div className="grid gap-0 xl:grid-cols-[minmax(0,1fr)_18rem]">
+        <div className="space-y-4 border-border/70 p-4 xl:border-r">
+          <div className="flex flex-wrap gap-4 text-xs">
+            <div className="flex items-center gap-2">
+              <span className="size-2 rounded-full bg-foreground/35" />
+              Total
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="size-2 rounded-full bg-red-500/40" />
+              Failed
+            </div>
+          </div>
+
+          <div className="flex h-44 items-end gap-3">
+            {trendPoints.map((point) => (
+              <div
+                className="flex min-w-0 flex-1 flex-col items-center gap-2"
+                key={point.label}
+              >
+                <div className="flex h-32 w-full items-end justify-center gap-1">
+                  <div
+                    className="w-full max-w-3 rounded-sm bg-foreground/15"
+                    style={{
+                      height:
+                        point.total > 0
+                          ? `${Math.max((point.total / maxValue) * 100, 8)}%`
+                          : "0%",
+                    }}
+                  />
+                  <div
+                    className="w-full max-w-3 rounded-sm bg-red-500/30"
+                    style={{
+                      height:
+                        point.failed > 0
+                          ? `${Math.max((point.failed / maxValue) * 100, 8)}%`
+                          : "0%",
+                    }}
+                  />
+                </div>
+                <div className="text-[11px] text-muted-foreground tabular-nums">
+                  {point.label}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="space-y-4 px-4 py-4">
+          <h3 className="font-medium text-sm">Delivery overview</h3>
+          <dl className="space-y-3 text-sm">
+            <div className="flex items-center justify-between gap-4">
+              <dt className="text-muted-foreground">Total deliveries</dt>
+              <dd className="font-medium tabular-nums">
+                {formatCount(endpointDeliveryStats.total)}
+              </dd>
+            </div>
+            <div className="flex items-center justify-between gap-4">
+              <dt className="text-muted-foreground">Succeeded</dt>
+              <dd className="font-medium tabular-nums">
+                {formatCount(succeededCount)}
+              </dd>
+            </div>
+            <div className="flex items-center justify-between gap-4">
+              <dt className="text-muted-foreground">Failed</dt>
+              <dd className="font-medium tabular-nums">
+                {formatCount(endpointDeliveryStats.failed)}
+              </dd>
+            </div>
+            <div className="flex items-center justify-between gap-4">
+              <dt className="text-muted-foreground">In flight</dt>
+              <dd className="font-medium tabular-nums">
+                {formatCount(endpointDeliveryStats.inFlight)}
+              </dd>
+            </div>
+            <div className="flex items-center justify-between gap-4">
+              <dt className="text-muted-foreground">Last response</dt>
+              <dd>
+                <ResponseCodeBadge
+                  statusCode={endpointDeliveryStats.lastStatusCode}
+                />
+              </dd>
+            </div>
+          </dl>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function EndpointDetailsPanel({ endpoint }: { endpoint: WebhookEndpoint }) {
+  return (
+    <div className="overflow-hidden rounded-md border border-border/70">
+      <div className="border-border/70 border-b px-4 py-3">
+        <h2 className="font-medium text-sm">Destination details</h2>
+      </div>
+
+      <dl className="divide-y divide-border/70 text-sm">
+        <div className="grid grid-cols-[8rem_minmax(0,1fr)] gap-3 px-4 py-2.5">
+          <dt className="text-muted-foreground">Destination ID</dt>
+          <dd className="break-all font-mono text-xs">{endpoint.id}</dd>
+        </div>
+        <div className="grid grid-cols-[8rem_minmax(0,1fr)] gap-3 px-4 py-2.5">
+          <dt className="text-muted-foreground">Name</dt>
+          <dd className="min-w-0">{getEndpointDisplayName(endpoint)}</dd>
+        </div>
+        <div className="grid grid-cols-[8rem_minmax(0,1fr)] gap-3 px-4 py-2.5">
+          <dt className="text-muted-foreground">Endpoint URL</dt>
+          <dd className="break-all">{endpoint.url}</dd>
+        </div>
+        <div className="grid grid-cols-[8rem_minmax(0,1fr)] gap-3 px-4 py-2.5">
+          <dt className="text-muted-foreground">Listening to</dt>
+          <dd className="min-w-0 space-y-0.5">
+            <div>
+              {getEventSubscriptionSummary(endpoint.subscribed_event_types)}
+            </div>
+            <div className="text-muted-foreground text-xs">
+              {getEventSubscriptionDetail(endpoint.subscribed_event_types)}
+            </div>
+          </dd>
+        </div>
+      </dl>
+    </div>
+  );
+}
+
+function EndpointSigningSecretCard({
+  secret,
+  isRevealing,
+  isRotating,
+  onRevealSecret,
+  onRotateSecret,
+}: {
+  secret: string | null;
+  isRevealing: boolean;
+  isRotating: boolean;
+  onRevealSecret: () => Promise<void>;
+  onRotateSecret: () => Promise<void>;
+}) {
+  const isSecretVisible = Boolean(secret);
+  const { copied, copy } = useCopyToClipboard();
+
+  return (
+    <div className="overflow-hidden rounded-md border border-border/70">
+      <div className="space-y-4 px-4 py-4">
         <div className="space-y-2">
-          <Label htmlFor="webhook-url">Destination URL</Label>
-          <Input
-            id="webhook-url"
-            onChange={(event) => onEndpointUrlChange(event.target.value)}
-            value={endpointUrl}
-          />
-        </div>
-
-        <Separator />
-
-        <div className="flex items-center justify-between gap-6">
-          <div className="space-y-0.5">
-            <Label htmlFor="endpoint-enabled">Enabled</Label>
-            <p className="text-muted-foreground text-sm">
-              Disabled endpoints stop receiving new deliveries.
-            </p>
+          <div className="flex items-center gap-2 font-medium text-sm">
+            <KeyRoundIcon className="size-4 text-muted-foreground" />
+            Signing secret
           </div>
-          <Switch
-            checked={endpointEnabled}
-            id="endpoint-enabled"
-            onCheckedChange={onEndpointEnabledChange}
-          />
+          <p className="text-muted-foreground text-sm leading-6">
+            Use this secret to verify that deliveries came from Kayle ID. Reveal
+            it temporarily or rotate it if you need to replace it.
+          </p>
         </div>
 
-        <Separator />
-
-        <div className="flex items-center justify-between gap-6">
-          <div className="space-y-0.5">
-            <Label htmlFor="subscription-default">{DEFAULT_EVENT_TYPE}</Label>
-            <p className="text-muted-foreground text-sm">
-              Subscribe this endpoint to completed verification attempts.
-            </p>
+        <div className="flex items-center gap-2 rounded-md border border-border/70 bg-muted/20 px-4 py-3">
+          <div className="min-w-0 flex-1 truncate font-mono text-foreground/90 text-sm">
+            {secret ?? `whsec_${".".repeat(32)}`}
           </div>
-          <Switch
-            checked={endpointSubscribed}
-            id="subscription-default"
-            onCheckedChange={onEndpointSubscribedChange}
-          />
+          <div className="flex items-center gap-1">
+            {secret ? (
+              <Button
+                aria-label={
+                  copied ? "Signing secret copied" : "Copy signing secret"
+                }
+                onClick={() => {
+                  copy(secret);
+                }}
+                size="icon"
+                type="button"
+                variant="ghost"
+              >
+                <CopyIcon className="size-4" />
+              </Button>
+            ) : null}
+            <Button
+              aria-label={
+                isSecretVisible
+                  ? "Hide signing secret"
+                  : "Reveal signing secret"
+              }
+              disabled={isRevealing}
+              onClick={() => {
+                if (isSecretVisible) {
+                  onRevealSecret();
+                  return;
+                }
+
+                showAsyncToast(onRevealSecret(), {
+                  loading: "Revealing signing secret...",
+                  success: "Signing secret revealed",
+                  error: "Failed to reveal signing secret",
+                });
+              }}
+              size="icon"
+              type="button"
+              variant="ghost"
+            >
+              {isRevealing ? (
+                <Loader2Icon className="size-4 animate-spin" />
+              ) : (
+                <EyeIcon className="size-4" />
+              )}
+            </Button>
+            <Button
+              aria-label="Rotate signing secret"
+              disabled={isRotating}
+              onClick={() =>
+                showAsyncToast(onRotateSecret(), {
+                  loading: "Rotating signing secret...",
+                  success: "Signing secret rotated",
+                  error: "Failed to rotate signing secret",
+                })
+              }
+              size="icon"
+              type="button"
+              variant="ghost"
+            >
+              {isRotating ? (
+                <Loader2Icon className="size-4 animate-spin" />
+              ) : (
+                <RefreshCwIcon className="size-4" />
+              )}
+            </Button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function EndpointResourcesCard() {
+  const resources = [
+    {
+      href: "https://kayle.id/docs/api/webhooks/endpoints#get-by-id",
+      label: "Endpoint API reference",
+    },
+    {
+      href: "https://kayle.id/docs/api/webhooks/endpoints#rotate-signing-secret",
+      label: "Signing secret reference",
+    },
+    {
+      href: "https://kayle.id/docs/api/webhooks/deliveries#retry",
+      label: "Delivery retry reference",
+    },
+  ] as const;
+
+  return (
+    <div className="overflow-hidden rounded-md border border-border/70">
+      <div className="border-border/70 border-b px-4 py-4">
+        <h2 className="font-medium text-sm">Resources</h2>
+      </div>
+
+      <div className="space-y-3 px-4 py-4 text-sm">
+        {resources.map((resource) => (
+          <a
+            className="block text-foreground transition-colors hover:text-foreground/70 hover:underline"
+            href={resource.href}
+            key={resource.href}
+            rel="noopener"
+            target="_blank"
+          >
+            {resource.label}
+          </a>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function EditEndpointDrawer({
+  endpointEnabled,
+  endpointName,
+  endpointSubscribedEventTypes,
+  endpointUrl,
+  isDirty,
+  isSaving,
+  onEndpointEnabledChange,
+  onEndpointNameChange,
+  onToggleEndpointEventType,
+  onEndpointUrlChange,
+  onReset,
+  onSaveEndpoint,
+}: {
+  endpointEnabled: boolean;
+  endpointName: string;
+  endpointSubscribedEventTypes: string[];
+  endpointUrl: string;
+  isDirty: boolean;
+  isSaving: boolean;
+  onEndpointEnabledChange: (enabled: boolean) => void;
+  onEndpointNameChange: (value: string) => void;
+  onToggleEndpointEventType: (eventType: string) => void;
+  onEndpointUrlChange: (value: string) => void;
+  onReset: () => void;
+  onSaveEndpoint: () => Promise<void>;
+}) {
+  const [isOpen, setIsOpen] = useState(false);
+
+  async function handleSaveAndClose(): Promise<void> {
+    await onSaveEndpoint();
+    setIsOpen(false);
+  }
+
+  return (
+    <Sheet
+      onOpenChange={(open) => {
+        setIsOpen(open);
+
+        if (!open) {
+          onReset();
+        }
+      }}
+      open={isOpen}
+    >
+      <SheetTrigger
+        render={
+          <Button type="button" variant="outline">
+            Edit destination
+          </Button>
+        }
+      />
+      <SheetContent
+        className="flex w-full flex-col overflow-hidden sm:max-w-2xl"
+        side="right"
+      >
+        <div className="border-border/70 border-b px-6 py-5">
+          <SheetTitle>Edit destination</SheetTitle>
+          <p className="mt-1 text-muted-foreground text-sm">
+            Update the label, endpoint URL, event subscriptions, and delivery
+            state.
+          </p>
         </div>
 
-        <Separator />
+        <div className="flex-1 space-y-4 overflow-y-auto px-6 py-5">
+          <div className="space-y-2">
+            <Label htmlFor="webhook-name">Endpoint name</Label>
+            <Input
+              className="h-11"
+              id="webhook-name"
+              onChange={(event) => onEndpointNameChange(event.target.value)}
+              placeholder="Primary production webhook"
+              value={endpointName}
+            />
+          </div>
 
-        <div className="flex flex-wrap gap-3">
+          <div className="space-y-2">
+            <Label htmlFor="webhook-url">Destination URL</Label>
+            <Input
+              className="h-11"
+              id="webhook-url"
+              onChange={(event) => onEndpointUrlChange(event.target.value)}
+              value={endpointUrl}
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label>Event subscriptions</Label>
+            <EventSubscriptionMenu
+              onToggleEventType={onToggleEndpointEventType}
+              selectedEventTypes={endpointSubscribedEventTypes}
+            />
+          </div>
+
+          <div className="flex items-start justify-between gap-6 rounded-md border border-border/70 px-4 py-3">
+            <div className="space-y-1">
+              <Label htmlFor="endpoint-enabled">Enabled</Label>
+              <p className="text-muted-foreground text-xs">
+                Allow this destination to receive new deliveries.
+              </p>
+            </div>
+            <div className="pt-0.5">
+              <Switch
+                checked={endpointEnabled}
+                id="endpoint-enabled"
+                onCheckedChange={onEndpointEnabledChange}
+              />
+            </div>
+          </div>
+        </div>
+
+        <div className="flex justify-end border-border/70 border-t px-6 py-4">
           <Button
             disabled={!isDirty || isSaving}
             onClick={() =>
-              showAsyncToast(onSaveEndpoint(), {
+              showAsyncToast(handleSaveAndClose(), {
                 loading: "Saving webhook endpoint...",
                 success: "Webhook endpoint updated",
                 error: "Failed to update webhook endpoint",
@@ -540,54 +1551,25 @@ function EndpointDetailsCard({
             ) : null}
             Save changes
           </Button>
-          <Button
-            disabled={isRevealing}
-            onClick={() =>
-              showAsyncToast(onRevealSecret(), {
-                loading: "Revealing signing secret...",
-                success: "Signing secret revealed",
-                error: "Failed to reveal signing secret",
-              })
-            }
-            type="button"
-            variant="outline"
-          >
-            <EyeIcon className="mr-2 size-4" />
-            Reveal signing secret
-          </Button>
-          <Button
-            disabled={isRotating}
-            onClick={() =>
-              showAsyncToast(onRotateSecret(), {
-                loading: "Rotating signing secret...",
-                success: "Signing secret rotated",
-                error: "Failed to rotate signing secret",
-              })
-            }
-            type="button"
-            variant="outline"
-          >
-            <RefreshCwIcon className="mr-2 size-4" />
-            Rotate signing secret
-          </Button>
         </div>
-      </CardContent>
-    </Card>
+      </SheetContent>
+    </Sheet>
   );
 }
 
 function EndpointKeysCard({
   endpointId,
   error,
-  isDeactivating,
+  isUpdating,
   isLoading,
   keys,
   onCreateKey,
   onDeactivateKey,
+  onReactivateKey,
 }: {
   endpointId: string;
   error: unknown;
-  isDeactivating: boolean;
+  isUpdating: boolean;
   isLoading: boolean;
   keys: WebhookEncryptionKey[];
   onCreateKey: (input: {
@@ -596,155 +1578,102 @@ function EndpointKeysCard({
     keyId: string;
   }) => Promise<void>;
   onDeactivateKey: (keyId: string) => Promise<void>;
+  onReactivateKey: (keyId: string) => Promise<void>;
 }) {
+  function handleToggleKey(key: WebhookEncryptionKey): void {
+    const request = key.is_active
+      ? onDeactivateKey(key.id)
+      : onReactivateKey(key.id);
+
+    showAsyncToast(request, {
+      loading: key.is_active ? "Deactivating key..." : "Re-enabling key...",
+      success: key.is_active ? "Key deactivated" : "Key re-enabled",
+      error: key.is_active
+        ? "Failed to deactivate key"
+        : "Failed to re-enable key",
+    });
+  }
+
   let content: ReactNode;
 
   if (isLoading) {
-    content = <LoadingState minHeight="min-h-32" />;
+    content = <LoadingState minHeight="min-h-24" />;
   } else if (keys.length === 0) {
     content = (
-      <SectionMessage
-        description="Add a public JWK to encrypt outbound payloads for this endpoint."
-        title="No public keys yet"
-      />
+      <div className="px-4 py-5 text-muted-foreground text-sm">
+        No public keys yet. Add a public JWK to encrypt outbound payloads for
+        this destination.
+      </div>
     );
   } else {
     content = (
-      <div className="overflow-hidden rounded-md border">
-        <Table>
-          <TableHeader className="bg-muted">
-            <TableRow>
-              <TableHead>Key</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead>Created</TableHead>
-              <TableHead>
-                <span className="sr-only">Actions</span>
-              </TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {keys.map((key) => (
-              <TableRow key={key.id}>
-                <TableCell>
-                  <div className="space-y-1">
-                    <div className="font-medium">{key.key_id}</div>
-                    <div className="font-mono text-muted-foreground text-xs">
-                      {key.algorithm} · {key.id}
-                    </div>
-                  </div>
-                </TableCell>
-                <TableCell>
-                  <StatusBadge status={key.is_active ? "active" : "inactive"} />
-                </TableCell>
-                <TableCell className="text-muted-foreground text-sm tabular-nums">
-                  {formatDate(key.created_at)}
-                </TableCell>
-                <TableCell className="text-right">
-                  <Button
-                    disabled={!key.is_active || isDeactivating}
-                    onClick={() =>
-                      showAsyncToast(onDeactivateKey(key.id), {
-                        loading: "Deactivating key...",
-                        success: "Key deactivated",
-                        error: "Failed to deactivate key",
-                      })
-                    }
-                    size="sm"
-                    type="button"
-                    variant="outline"
-                  >
-                    Deactivate
-                  </Button>
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
+      <div className="divide-y divide-border/70">
+        {keys.map((key) => (
+          <div className="space-y-3 px-4 py-4" key={key.id}>
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0 space-y-1">
+                <div className="truncate font-medium text-sm">{key.key_id}</div>
+                <div className="truncate font-mono text-muted-foreground text-xs">
+                  {key.algorithm} · {key.id}
+                </div>
+              </div>
+              <StatusBadge status={key.is_active ? "active" : "inactive"} />
+            </div>
+
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-muted-foreground text-xs tabular-nums">
+                {formatDate(key.created_at)}
+              </p>
+              <Button
+                disabled={isUpdating}
+                onClick={() => handleToggleKey(key)}
+                size="sm"
+                type="button"
+                variant="outline"
+              >
+                {key.is_active ? "Deactivate" : "Re-enable"}
+              </Button>
+            </div>
+          </div>
+        ))}
       </div>
     );
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <div className="flex items-center justify-between gap-3">
-          <div>
-            <CardTitle>Public keys</CardTitle>
-            <CardDescription>
-              Keys are scoped to this endpoint and encrypt outbound payloads.
-            </CardDescription>
-          </div>
-          <CreateKeyDialog endpointId={endpointId} onSubmit={onCreateKey} />
+    <div className="overflow-hidden rounded-md border border-border/70">
+      <div className="flex items-start justify-between gap-3 border-border/70 border-b px-4 py-4">
+        <div className="space-y-1">
+          <h2 className="font-medium text-sm">Public keys</h2>
         </div>
-      </CardHeader>
-      <CardContent className="space-y-4">
+        <CreateKeyDialog endpointId={endpointId} onSubmit={onCreateKey} />
+      </div>
+      <div className="space-y-4">
         <QueryErrorAlert
           error={error}
           fallback="Webhook keys could not be loaded."
           title="Failed to load keys"
         />
         {content}
-      </CardContent>
-    </Card>
+      </div>
+    </div>
   );
 }
 
 function EndpointsTabContent({
-  isDeactivatingKey,
-  endpointEnabled,
+  deliveryStatsByEndpoint,
   endpointError,
-  endpointSubscribed,
-  endpointUrl,
   endpoints,
-  isEndpointDirty,
-  isRevealingSecret,
-  isRotatingSecret,
-  isSavingEndpoint,
-  keys,
-  keysError,
-  keysLoading,
-  onCreateKey,
-  onDeactivateKey,
-  onEndpointEnabledChange,
-  onEndpointSubscribedChange,
-  onEndpointUrlChange,
-  onRevealSecret,
-  onRotateSecret,
-  onSaveEndpoint,
-  onSelectEndpoint,
-  selectedEndpoint,
-  selectedEndpointId,
-  showMissingKeyAlert,
+  isMutatingEndpointId,
+  onDeleteEndpoint,
+  onToggleEndpointEnabled,
 }: {
-  isDeactivatingKey: boolean;
-  endpointEnabled: boolean;
+  deliveryStatsByEndpoint: Record<string, EndpointDeliveryStats>;
   endpointError: unknown;
-  endpointSubscribed: boolean;
-  endpointUrl: string;
   endpoints: WebhookEndpoint[];
-  isEndpointDirty: boolean;
-  isRevealingSecret: boolean;
-  isRotatingSecret: boolean;
-  isSavingEndpoint: boolean;
-  keys: WebhookEncryptionKey[];
-  keysError: unknown;
-  keysLoading: boolean;
-  onCreateKey: (input: {
-    endpointId: string;
-    jwk: JsonWebKey;
-    keyId: string;
-  }) => Promise<void>;
-  onDeactivateKey: (keyId: string) => Promise<void>;
-  onEndpointEnabledChange: (enabled: boolean) => void;
-  onEndpointSubscribedChange: (enabled: boolean) => void;
-  onEndpointUrlChange: (value: string) => void;
-  onRevealSecret: (endpointId: string) => Promise<void>;
-  onRotateSecret: (endpointId: string) => Promise<void>;
-  onSaveEndpoint: () => Promise<void>;
-  onSelectEndpoint: (endpointId: string) => void;
-  selectedEndpoint: WebhookEndpoint | null;
-  selectedEndpointId: string | null;
-  showMissingKeyAlert: boolean;
+  isMutatingEndpointId: string | null;
+  onDeleteEndpoint: (endpoint: WebhookEndpoint) => Promise<void>;
+  onToggleEndpointEnabled: (endpoint: WebhookEndpoint) => Promise<void>;
 }) {
   return (
     <div className="space-y-6">
@@ -755,41 +1684,12 @@ function EndpointsTabContent({
       />
 
       <EndpointListCard
+        deliveryStatsByEndpoint={deliveryStatsByEndpoint}
         endpoints={endpoints}
-        onSelectEndpoint={onSelectEndpoint}
-        selectedEndpointId={selectedEndpointId}
+        isMutatingEndpointId={isMutatingEndpointId}
+        onDeleteEndpoint={onDeleteEndpoint}
+        onToggleEndpointEnabled={onToggleEndpointEnabled}
       />
-
-      {selectedEndpoint ? (
-        <div className="grid gap-6 xl:grid-cols-[minmax(0,1.2fr)_minmax(0,0.8fr)]">
-          <EndpointDetailsCard
-            endpoint={selectedEndpoint}
-            endpointEnabled={endpointEnabled}
-            endpointSubscribed={endpointSubscribed}
-            endpointUrl={endpointUrl}
-            isDirty={isEndpointDirty}
-            isRevealing={isRevealingSecret}
-            isRotating={isRotatingSecret}
-            isSaving={isSavingEndpoint}
-            onEndpointEnabledChange={onEndpointEnabledChange}
-            onEndpointSubscribedChange={onEndpointSubscribedChange}
-            onEndpointUrlChange={onEndpointUrlChange}
-            onRevealSecret={() => onRevealSecret(selectedEndpoint.id)}
-            onRotateSecret={() => onRotateSecret(selectedEndpoint.id)}
-            onSaveEndpoint={onSaveEndpoint}
-            showMissingKeyAlert={showMissingKeyAlert}
-          />
-          <EndpointKeysCard
-            endpointId={selectedEndpoint.id}
-            error={keysError}
-            isDeactivating={isDeactivatingKey}
-            isLoading={keysLoading}
-            keys={keys}
-            onCreateKey={onCreateKey}
-            onDeactivateKey={onDeactivateKey}
-          />
-        </div>
-      ) : null}
     </div>
   );
 }
@@ -798,14 +1698,10 @@ function EventsTabContent({
   error,
   events,
   isLoading,
-  isReplaying,
-  onReplayEvent,
 }: {
   error: unknown;
   events: WebhookEvent[];
   isLoading: boolean;
-  isReplaying: boolean;
-  onReplayEvent: (eventId: string) => Promise<void>;
 }) {
   let content: ReactNode;
 
@@ -820,64 +1716,53 @@ function EventsTabContent({
     );
   } else {
     content = (
-      <div className="overflow-hidden rounded-md border">
-        <Table>
-          <TableHeader className="bg-muted">
+      <div className="overflow-hidden rounded-md border border-border/70">
+        <Table className="w-full table-fixed">
+          <TableHeader className="bg-muted/40">
             <TableRow>
-              <TableHead>Type</TableHead>
-              <TableHead>Environment</TableHead>
-              <TableHead>Trigger</TableHead>
-              <TableHead>Deliveries</TableHead>
-              <TableHead>Created</TableHead>
-              <TableHead>
-                <span className="sr-only">Actions</span>
-              </TableHead>
+              <TableHead className="w-[42%]">Event</TableHead>
+              <TableHead className="w-[10%]">Environment</TableHead>
+              <TableHead className="w-[22%]">Origin</TableHead>
+              <TableHead className="w-[12%]">Deliveries</TableHead>
+              <TableHead className="w-[14%]">Created</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {events.map((event) => (
               <TableRow key={event.id}>
-                <TableCell className="min-w-72">
-                  <div className="space-y-1">
-                    <div className="font-medium">{event.type}</div>
-                    <div className="font-mono text-muted-foreground text-xs">
+                <TableCell>
+                  <div className="min-w-0 space-y-1.5">
+                    <Link
+                      className="block truncate font-medium transition-colors hover:text-foreground/80 hover:underline"
+                      params={{ event: event.id }}
+                      search={{ tab: "events" }}
+                      to="/webhooks/events/$event"
+                    >
+                      {event.type}
+                    </Link>
+                    <div className="truncate font-mono text-muted-foreground text-xs">
                       {event.id}
                     </div>
                   </div>
                 </TableCell>
-                <TableCell>
+                <TableCell className="align-top">
                   <EnvironmentBadge environment={event.environment} />
                 </TableCell>
                 <TableCell>
-                  <div className="space-y-1">
-                    <div className="text-sm">{event.trigger_type}</div>
-                    <div className="font-mono text-muted-foreground text-xs">
+                  <div className="min-w-0 space-y-1">
+                    <div className="text-sm">{getEventTriggerLabel(event)}</div>
+                    <div className="truncate font-mono text-muted-foreground text-xs">
                       {event.trigger_id}
                     </div>
                   </div>
                 </TableCell>
-                <TableCell className="text-muted-foreground text-sm">
-                  {summarizeDeliveryStatuses(event.deliveries)}
+                <TableCell>
+                  <EventDeliverySummary deliveries={event.deliveries} />
                 </TableCell>
-                <TableCell className="text-muted-foreground text-sm tabular-nums">
-                  {formatDate(event.created_at)}
-                </TableCell>
-                <TableCell className="text-right">
-                  <Button
-                    disabled={isReplaying}
-                    onClick={() =>
-                      showAsyncToast(onReplayEvent(event.id), {
-                        loading: "Replaying event...",
-                        success: "Webhook event replayed",
-                        error: "Failed to replay event",
-                      })
-                    }
-                    size="sm"
-                    type="button"
-                    variant="outline"
-                  >
-                    Replay
-                  </Button>
+                <TableCell>
+                  <div className="truncate text-muted-foreground text-sm tabular-nums">
+                    {formatDate(event.created_at)}
+                  </div>
                 </TableCell>
               </TableRow>
             ))}
@@ -888,34 +1773,29 @@ function EventsTabContent({
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Webhook events</CardTitle>
-        <CardDescription>
-          Review emitted events and replay them when downstream systems need
-          another delivery attempt.
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        <QueryErrorAlert
-          error={error}
-          fallback="Webhook events could not be loaded."
-          title="Failed to load webhook events"
-        />
-        {content}
-      </CardContent>
-    </Card>
+    <div className="space-y-4">
+      <QueryErrorAlert
+        error={error}
+        fallback="Webhook events could not be loaded."
+        title="Failed to load webhook events"
+      />
+      {content}
+    </div>
   );
 }
 
 function DeliveriesTabContent({
+  context,
   deliveries,
+  endpointsById,
   error,
   isLoading,
   isRetrying,
   onRetryDelivery,
 }: {
+  context: "endpoint" | "event";
   deliveries: WebhookDelivery[];
+  endpointsById?: Record<string, WebhookEndpoint>;
   error: unknown;
   isLoading: boolean;
   isRetrying: boolean;
@@ -928,22 +1808,29 @@ function DeliveriesTabContent({
   } else if (deliveries.length === 0) {
     content = (
       <SectionMessage
-        description="Delivery attempts will appear here after webhook events are queued for an endpoint."
-        title="No deliveries yet"
+        description={
+          context === "event"
+            ? "Delivery attempts for this event will appear here once endpoints begin receiving it."
+            : "Delivery attempts for this endpoint will appear here after events are queued."
+        }
+        title={
+          context === "event" ? "No delivery history yet" : "No deliveries yet"
+        }
       />
     );
   } else {
     content = (
-      <div className="overflow-hidden rounded-md border">
+      <div className="overflow-x-auto rounded-md border border-border/70">
         <Table>
-          <TableHeader className="bg-muted">
+          <TableHeader className="bg-muted/40">
             <TableRow>
               <TableHead>Delivery</TableHead>
+              <TableHead>
+                {context === "event" ? "Endpoint" : "Event"}
+              </TableHead>
               <TableHead>Status</TableHead>
-              <TableHead>Event</TableHead>
-              <TableHead>Endpoint</TableHead>
               <TableHead>Attempts</TableHead>
-              <TableHead>Last response</TableHead>
+              <TableHead>Response</TableHead>
               <TableHead>Last attempt</TableHead>
               <TableHead>
                 <span className="sr-only">Actions</span>
@@ -951,53 +1838,90 @@ function DeliveriesTabContent({
             </TableRow>
           </TableHeader>
           <TableBody>
-            {deliveries.map((delivery) => (
-              <TableRow key={delivery.id}>
-                <TableCell>
-                  <div className="space-y-1">
-                    <div className="font-mono text-sm">{delivery.id}</div>
-                    <div className="font-mono text-muted-foreground text-xs">
-                      {delivery.webhook_encryption_key_id ?? "No key"}
+            {deliveries.map((delivery) => {
+              const endpoint = endpointsById?.[delivery.webhook_endpoint_id];
+
+              return (
+                <TableRow key={delivery.id}>
+                  <TableCell className="min-w-[18rem]">
+                    <div className="space-y-1.5">
+                      <div className="font-mono text-sm">{delivery.id}</div>
+                      <div className="font-mono text-muted-foreground text-xs">
+                        {delivery.webhook_encryption_key_id ??
+                          "No encryption key"}
+                      </div>
                     </div>
-                  </div>
-                </TableCell>
-                <TableCell>
-                  <StatusBadge status={delivery.status} />
-                </TableCell>
-                <TableCell className="font-mono text-xs">
-                  {delivery.event_id}
-                </TableCell>
-                <TableCell className="font-mono text-xs">
-                  {delivery.webhook_endpoint_id}
-                </TableCell>
-                <TableCell className="text-sm tabular-nums">
-                  {delivery.attempt_count}
-                </TableCell>
-                <TableCell className="text-sm tabular-nums">
-                  {delivery.last_status_code ?? "n/a"}
-                </TableCell>
-                <TableCell className="text-muted-foreground text-sm tabular-nums">
-                  {formatOptionalDate(delivery.last_attempt_at)}
-                </TableCell>
-                <TableCell className="text-right">
-                  <Button
-                    disabled={isRetrying}
-                    onClick={() =>
-                      showAsyncToast(onRetryDelivery(delivery.id), {
-                        loading: "Retrying delivery...",
-                        success: "Delivery requeued",
-                        error: "Failed to retry delivery",
-                      })
-                    }
-                    size="sm"
-                    type="button"
-                    variant="outline"
-                  >
-                    Retry
-                  </Button>
-                </TableCell>
-              </TableRow>
-            ))}
+                  </TableCell>
+                  <TableCell className="min-w-[16rem]">
+                    {context === "event" ? (
+                      <div className="space-y-1.5">
+                        {endpoint ? (
+                          <>
+                            <Link
+                              className="font-medium transition-colors hover:text-foreground/80 hover:underline"
+                              params={{ endpoint: endpoint.id }}
+                              to="/webhooks/$endpoint"
+                            >
+                              {getEndpointDisplayName(endpoint)}
+                            </Link>
+                            <div className="truncate text-muted-foreground text-xs">
+                              {getEndpointSecondaryLabel(endpoint)}
+                            </div>
+                          </>
+                        ) : (
+                          <div className="font-mono text-xs">
+                            {delivery.webhook_endpoint_id}
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="space-y-1.5">
+                        <Link
+                          className="font-mono text-sm transition-colors hover:text-foreground/80 hover:underline"
+                          params={{ event: delivery.event_id }}
+                          search={{ tab: "events" }}
+                          to="/webhooks/events/$event"
+                        >
+                          {delivery.event_id}
+                        </Link>
+                        <div className="text-muted-foreground text-xs">
+                          Delivery event reference
+                        </div>
+                      </div>
+                    )}
+                  </TableCell>
+                  <TableCell>
+                    <StatusBadge status={delivery.status} />
+                  </TableCell>
+                  <TableCell className="text-sm tabular-nums">
+                    {delivery.attempt_count}
+                  </TableCell>
+                  <TableCell>
+                    <ResponseCodeBadge statusCode={delivery.last_status_code} />
+                  </TableCell>
+                  <TableCell className="text-muted-foreground text-sm tabular-nums">
+                    {formatOptionalDate(delivery.last_attempt_at)}
+                  </TableCell>
+                  <TableCell className="text-right">
+                    <Button
+                      disabled={isRetrying}
+                      onClick={() =>
+                        showAsyncToast(onRetryDelivery(delivery.id), {
+                          loading: "Retrying delivery...",
+                          success: "Delivery requeued",
+                          error: "Failed to retry delivery",
+                        })
+                      }
+                      size="sm"
+                      type="button"
+                      variant="outline"
+                    >
+                      Retry
+                    </Button>
+                  </TableCell>
+                </TableRow>
+              );
+            })}
           </TableBody>
         </Table>
       </div>
@@ -1005,41 +1929,206 @@ function DeliveriesTabContent({
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Webhook deliveries</CardTitle>
-        <CardDescription>
-          Inspect individual delivery attempts and manually retry them when
-          needed.
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        <QueryErrorAlert
-          error={error}
-          fallback="Webhook deliveries could not be loaded."
-          title="Failed to load deliveries"
-        />
-        {content}
-      </CardContent>
-    </Card>
+    <div className="space-y-4">
+      <QueryErrorAlert
+        error={error}
+        fallback="Webhook deliveries could not be loaded."
+        title="Failed to load deliveries"
+      />
+      {content}
+    </div>
   );
 }
 
-export function WebhooksPage() {
-  const { activeOrganization } = useAuth();
+function EventAttachedEndpointsCard({
+  endpointsById,
+  error,
+  event,
+}: {
+  endpointsById: Record<string, WebhookEndpoint>;
+  error: unknown;
+  event: WebhookEvent;
+}) {
+  let content: ReactNode;
+
+  if (event.deliveries.length === 0) {
+    content = (
+      <SectionMessage
+        description="This event has not been attached to any webhook endpoints yet."
+        title="No attached endpoints"
+      />
+    );
+  } else {
+    content = (
+      <div className="overflow-x-auto rounded-md border border-border/70">
+        <Table>
+          <TableHeader className="bg-muted/40">
+            <TableRow>
+              <TableHead>Endpoint</TableHead>
+              <TableHead>Status</TableHead>
+              <TableHead>Attempts</TableHead>
+              <TableHead>Response</TableHead>
+              <TableHead>Last attempt</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {event.deliveries.map((delivery) => {
+              const endpoint = endpointsById[delivery.webhook_endpoint_id];
+
+              return (
+                <TableRow key={delivery.id}>
+                  <TableCell className="min-w-[18rem]">
+                    {endpoint ? (
+                      <div className="space-y-1.5">
+                        <Link
+                          className="font-medium transition-colors hover:text-foreground/80 hover:underline"
+                          params={{ endpoint: endpoint.id }}
+                          to="/webhooks/$endpoint"
+                        >
+                          {getEndpointDisplayName(endpoint)}
+                        </Link>
+                        <div className="truncate text-muted-foreground text-xs">
+                          {getEndpointSecondaryLabel(endpoint)}
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="space-y-1.5">
+                        <div className="font-mono text-sm">
+                          {delivery.webhook_endpoint_id}
+                        </div>
+                        <div className="text-muted-foreground text-xs">
+                          Endpoint details unavailable
+                        </div>
+                      </div>
+                    )}
+                  </TableCell>
+                  <TableCell>
+                    <StatusBadge status={delivery.status} />
+                  </TableCell>
+                  <TableCell className="text-sm tabular-nums">
+                    {delivery.attempt_count}
+                  </TableCell>
+                  <TableCell>
+                    <ResponseCodeBadge statusCode={delivery.last_status_code} />
+                  </TableCell>
+                  <TableCell className="text-muted-foreground text-sm tabular-nums">
+                    {formatOptionalDate(delivery.last_attempt_at)}
+                  </TableCell>
+                </TableRow>
+              );
+            })}
+          </TableBody>
+        </Table>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-3">
+      <h2 className="font-medium text-sm">Attached endpoints</h2>
+      <QueryErrorAlert
+        error={error}
+        fallback="Webhook endpoint details could not be loaded."
+        title="Failed to load attached endpoints"
+      />
+      {content}
+    </div>
+  );
+}
+
+function EventOverviewCard({
+  event,
+  isReplaying,
+  onReplayEvent,
+}: {
+  event: WebhookEvent;
+  isReplaying: boolean;
+  onReplayEvent: (eventId: string) => Promise<void>;
+}) {
+  const replayDisabledReason = getWebhookEventReplayDisabledReason(event);
+
+  return (
+    <div className="space-y-4 rounded-md border border-border/70 p-5">
+      <div className="flex items-center justify-between gap-3">
+        <h2 className="font-medium text-sm">Replay options</h2>
+        <EnvironmentBadge environment={event.environment} />
+      </div>
+
+      <dl className="space-y-3 text-sm">
+        <div className="flex items-center justify-between gap-4">
+          <dt className="text-muted-foreground">Origin</dt>
+          <dd className="text-right">{getEventTriggerLabel(event)}</dd>
+        </div>
+        <div className="flex items-center justify-between gap-4">
+          <dt className="text-muted-foreground">Attached endpoints</dt>
+          <dd className="font-medium tabular-nums">
+            {formatCount(getAttachedEndpointIds(event).length)}
+          </dd>
+        </div>
+        <div className="flex items-center justify-between gap-4">
+          <dt className="text-muted-foreground">Created</dt>
+          <dd className="text-right text-muted-foreground tabular-nums">
+            {formatDate(event.created_at)}
+          </dd>
+        </div>
+      </dl>
+
+      <div className="space-y-2">
+        {replayDisabledReason ? (
+          <p className="text-muted-foreground text-sm">
+            {replayDisabledReason}
+          </p>
+        ) : (
+          <p className="text-muted-foreground text-sm">
+            Replay this event across every attached endpoint. Retry a single
+            destination from the delivery history when you only need to requeue
+            one attempt.
+          </p>
+        )}
+        <p className="break-all font-mono text-muted-foreground text-xs">
+          {event.trigger_id}
+        </p>
+      </div>
+
+      <Button
+        className="w-full"
+        disabled={isReplaying || replayDisabledReason !== null}
+        onClick={() =>
+          showAsyncToast(onReplayEvent(event.id), {
+            loading: "Replaying event...",
+            success: "Webhook event replayed",
+            error: "Failed to replay event",
+          })
+        }
+        type="button"
+      >
+        {isReplaying ? (
+          <Loader2Icon className="mr-2 size-4 animate-spin" />
+        ) : null}
+        Replay event
+      </Button>
+    </div>
+  );
+}
+
+type WebhooksPageProps = {
+  activeTab?: WebhooksTab;
+  onActiveTabChange?: (tab: WebhooksTab) => void;
+};
+
+export function WebhooksPage({
+  activeTab: activeTabProp,
+  onActiveTabChange,
+}: WebhooksPageProps = {}) {
   const queryClient = useQueryClient();
-  const [activeTab, setActiveTab] = useState<WebhooksTab>("endpoints");
+  const [internalActiveTab, setInternalActiveTab] =
+    useState<WebhooksTab>("endpoints");
   const [environmentFilter, setEnvironmentFilter] =
     useState<EnvironmentFilter>("all");
-  const [selectedEndpointId, setSelectedEndpointId] = useState<string | null>(
-    null
-  );
-  const [endpointUrl, setEndpointUrl] = useState("");
-  const [endpointEnabled, setEndpointEnabled] = useState(true);
-  const [endpointSubscribed, setEndpointSubscribed] = useState(true);
   const [secretDialog, setSecretDialog] = useState<SecretDialogState>(
     INITIAL_SECRET_DIALOG_STATE
   );
+  const activeTab = activeTabProp ?? internalActiveTab;
 
   const normalizedEnvironment =
     environmentFilter === "all" ? undefined : environmentFilter;
@@ -1054,18 +2143,6 @@ export function WebhooksPage() {
   });
 
   const endpoints = endpointsQuery.data?.data ?? [];
-  const selectedEndpoint =
-    endpoints.find((endpoint) => endpoint.id === selectedEndpointId) ?? null;
-
-  const keysQuery = useQuery({
-    enabled: Boolean(selectedEndpointId),
-    queryKey: ["webhooks", "keys", selectedEndpointId],
-    queryFn: () =>
-      listWebhookKeys({
-        endpointId: selectedEndpointId ?? "",
-        limit: 50,
-      }),
-  });
 
   const eventsQuery = useQuery({
     queryKey: ["webhooks", "events", normalizedEnvironment],
@@ -1085,78 +2162,22 @@ export function WebhooksPage() {
       }),
   });
 
-  useEffect(() => {
-    if (endpoints.length === 0) {
-      setSelectedEndpointId(null);
-      return;
-    }
-
-    if (
-      !(
-        selectedEndpointId &&
-        endpoints.some((endpoint) => endpoint.id === selectedEndpointId)
-      )
-    ) {
-      setSelectedEndpointId(endpoints[0]?.id ?? null);
-    }
-  }, [endpoints, selectedEndpointId]);
-
-  useEffect(() => {
-    if (!selectedEndpoint) {
-      setEndpointUrl("");
-      setEndpointEnabled(true);
-      setEndpointSubscribed(true);
-      return;
-    }
-
-    setEndpointUrl(selectedEndpoint.url);
-    setEndpointEnabled(selectedEndpoint.enabled);
-    setEndpointSubscribed(
-      selectedEndpoint.subscribed_event_types.includes(DEFAULT_EVENT_TYPE)
-    );
-  }, [selectedEndpoint]);
-
   const createEndpointMutation = useMutation({
     mutationFn: createWebhookEndpoint,
-  });
-  const updateEndpointMutation = useMutation({
-    mutationFn: updateWebhookEndpoint,
-  });
-  const revealSecretMutation = useMutation({
-    mutationFn: revealWebhookSigningSecret,
-  });
-  const rotateSecretMutation = useMutation({
-    mutationFn: rotateWebhookSigningSecret,
   });
   const createKeyMutation = useMutation({
     mutationFn: createWebhookKey,
   });
-  const deactivateKeyMutation = useMutation({
-    mutationFn: deactivateWebhookKey,
+  const updateEndpointMutation = useMutation({
+    mutationFn: updateWebhookEndpoint,
   });
-  const replayEventMutation = useMutation({
-    mutationFn: replayWebhookEvent,
-  });
-  const retryDeliveryMutation = useMutation({
-    mutationFn: retryWebhookDelivery,
+  const deleteEndpointMutation = useMutation({
+    mutationFn: deleteWebhookEndpoint,
   });
 
-  const keys = keysQuery.data?.data ?? [];
   const events = eventsQuery.data?.data ?? [];
   const deliveries = deliveriesQuery.data?.data ?? [];
-
-  const isEndpointDirty =
-    selectedEndpoint !== null &&
-    (selectedEndpoint.url !== endpointUrl ||
-      selectedEndpoint.enabled !== endpointEnabled ||
-      selectedEndpoint.subscribed_event_types.includes(DEFAULT_EVENT_TYPE) !==
-        endpointSubscribed);
-  const showMissingKeyAlert =
-    selectedEndpoint !== null &&
-    !keysQuery.isLoading &&
-    keys.every((key) => !key.is_active);
-  const activeTabDescription =
-    tabOptions.find((tab) => tab.value === activeTab)?.description ?? "";
+  const endpointDeliveryStats = getEndpointDeliveryStats(deliveries);
 
   function refreshWebhookQueries(): Promise<void> {
     return queryClient.invalidateQueries({ queryKey: ["webhooks"] });
@@ -1175,25 +2196,439 @@ export function WebhooksPage() {
     });
   }
 
-  async function handleCreateEndpoint(input: {
-    enabled: boolean;
-    environment: Environment;
-    subscribedEventTypes: string[];
-    url: string;
-  }): Promise<void> {
-    const result = await createEndpointMutation.mutateAsync(input);
+  function handleActiveTabChange(nextTab: WebhooksTab): void {
+    setInternalActiveTab(nextTab);
+    onActiveTabChange?.(nextTab);
+  }
+
+  async function handleCreateEndpoint(
+    input: CreateEndpointSubmission
+  ): Promise<CreateEndpointSubmissionResult> {
+    const result = await createEndpointMutation.mutateAsync({
+      enabled: input.enabled,
+      environment: input.environment,
+      name: input.name,
+      subscribedEventTypes: input.subscribedEventTypes,
+      url: input.url,
+    });
+
+    let publicKeyError: string | null = null;
+
+    if (input.initialPublicKey) {
+      try {
+        await createKeyMutation.mutateAsync({
+          endpointId: result.endpoint.id,
+          jwk: input.initialPublicKey.jwk,
+          keyId: input.initialPublicKey.keyId,
+        });
+      } catch (error) {
+        publicKeyError = getErrorMessage(
+          error,
+          "The endpoint was created, but the public key could not be added."
+        );
+      }
+    }
+
     await refreshWebhookQueries();
-    setSelectedEndpointId(result.endpoint.id);
-    setActiveTab("endpoints");
+    handleActiveTabChange("endpoints");
     openSecretDialog({
       endpoint_id: result.endpoint.id,
       signing_secret: result.signing_secret,
       title: "Webhook signing secret created",
     });
+
+    return {
+      publicKeyError,
+    };
+  }
+
+  async function handleToggleEndpointEnabled(
+    endpoint: WebhookEndpoint
+  ): Promise<void> {
+    await updateEndpointMutation.mutateAsync({
+      endpointId: endpoint.id,
+      enabled: !endpoint.enabled,
+      name: endpoint.name,
+      subscribedEventTypes: endpoint.subscribed_event_types,
+      url: endpoint.url,
+    });
+
+    await refreshWebhookQueries();
+  }
+
+  async function handleDeleteEndpoint(
+    endpoint: WebhookEndpoint
+  ): Promise<void> {
+    await deleteEndpointMutation.mutateAsync(endpoint.id);
+    await refreshWebhookQueries();
+  }
+
+  let mutatingEndpointId: string | null = null;
+
+  if (updateEndpointMutation.isPending) {
+    mutatingEndpointId = updateEndpointMutation.variables?.endpointId ?? null;
+  } else if (deleteEndpointMutation.isPending) {
+    mutatingEndpointId = deleteEndpointMutation.variables;
+  }
+
+  if (endpointsQuery.isLoading && !endpointsQuery.data) {
+    return (
+      <div className="fixed inset-0">
+        <Loading layout />
+      </div>
+    );
+  }
+
+  return (
+    <div className="mx-auto flex h-full max-w-7xl flex-1 grow flex-col">
+      <AppHeading
+        button={<CreateEndpointDrawer onSubmit={handleCreateEndpoint} />}
+        title="Webhooks"
+      />
+
+      <Tabs
+        className="mt-6 gap-5"
+        onValueChange={(value) => handleActiveTabChange(value as WebhooksTab)}
+        value={activeTab}
+      >
+        <WebhooksToolbar
+          environmentFilter={environmentFilter}
+          onEnvironmentChange={setEnvironmentFilter}
+        />
+
+        <TabsContent value="endpoints">
+          <EndpointsTabContent
+            deliveryStatsByEndpoint={endpointDeliveryStats}
+            endpointError={endpointsQuery.error}
+            endpoints={endpoints}
+            isMutatingEndpointId={mutatingEndpointId}
+            onDeleteEndpoint={handleDeleteEndpoint}
+            onToggleEndpointEnabled={handleToggleEndpointEnabled}
+          />
+        </TabsContent>
+
+        <TabsContent value="events">
+          <EventsTabContent
+            error={eventsQuery.error}
+            events={events}
+            isLoading={eventsQuery.isLoading}
+          />
+        </TabsContent>
+      </Tabs>
+
+      <SecretDialog
+        onOpenChange={(open) => {
+          if (!open) {
+            setSecretDialog(INITIAL_SECRET_DIALOG_STATE);
+          }
+        }}
+        state={secretDialog}
+      />
+    </div>
+  );
+}
+
+export function WebhookEventPage({ eventId }: { eventId: string }) {
+  const queryClient = useQueryClient();
+
+  const eventsQuery = useQuery({
+    queryKey: ["webhooks", "events"],
+    queryFn: () =>
+      listWebhookEvents({
+        limit: 100,
+      }),
+  });
+
+  const event =
+    eventsQuery.data?.data.find((item) => item.id === eventId) ?? null;
+
+  const endpointsQuery = useQuery({
+    enabled: Boolean(event),
+    queryKey: ["webhooks", "endpoints", event?.environment],
+    queryFn: () =>
+      listWebhookEndpoints({
+        environment: event?.environment,
+        limit: 100,
+      }),
+  });
+
+  const deliveriesQuery = useQuery({
+    enabled: Boolean(event),
+    queryKey: ["webhooks", "deliveries", event?.environment],
+    queryFn: () =>
+      listWebhookDeliveries({
+        environment: event?.environment,
+        limit: 100,
+      }),
+  });
+
+  const replayEventMutation = useMutation({
+    mutationFn: replayWebhookEvent,
+  });
+  const retryDeliveryMutation = useMutation({
+    mutationFn: retryWebhookDelivery,
+  });
+
+  const endpoints = endpointsQuery.data?.data ?? [];
+  const endpointsById = getEndpointsById(endpoints);
+  const eventDeliveries = event
+    ? getDeliveriesForEvent(deliveriesQuery.data?.data ?? [], event.id)
+    : [];
+
+  function refreshWebhookQueries(): Promise<void> {
+    return queryClient.invalidateQueries({ queryKey: ["webhooks"] });
+  }
+
+  async function handleReplayEvent(targetEventId: string): Promise<void> {
+    await replayEventMutation.mutateAsync(targetEventId);
+    await refreshWebhookQueries();
+  }
+
+  async function handleRetryDelivery(deliveryId: string): Promise<void> {
+    await retryDeliveryMutation.mutateAsync(deliveryId);
+    await refreshWebhookQueries();
+  }
+
+  if (eventsQuery.isLoading && !eventsQuery.data) {
+    return (
+      <div className="fixed inset-0">
+        <Loading layout />
+      </div>
+    );
+  }
+
+  if (eventsQuery.error) {
+    return (
+      <InfoCard
+        buttons={{
+          primary: {
+            href: "/webhooks?tab=events",
+            label: "Back to webhooks",
+          },
+        }}
+        colour="red"
+        footer={false}
+        header={{
+          title: "Error",
+          description: "Failed to load webhook event",
+        }}
+        message={{
+          title: "Webhook event unavailable",
+          description: getErrorMessage(
+            eventsQuery.error,
+            "Failed to load webhook event."
+          ),
+        }}
+      />
+    );
+  }
+
+  if (!event) {
+    return (
+      <InfoCard
+        buttons={{
+          primary: {
+            href: "/webhooks?tab=events",
+            label: "Back to webhooks",
+          },
+        }}
+        colour="red"
+        footer={false}
+        header={{
+          title: "Not Found",
+          description: "Webhook event not found",
+        }}
+        message={{
+          title: "Event not found",
+          description:
+            "The webhook event you're looking for doesn't exist or is no longer available.",
+        }}
+      />
+    );
+  }
+
+  return (
+    <div className="mx-auto flex h-full max-w-7xl flex-1 grow flex-col">
+      <div className="mb-4">
+        <Button
+          nativeButton={false}
+          render={
+            <Link search={{ tab: "events" }} to="/webhooks">
+              Back to webhooks
+            </Link>
+          }
+          size="sm"
+          variant="outline"
+        />
+      </div>
+
+      <AppHeading title={event.type} />
+
+      <div className="mt-3 flex flex-wrap items-center gap-3">
+        <EnvironmentBadge environment={event.environment} />
+        <span className="text-muted-foreground text-sm">
+          {getEventTriggerLabel(event)}
+        </span>
+        <span className="break-all font-mono text-muted-foreground text-xs">
+          {event.id}
+        </span>
+      </div>
+
+      <div className="mt-8 grid gap-8 xl:grid-cols-[minmax(0,1.15fr)_minmax(18rem,0.55fr)]">
+        <EventAttachedEndpointsCard
+          endpointsById={endpointsById}
+          error={endpointsQuery.error}
+          event={event}
+        />
+        <EventOverviewCard
+          event={event}
+          isReplaying={replayEventMutation.isPending}
+          onReplayEvent={handleReplayEvent}
+        />
+      </div>
+
+      <div className="mt-8 space-y-3">
+        <h2 className="font-medium text-sm">Delivery history</h2>
+        <DeliveriesTabContent
+          context="event"
+          deliveries={eventDeliveries}
+          endpointsById={endpointsById}
+          error={deliveriesQuery.error}
+          isLoading={deliveriesQuery.isLoading}
+          isRetrying={retryDeliveryMutation.isPending}
+          onRetryDelivery={handleRetryDelivery}
+        />
+      </div>
+    </div>
+  );
+}
+
+export function WebhookEndpointPage({ endpointId }: { endpointId: string }) {
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const [activeTab, setActiveTab] = useState<EndpointDetailTab>("overview");
+  const [endpointName, setEndpointName] = useState("");
+  const [endpointUrl, setEndpointUrl] = useState("");
+  const [endpointEnabled, setEndpointEnabled] = useState(true);
+  const [endpointSubscribedEventTypes, setEndpointSubscribedEventTypes] =
+    useState<string[]>([...SUPPORTED_WEBHOOK_EVENT_TYPES]);
+  const [revealedSecret, setRevealedSecret] = useState<string | null>(null);
+
+  const endpointsQuery = useQuery({
+    queryKey: ["webhooks", "endpoints"],
+    queryFn: () =>
+      listWebhookEndpoints({
+        limit: 50,
+      }),
+  });
+
+  const endpoint =
+    endpointsQuery.data?.data.find((item) => item.id === endpointId) ?? null;
+
+  const keysQuery = useQuery({
+    enabled: Boolean(endpoint),
+    queryKey: ["webhooks", "keys", endpointId],
+    queryFn: () =>
+      listWebhookKeys({
+        endpointId,
+        limit: 50,
+      }),
+  });
+
+  const deliveriesQuery = useQuery({
+    queryKey: ["webhooks", "deliveries"],
+    queryFn: () =>
+      listWebhookDeliveries({
+        limit: 50,
+      }),
+  });
+
+  useEffect(() => {
+    if (!endpoint) {
+      setEndpointName("");
+      setEndpointUrl("");
+      setEndpointEnabled(true);
+      setEndpointSubscribedEventTypes([...SUPPORTED_WEBHOOK_EVENT_TYPES]);
+      setRevealedSecret(null);
+      return;
+    }
+
+    setEndpointName(endpoint.name ?? "");
+    setEndpointUrl(endpoint.url);
+    setEndpointEnabled(endpoint.enabled);
+    setEndpointSubscribedEventTypes(endpoint.subscribed_event_types);
+    setRevealedSecret(null);
+  }, [endpoint]);
+
+  const updateEndpointMutation = useMutation({
+    mutationFn: updateWebhookEndpoint,
+  });
+  const revealSecretMutation = useMutation({
+    mutationFn: revealWebhookSigningSecret,
+  });
+  const rotateSecretMutation = useMutation({
+    mutationFn: rotateWebhookSigningSecret,
+  });
+  const deleteEndpointMutation = useMutation({
+    mutationFn: deleteWebhookEndpoint,
+  });
+  const createKeyMutation = useMutation({
+    mutationFn: createWebhookKey,
+  });
+  const deactivateKeyMutation = useMutation({
+    mutationFn: deactivateWebhookKey,
+  });
+  const reactivateKeyMutation = useMutation({
+    mutationFn: reactivateWebhookKey,
+  });
+  const retryDeliveryMutation = useMutation({
+    mutationFn: retryWebhookDelivery,
+  });
+
+  const keys = keysQuery.data?.data ?? [];
+  const deliveries = deliveriesQuery.data?.data ?? [];
+  const endpointDeliveries = getRecentDeliveriesForEndpoint(
+    deliveries,
+    endpointId
+  );
+  const endpointDeliveryTrend = getEndpointDeliveryTrend(
+    deliveries,
+    endpointId
+  );
+  const endpointDeliveryStats = getSelectedEndpointDeliveryStats(
+    deliveries,
+    endpoint
+  );
+  const isEndpointDirty = isWebhookEndpointDirty({
+    endpoint,
+    endpointEnabled,
+    endpointName,
+    endpointSubscribedEventTypes,
+    endpointUrl,
+  });
+  const showMissingKeyAlert = shouldShowMissingKeyAlert({
+    endpoint,
+    isKeysLoading: keysQuery.isLoading,
+    keys,
+  });
+
+  function refreshWebhookQueries(): Promise<void> {
+    return queryClient.invalidateQueries({ queryKey: ["webhooks"] });
+  }
+
+  function resetEndpointDraft(): void {
+    if (!endpoint) {
+      return;
+    }
+
+    setEndpointName(endpoint.name ?? "");
+    setEndpointUrl(endpoint.url);
+    setEndpointEnabled(endpoint.enabled);
+    setEndpointSubscribedEventTypes(endpoint.subscribed_event_types);
   }
 
   async function handleSaveEndpoint(): Promise<void> {
-    if (!selectedEndpoint) {
+    if (!endpoint) {
       return;
     }
 
@@ -1202,29 +2637,50 @@ export function WebhooksPage() {
     }
 
     await updateEndpointMutation.mutateAsync({
-      endpointId: selectedEndpoint.id,
+      endpointId: endpoint.id,
+      name: endpointName.trim() || null,
       url: endpointUrl.trim(),
       enabled: endpointEnabled,
-      subscribedEventTypes: endpointSubscribed ? [DEFAULT_EVENT_TYPE] : [],
+      subscribedEventTypes: endpointSubscribedEventTypes,
     });
     await refreshWebhookQueries();
   }
 
-  async function handleRevealSecret(endpointId: string): Promise<void> {
-    const result = await revealSecretMutation.mutateAsync(endpointId);
-    openSecretDialog({
-      ...result,
-      title: "Current webhook signing secret",
+  async function handleToggleEndpointEnabled(
+    nextEndpoint: WebhookEndpoint
+  ): Promise<void> {
+    await updateEndpointMutation.mutateAsync({
+      endpointId: nextEndpoint.id,
+      enabled: !nextEndpoint.enabled,
+      name: nextEndpoint.name,
+      subscribedEventTypes: nextEndpoint.subscribed_event_types,
+      url: nextEndpoint.url,
     });
+    await refreshWebhookQueries();
   }
 
-  async function handleRotateSecret(endpointId: string): Promise<void> {
+  async function handleDeleteEndpoint(
+    nextEndpoint: WebhookEndpoint
+  ): Promise<void> {
+    await deleteEndpointMutation.mutateAsync(nextEndpoint.id);
+    await refreshWebhookQueries();
+    navigate({ replace: true, to: "/webhooks" });
+  }
+
+  async function handleRevealSecret(): Promise<void> {
+    if (revealedSecret) {
+      setRevealedSecret(null);
+      return;
+    }
+
+    const result = await revealSecretMutation.mutateAsync(endpointId);
+    setRevealedSecret(result.signing_secret);
+  }
+
+  async function handleRotateSecret(): Promise<void> {
     const result = await rotateSecretMutation.mutateAsync(endpointId);
     await refreshWebhookQueries();
-    openSecretDialog({
-      ...result,
-      title: "Webhook signing secret rotated",
-    });
+    setRevealedSecret(result.signing_secret);
   }
 
   async function handleCreateKey(input: {
@@ -1241,8 +2697,8 @@ export function WebhooksPage() {
     await refreshWebhookQueries();
   }
 
-  async function handleReplayEvent(eventId: string): Promise<void> {
-    await replayEventMutation.mutateAsync(eventId);
+  async function handleReactivateKey(keyId: string): Promise<void> {
+    await reactivateKeyMutation.mutateAsync(keyId);
     await refreshWebhookQueries();
   }
 
@@ -1259,86 +2715,211 @@ export function WebhooksPage() {
     );
   }
 
-  const tabContentByValue: Record<WebhooksTab, ReactNode> = {
-    endpoints: (
-      <EndpointsTabContent
-        endpointEnabled={endpointEnabled}
-        endpointError={endpointsQuery.error}
-        endpointSubscribed={endpointSubscribed}
-        endpoints={endpoints}
-        endpointUrl={endpointUrl}
-        isDeactivatingKey={deactivateKeyMutation.isPending}
-        isEndpointDirty={isEndpointDirty}
-        isRevealingSecret={revealSecretMutation.isPending}
-        isRotatingSecret={rotateSecretMutation.isPending}
-        isSavingEndpoint={updateEndpointMutation.isPending}
-        keys={keys}
-        keysError={keysQuery.error}
-        keysLoading={keysQuery.isLoading}
-        onCreateKey={handleCreateKey}
-        onDeactivateKey={handleDeactivateKey}
-        onEndpointEnabledChange={setEndpointEnabled}
-        onEndpointSubscribedChange={setEndpointSubscribed}
-        onEndpointUrlChange={setEndpointUrl}
-        onRevealSecret={handleRevealSecret}
-        onRotateSecret={handleRotateSecret}
-        onSaveEndpoint={handleSaveEndpoint}
-        onSelectEndpoint={setSelectedEndpointId}
-        selectedEndpoint={selectedEndpoint}
-        selectedEndpointId={selectedEndpointId}
-        showMissingKeyAlert={showMissingKeyAlert}
+  if (endpointsQuery.error) {
+    return (
+      <InfoCard
+        buttons={{
+          primary: {
+            href: "/webhooks",
+            label: "Back to webhooks",
+          },
+        }}
+        colour="red"
+        footer={false}
+        header={{
+          title: "Error",
+          description: "Failed to load webhook endpoint",
+        }}
+        message={{
+          title: "Webhook endpoint unavailable",
+          description: getErrorMessage(
+            endpointsQuery.error,
+            "Failed to load webhook endpoint."
+          ),
+        }}
       />
-    ),
-    events: (
-      <EventsTabContent
-        error={eventsQuery.error}
-        events={events}
-        isLoading={eventsQuery.isLoading}
-        isReplaying={replayEventMutation.isPending}
-        onReplayEvent={handleReplayEvent}
+    );
+  }
+
+  if (!endpoint) {
+    return (
+      <InfoCard
+        buttons={{
+          primary: {
+            href: "/webhooks",
+            label: "Back to webhooks",
+          },
+        }}
+        colour="red"
+        footer={false}
+        header={{
+          title: "Not Found",
+          description: "Webhook endpoint not found",
+        }}
+        message={{
+          title: "Endpoint not found",
+          description:
+            "The webhook endpoint you're looking for doesn't exist or is no longer available.",
+        }}
       />
-    ),
-    deliveries: (
-      <DeliveriesTabContent
-        deliveries={deliveries}
-        error={deliveriesQuery.error}
-        isLoading={deliveriesQuery.isLoading}
-        isRetrying={retryDeliveryMutation.isPending}
-        onRetryDelivery={handleRetryDelivery}
-      />
-    ),
-  };
+    );
+  }
+
+  const isEndpointMutating =
+    updateEndpointMutation.isPending || deleteEndpointMutation.isPending;
 
   return (
     <div className="mx-auto flex h-full max-w-7xl flex-1 grow flex-col">
-      <AppHeading
-        button={<CreateEndpointDialog onSubmit={handleCreateEndpoint} />}
-        description={`Manage webhook endpoints and delivery operations for ${activeOrganization?.name ?? "your organization"}.`}
-        title="Webhooks"
-      />
-      <hr className="my-8" />
+      <div className="space-y-6">
+        <Link
+          className="inline-flex items-center gap-1.5 text-muted-foreground text-sm transition-colors hover:text-foreground"
+          to="/webhooks"
+        >
+          <ChevronLeftIcon className="size-4" />
+          Back to webhooks
+        </Link>
 
-      <WebhooksControls
-        activeTab={activeTab}
-        environmentFilter={environmentFilter}
-        onEnvironmentChange={setEnvironmentFilter}
-        onTabChange={setActiveTab}
-      />
+        <div className="flex flex-col gap-4 border-border/70 border-b pb-5 lg:flex-row lg:items-start lg:justify-between">
+          <div className="min-w-0 space-y-2">
+            <div className="flex flex-wrap items-center gap-3">
+              <h1 className="font-light text-3xl text-foreground tracking-tight">
+                {getEndpointPageTitle(endpoint)}
+              </h1>
+              <StatusBadge status={endpoint.enabled ? "active" : "disabled"} />
+            </div>
+            <p className="break-all text-muted-foreground text-sm">
+              {getEndpointPageSubtitle(endpoint)}
+            </p>
+          </div>
 
-      <p className="mb-6 text-muted-foreground text-sm">
-        {activeTabDescription}
-      </p>
+          <div className="flex items-center gap-2">
+            <EditEndpointDrawer
+              endpointEnabled={endpointEnabled}
+              endpointName={endpointName}
+              endpointSubscribedEventTypes={endpointSubscribedEventTypes}
+              endpointUrl={endpointUrl}
+              isDirty={isEndpointDirty}
+              isSaving={updateEndpointMutation.isPending}
+              onEndpointEnabledChange={setEndpointEnabled}
+              onEndpointNameChange={setEndpointName}
+              onEndpointUrlChange={setEndpointUrl}
+              onReset={resetEndpointDraft}
+              onSaveEndpoint={handleSaveEndpoint}
+              onToggleEndpointEventType={(eventType) =>
+                setEndpointSubscribedEventTypes((currentValue) =>
+                  toggleEventSelection(currentValue, eventType)
+                )
+              }
+            />
+            <EndpointActionsMenu
+              endpoint={endpoint}
+              isMutating={isEndpointMutating}
+              onDeleteEndpoint={handleDeleteEndpoint}
+              onToggleEndpointEnabled={handleToggleEndpointEnabled}
+              showViewDetails={false}
+              triggerVariant="ghost"
+            />
+          </div>
+        </div>
 
-      {tabContentByValue[activeTab]}
+        <Tabs
+          className="gap-6"
+          onValueChange={(value) => setActiveTab(value as EndpointDetailTab)}
+          value={activeTab}
+        >
+          <TabsList
+            className="h-auto w-full justify-start gap-5 rounded-none bg-transparent p-0"
+            variant="line"
+          >
+            <TabsTrigger
+              className="h-10 flex-none rounded-none px-0 pb-2 data-active:bg-transparent"
+              value="overview"
+            >
+              Overview
+            </TabsTrigger>
+            <TabsTrigger
+              className="h-10 flex-none rounded-none px-0 pb-2 data-active:bg-transparent"
+              value="performance"
+            >
+              Performance
+            </TabsTrigger>
+            <TabsTrigger
+              className="h-10 flex-none rounded-none px-0 pb-2 data-active:bg-transparent"
+              value="deliveries"
+            >
+              Event deliveries
+            </TabsTrigger>
+          </TabsList>
 
-      <SecretDialog
-        onOpenChange={(open) => {
-          if (!open) {
-            setSecretDialog(INITIAL_SECRET_DIALOG_STATE);
-          }
-        }}
-        state={secretDialog}
-      />
+          <TabsContent className="space-y-6" value="overview">
+            {showMissingKeyAlert ? (
+              <Alert>
+                <ShieldAlertIcon className="size-4" />
+                <AlertTitle>No active public key</AlertTitle>
+                <AlertDescription>
+                  New deliveries to this endpoint will fail until an active
+                  encryption key is added.
+                </AlertDescription>
+              </Alert>
+            ) : null}
+
+            <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(20rem,0.8fr)]">
+              <div className="space-y-6">
+                <EndpointDetailsPanel endpoint={endpoint} />
+                <EndpointResourcesCard />
+              </div>
+
+              <div className="space-y-6">
+                <EndpointSigningSecretCard
+                  isRevealing={revealSecretMutation.isPending}
+                  isRotating={rotateSecretMutation.isPending}
+                  onRevealSecret={handleRevealSecret}
+                  onRotateSecret={handleRotateSecret}
+                  secret={revealedSecret}
+                />
+                <EndpointKeysCard
+                  endpointId={endpoint.id}
+                  error={keysQuery.error}
+                  isLoading={keysQuery.isLoading}
+                  isUpdating={
+                    deactivateKeyMutation.isPending ||
+                    reactivateKeyMutation.isPending
+                  }
+                  keys={keys}
+                  onCreateKey={handleCreateKey}
+                  onDeactivateKey={handleDeactivateKey}
+                  onReactivateKey={handleReactivateKey}
+                />
+              </div>
+            </div>
+          </TabsContent>
+
+          <TabsContent className="space-y-6" value="performance">
+            <QueryErrorAlert
+              error={deliveriesQuery.error}
+              fallback="Endpoint deliveries could not be loaded."
+              title="Failed to load endpoint deliveries"
+            />
+
+            <EndpointPerformancePanel
+              endpointDeliveryStats={endpointDeliveryStats}
+              isDeliveriesLoading={deliveriesQuery.isLoading}
+              trendPoints={endpointDeliveryTrend}
+            />
+          </TabsContent>
+
+          <TabsContent className="space-y-4" value="deliveries">
+            <DeliveriesTabContent
+              context="endpoint"
+              deliveries={endpointDeliveries}
+              error={deliveriesQuery.error}
+              isLoading={deliveriesQuery.isLoading}
+              isRetrying={retryDeliveryMutation.isPending}
+              onRetryDelivery={handleRetryDelivery}
+            />
+          </TabsContent>
+        </Tabs>
+      </div>
     </div>
   );
 }
@@ -1394,59 +2975,89 @@ function SecretDialog({
   );
 }
 
-function CreateEndpointDialog({
+function CreateEndpointDrawer({
   onSubmit,
 }: {
-  onSubmit: (input: {
-    enabled: boolean;
-    environment: Environment;
-    subscribedEventTypes: string[];
-    url: string;
-  }) => Promise<void>;
+  onSubmit: (
+    input: CreateEndpointSubmission
+  ) => Promise<CreateEndpointSubmissionResult>;
 }) {
   const [isOpen, setIsOpen] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isMoreOptionsOpen, setIsMoreOptionsOpen] = useState(false);
   const [environment, setEnvironment] = useState<Environment>("live");
   const [enabled, setEnabled] = useState(true);
-  const [subscribed, setSubscribed] = useState(true);
+  const [name, setName] = useState("");
+  const [selectedEventTypes, setSelectedEventTypes] = useState<string[]>([
+    ...SUPPORTED_WEBHOOK_EVENT_TYPES,
+  ]);
+  const [shouldConfigurePublicKey, setShouldConfigurePublicKey] =
+    useState(false);
+  const [publicKeyId, setPublicKeyId] = useState("");
+  const [publicKeyInput, setPublicKeyInput] = useState("");
   const [url, setUrl] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
 
   function resetState() {
+    setIsSubmitting(false);
+    setIsMoreOptionsOpen(false);
     setEnvironment("live");
     setEnabled(true);
-    setSubscribed(true);
+    setName("");
+    setSelectedEventTypes([...SUPPORTED_WEBHOOK_EVENT_TYPES]);
+    setShouldConfigurePublicKey(false);
+    setPublicKeyId("");
+    setPublicKeyInput("");
     setUrl("");
     setErrorMessage("");
   }
 
   async function handleSubmit() {
-    if (!url.trim()) {
-      const error = new Error("Webhook URL is required.");
-      setErrorMessage(error.message);
-      throw error;
-    }
+    setErrorMessage("");
 
     try {
-      await onSubmit({
+      if (!url.trim()) {
+        throw new Error("Webhook URL is required.");
+      }
+
+      if (selectedEventTypes.length === 0) {
+        throw new Error("Select at least one event type.");
+      }
+
+      setIsSubmitting(true);
+      const result = await onSubmit({
         enabled,
         environment,
-        subscribedEventTypes: subscribed ? [DEFAULT_EVENT_TYPE] : [],
+        initialPublicKey: getCreateEndpointInitialPublicKey({
+          publicKeyId,
+          publicKeyInput,
+          shouldConfigurePublicKey,
+        }),
+        name: name.trim() || null,
+        subscribedEventTypes: selectedEventTypes,
         url: url.trim(),
       });
+
       setIsOpen(false);
       resetState();
+      toast.success("Webhook endpoint created");
+
+      if (result.publicKeyError) {
+        toast.error(result.publicKeyError);
+      }
     } catch (error) {
       setErrorMessage(
         error instanceof Error
           ? error.message
           : "Failed to create webhook endpoint."
       );
-      throw error;
+    } finally {
+      setIsSubmitting(false);
     }
   }
 
   return (
-    <Dialog
+    <Sheet
       onOpenChange={(open) => {
         setIsOpen(open);
         if (!open) {
@@ -1455,7 +3066,7 @@ function CreateEndpointDialog({
       }}
       open={isOpen}
     >
-      <DialogTrigger
+      <SheetTrigger
         render={
           <Button onClick={() => setIsOpen(true)}>
             <PlusIcon className="mr-2 size-4" />
@@ -1463,18 +3074,35 @@ function CreateEndpointDialog({
           </Button>
         }
       />
-      <DialogContent className="flex w-full max-w-xl! flex-col">
-        <DialogHeader>
-          <DialogTitle>Create webhook endpoint</DialogTitle>
-        </DialogHeader>
+      <SheetContent
+        className="flex w-full flex-col overflow-hidden sm:max-w-2xl"
+        side="right"
+      >
+        <div className="border-border/70 border-b px-6 py-5">
+          <SheetTitle>Create webhook endpoint</SheetTitle>
+          <p className="mt-1 text-muted-foreground text-sm">
+            Configure the destination, subscribed events, and active encryption
+            key from one surface.
+          </p>
+        </div>
 
-        <div className="space-y-4">
+        <div className="flex-1 space-y-6 overflow-y-auto px-6 py-5">
           {errorMessage ? (
             <Alert variant="destructive">
               <AlertTitle>Failed to create endpoint</AlertTitle>
               <AlertDescription>{errorMessage}</AlertDescription>
             </Alert>
           ) : null}
+
+          <div className="space-y-2">
+            <Label htmlFor="create-webhook-name">Endpoint name</Label>
+            <Input
+              id="create-webhook-name"
+              onChange={(event) => setName(event.target.value)}
+              placeholder="Primary production webhook"
+              value={name}
+            />
+          </div>
 
           <div className="space-y-2">
             <Label htmlFor="create-webhook-url">Destination URL</Label>
@@ -1495,6 +3123,7 @@ function CreateEndpointDialog({
             <div className="flex flex-wrap gap-2">
               {(["live", "test"] as Environment[]).map((option) => (
                 <Button
+                  className="capitalize"
                   key={option}
                   onClick={() => setEnvironment(option)}
                   type="button"
@@ -1506,56 +3135,112 @@ function CreateEndpointDialog({
             </div>
           </div>
 
-          <div className="flex items-center justify-between gap-6">
-            <div className="space-y-0.5">
-              <Label htmlFor="create-endpoint-enabled">Enabled</Label>
-              <p className="text-muted-foreground text-sm">
-                Start receiving deliveries immediately after creation.
-              </p>
-            </div>
-            <Switch
-              checked={enabled}
-              id="create-endpoint-enabled"
-              onCheckedChange={setEnabled}
+          <div className="space-y-2">
+            <Label>Event subscriptions</Label>
+            <EventSubscriptionMenu
+              onToggleEventType={(eventType) =>
+                setSelectedEventTypes((currentValue) =>
+                  toggleEventSelection(currentValue, eventType)
+                )
+              }
+              selectedEventTypes={selectedEventTypes}
             />
           </div>
 
-          <div className="flex items-center justify-between gap-6">
-            <div className="space-y-0.5">
-              <Label htmlFor="create-endpoint-subscription">
-                verification.attempt.succeeded
-              </Label>
-              <p className="text-muted-foreground text-sm">
-                Subscribe this endpoint to completed verification attempts.
-              </p>
-            </div>
-            <Switch
-              checked={subscribed}
-              id="create-endpoint-subscription"
-              onCheckedChange={setSubscribed}
-            />
+          <div className="overflow-hidden rounded-md border border-border/70">
+            <button
+              aria-controls="create-endpoint-more-options"
+              aria-expanded={isMoreOptionsOpen}
+              className="flex w-full items-center justify-between gap-4 px-4 py-3 text-left"
+              onClick={() =>
+                setIsMoreOptionsOpen((currentValue) => !currentValue)
+              }
+              type="button"
+            >
+              <div className="space-y-0.5">
+                <div className="font-medium text-sm">More options</div>
+                <p className="text-muted-foreground text-sm">
+                  Enabled state and initial public key configuration.
+                </p>
+              </div>
+              <ChevronDownIcon
+                className={cn(
+                  "size-4 shrink-0 text-muted-foreground transition-transform",
+                  isMoreOptionsOpen ? "rotate-180" : undefined
+                )}
+              />
+            </button>
+
+            {isMoreOptionsOpen ? (
+              <div
+                className="space-y-4 border-border/70 border-t px-4 py-4"
+                id="create-endpoint-more-options"
+              >
+                <div className="flex items-center justify-between gap-6">
+                  <div className="space-y-0.5">
+                    <Label htmlFor="create-endpoint-enabled">Enabled</Label>
+                    <p className="text-muted-foreground text-sm">
+                      Start receiving deliveries immediately after creation.
+                    </p>
+                  </div>
+                  <Switch
+                    checked={enabled}
+                    id="create-endpoint-enabled"
+                    onCheckedChange={setEnabled}
+                  />
+                </div>
+
+                <div className="space-y-3 border-border/70 border-t pt-4">
+                  <div className="flex items-center justify-between gap-6">
+                    <div className="space-y-0.5">
+                      <Label htmlFor="create-endpoint-public-key">
+                        Configure public key
+                      </Label>
+                      <p className="text-muted-foreground text-sm">
+                        Add the initial active encryption key now so new
+                        deliveries do not fail for missing key material.
+                      </p>
+                    </div>
+                    <Switch
+                      checked={shouldConfigurePublicKey}
+                      id="create-endpoint-public-key"
+                      onCheckedChange={setShouldConfigurePublicKey}
+                    />
+                  </div>
+
+                  {shouldConfigurePublicKey ? (
+                    <PublicKeyFields
+                      jwkInput={publicKeyInput}
+                      jwkInputId="create-endpoint-jwk"
+                      keyId={publicKeyId}
+                      keyIdId="create-endpoint-key-id"
+                      onJwkInputChange={setPublicKeyInput}
+                      onKeyIdChange={setPublicKeyId}
+                    />
+                  ) : null}
+                </div>
+              </div>
+            ) : null}
           </div>
         </div>
 
-        <DialogFooter>
+        <div className="flex items-center justify-end gap-3 border-border/70 border-t px-6 py-4">
           <Button
-            onClick={() => {
-              toast.promise(handleSubmit(), {
-                loading: "Creating webhook endpoint...",
-                success: "Webhook endpoint created",
-                error: (error) =>
-                  error instanceof Error
-                    ? error.message
-                    : "Failed to create webhook endpoint",
-              });
-            }}
+            onClick={() => setIsOpen(false)}
             type="button"
+            variant="outline"
           >
+            Cancel
+          </Button>
+          <Button disabled={isSubmitting} onClick={handleSubmit} type="button">
+            {isSubmitting ? (
+              <Loader2Icon className="mr-2 size-4 animate-spin" />
+            ) : null}
             Create endpoint
           </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+        </div>
+      </SheetContent>
+    </Sheet>
   );
 }
 
@@ -1635,36 +3320,20 @@ function CreateKeyDialog({
             </Alert>
           ) : null}
 
-          <div className="space-y-2">
-            <Label htmlFor="create-key-id">Key ID</Label>
-            <Input
-              id="create-key-id"
-              onChange={(event) => {
-                setKeyId(event.target.value);
-                setErrorMessage("");
-              }}
-              placeholder="rsa-key-2026-03"
-              value={keyId}
-            />
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="create-key-jwk">Public JWK</Label>
-            <Textarea
-              className="min-h-[220px] font-mono text-sm"
-              id="create-key-jwk"
-              onChange={(event) => {
-                setJwkInput(event.target.value);
-                setErrorMessage("");
-              }}
-              placeholder={`{\n  "kty": "RSA",\n  "n": "...",\n  "e": "AQAB",\n  "alg": "RSA-OAEP-256"\n}`}
-              value={jwkInput}
-            />
-            <p className="text-muted-foreground text-sm">
-              Paste the public JWK exactly as it should be used for outbound JWE
-              encryption.
-            </p>
-          </div>
+          <PublicKeyFields
+            jwkInput={jwkInput}
+            jwkInputId="create-key-jwk"
+            keyId={keyId}
+            keyIdId="create-key-id"
+            onJwkInputChange={(value) => {
+              setJwkInput(value);
+              setErrorMessage("");
+            }}
+            onKeyIdChange={(value) => {
+              setKeyId(value);
+              setErrorMessage("");
+            }}
+          />
         </div>
 
         <DialogFooter>

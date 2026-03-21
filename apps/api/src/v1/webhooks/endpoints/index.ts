@@ -1,4 +1,5 @@
 import { OpenAPIHono } from "@hono/zod-openapi";
+import { deleteEndpoint } from "./delete";
 import { endpointById } from "./get-by-id";
 import { endpointKeys } from "./keys";
 import { listAndCreateEndpoints } from "./list";
@@ -20,5 +21,6 @@ webhookEndpoints.route("/", revealSigningSecretEndpoint);
 webhookEndpoints.route("/", rotateSigningSecretEndpoint);
 webhookEndpoints.route("/", endpointById);
 webhookEndpoints.route("/", updateEndpoint);
+webhookEndpoints.route("/", deleteEndpoint);
 
 export default webhookEndpoints;

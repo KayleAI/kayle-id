@@ -28,9 +28,11 @@ import { Route as AppApiKeysIndexRouteImport } from './routes/_app/api-keys/inde
 import { Route as AuthOrganizationsSelectRouteImport } from './routes/_auth/organizations/select'
 import { Route as AuthOrganizationsCreateRouteImport } from './routes/_auth/organizations/create'
 import { Route as AuthAccountSettingsRouteImport } from './routes/_auth/account/settings'
+import { Route as AppWebhooksEndpointRouteImport } from './routes/_app/webhooks/$endpoint'
 import { Route as AppApiKeysKeyRouteImport } from './routes/_app/api-keys/$key'
 import { Route as AuthOrganizationsActiveSettingsRouteImport } from './routes/_auth/organizations/_active/settings'
 import { Route as AuthOrganizationsActiveMembersRouteImport } from './routes/_auth/organizations/_active/members'
+import { Route as AppWebhooksEventsEventRouteImport } from './routes/_app/webhooks/events/$event'
 import { Route as ApiApiWebhooksSplatRouteImport } from './routes/_api/api/webhooks/$'
 import { Route as ApiApiDemoSplatRouteImport } from './routes/_api/api/demo/$'
 import { Route as ApiApiAuthSplatRouteImport } from './routes/_api/api/auth/$'
@@ -126,6 +128,11 @@ const AuthAccountSettingsRoute = AuthAccountSettingsRouteImport.update({
   path: '/account/settings',
   getParentRoute: () => AuthRoute,
 } as any)
+const AppWebhooksEndpointRoute = AppWebhooksEndpointRouteImport.update({
+  id: '/webhooks/$endpoint',
+  path: '/webhooks/$endpoint',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppApiKeysKeyRoute = AppApiKeysKeyRouteImport.update({
   id: '/api-keys/$key',
   path: '/api-keys/$key',
@@ -143,6 +150,11 @@ const AuthOrganizationsActiveMembersRoute =
     path: '/organizations/members',
     getParentRoute: () => AuthRoute,
   } as any)
+const AppWebhooksEventsEventRoute = AppWebhooksEventsEventRouteImport.update({
+  id: '/webhooks/events/$event',
+  path: '/webhooks/events/$event',
+  getParentRoute: () => AppRoute,
+} as any)
 const ApiApiWebhooksSplatRoute = ApiApiWebhooksSplatRouteImport.update({
   id: '/_api/api/webhooks/$',
   path: '/api/webhooks/$',
@@ -169,6 +181,7 @@ export interface FileRoutesByFullPath {
   '/demo': typeof MarketingDemoRoute
   '/': typeof MarketingIndexRoute
   '/api-keys/$key': typeof AppApiKeysKeyRoute
+  '/webhooks/$endpoint': typeof AppWebhooksEndpointRoute
   '/account/settings': typeof AuthAccountSettingsRoute
   '/organizations/create': typeof AuthOrganizationsCreateRoute
   '/organizations/select': typeof AuthOrganizationsSelectRoute
@@ -179,6 +192,7 @@ export interface FileRoutesByFullPath {
   '/api/auth/$': typeof ApiApiAuthSplatRoute
   '/api/demo/$': typeof ApiApiDemoSplatRoute
   '/api/webhooks/$': typeof ApiApiWebhooksSplatRoute
+  '/webhooks/events/$event': typeof AppWebhooksEventsEventRoute
   '/organizations/members': typeof AuthOrganizationsActiveMembersRoute
   '/organizations/settings': typeof AuthOrganizationsActiveSettingsRoute
 }
@@ -192,6 +206,7 @@ export interface FileRoutesByTo {
   '/demo': typeof MarketingDemoRoute
   '/': typeof MarketingIndexRoute
   '/api-keys/$key': typeof AppApiKeysKeyRoute
+  '/webhooks/$endpoint': typeof AppWebhooksEndpointRoute
   '/account/settings': typeof AuthAccountSettingsRoute
   '/organizations/create': typeof AuthOrganizationsCreateRoute
   '/organizations/select': typeof AuthOrganizationsSelectRoute
@@ -202,6 +217,7 @@ export interface FileRoutesByTo {
   '/api/auth/$': typeof ApiApiAuthSplatRoute
   '/api/demo/$': typeof ApiApiDemoSplatRoute
   '/api/webhooks/$': typeof ApiApiWebhooksSplatRoute
+  '/webhooks/events/$event': typeof AppWebhooksEventsEventRoute
   '/organizations/members': typeof AuthOrganizationsActiveMembersRoute
   '/organizations/settings': typeof AuthOrganizationsActiveSettingsRoute
 }
@@ -220,6 +236,7 @@ export interface FileRoutesById {
   '/_marketing/demo': typeof MarketingDemoRoute
   '/_marketing/': typeof MarketingIndexRoute
   '/_app/api-keys/$key': typeof AppApiKeysKeyRoute
+  '/_app/webhooks/$endpoint': typeof AppWebhooksEndpointRoute
   '/_auth/account/settings': typeof AuthAccountSettingsRoute
   '/_auth/organizations/create': typeof AuthOrganizationsCreateRoute
   '/_auth/organizations/select': typeof AuthOrganizationsSelectRoute
@@ -230,6 +247,7 @@ export interface FileRoutesById {
   '/_api/api/auth/$': typeof ApiApiAuthSplatRoute
   '/_api/api/demo/$': typeof ApiApiDemoSplatRoute
   '/_api/api/webhooks/$': typeof ApiApiWebhooksSplatRoute
+  '/_app/webhooks/events/$event': typeof AppWebhooksEventsEventRoute
   '/_auth/organizations/_active/members': typeof AuthOrganizationsActiveMembersRoute
   '/_auth/organizations/_active/settings': typeof AuthOrganizationsActiveSettingsRoute
 }
@@ -245,6 +263,7 @@ export interface FileRouteTypes {
     | '/demo'
     | '/'
     | '/api-keys/$key'
+    | '/webhooks/$endpoint'
     | '/account/settings'
     | '/organizations/create'
     | '/organizations/select'
@@ -255,6 +274,7 @@ export interface FileRouteTypes {
     | '/api/auth/$'
     | '/api/demo/$'
     | '/api/webhooks/$'
+    | '/webhooks/events/$event'
     | '/organizations/members'
     | '/organizations/settings'
   fileRoutesByTo: FileRoutesByTo
@@ -268,6 +288,7 @@ export interface FileRouteTypes {
     | '/demo'
     | '/'
     | '/api-keys/$key'
+    | '/webhooks/$endpoint'
     | '/account/settings'
     | '/organizations/create'
     | '/organizations/select'
@@ -278,6 +299,7 @@ export interface FileRouteTypes {
     | '/api/auth/$'
     | '/api/demo/$'
     | '/api/webhooks/$'
+    | '/webhooks/events/$event'
     | '/organizations/members'
     | '/organizations/settings'
   id:
@@ -295,6 +317,7 @@ export interface FileRouteTypes {
     | '/_marketing/demo'
     | '/_marketing/'
     | '/_app/api-keys/$key'
+    | '/_app/webhooks/$endpoint'
     | '/_auth/account/settings'
     | '/_auth/organizations/create'
     | '/_auth/organizations/select'
@@ -305,6 +328,7 @@ export interface FileRouteTypes {
     | '/_api/api/auth/$'
     | '/_api/api/demo/$'
     | '/_api/api/webhooks/$'
+    | '/_app/webhooks/events/$event'
     | '/_auth/organizations/_active/members'
     | '/_auth/organizations/_active/settings'
   fileRoutesById: FileRoutesById
@@ -454,6 +478,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthAccountSettingsRouteImport
       parentRoute: typeof AuthRoute
     }
+    '/_app/webhooks/$endpoint': {
+      id: '/_app/webhooks/$endpoint'
+      path: '/webhooks/$endpoint'
+      fullPath: '/webhooks/$endpoint'
+      preLoaderRoute: typeof AppWebhooksEndpointRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/api-keys/$key': {
       id: '/_app/api-keys/$key'
       path: '/api-keys/$key'
@@ -474,6 +505,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/organizations/members'
       preLoaderRoute: typeof AuthOrganizationsActiveMembersRouteImport
       parentRoute: typeof AuthRoute
+    }
+    '/_app/webhooks/events/$event': {
+      id: '/_app/webhooks/events/$event'
+      path: '/webhooks/events/$event'
+      fullPath: '/webhooks/events/$event'
+      preLoaderRoute: typeof AppWebhooksEventsEventRouteImport
+      parentRoute: typeof AppRoute
     }
     '/_api/api/webhooks/$': {
       id: '/_api/api/webhooks/$'
@@ -502,17 +540,21 @@ declare module '@tanstack/react-router' {
 interface AppRouteChildren {
   AppDashboardRoute: typeof AppDashboardRoute
   AppApiKeysKeyRoute: typeof AppApiKeysKeyRoute
+  AppWebhooksEndpointRoute: typeof AppWebhooksEndpointRoute
   AppApiKeysIndexRoute: typeof AppApiKeysIndexRoute
   AppSandboxIndexRoute: typeof AppSandboxIndexRoute
   AppWebhooksIndexRoute: typeof AppWebhooksIndexRoute
+  AppWebhooksEventsEventRoute: typeof AppWebhooksEventsEventRoute
 }
 
 const AppRouteChildren: AppRouteChildren = {
   AppDashboardRoute: AppDashboardRoute,
   AppApiKeysKeyRoute: AppApiKeysKeyRoute,
+  AppWebhooksEndpointRoute: AppWebhooksEndpointRoute,
   AppApiKeysIndexRoute: AppApiKeysIndexRoute,
   AppSandboxIndexRoute: AppSandboxIndexRoute,
   AppWebhooksIndexRoute: AppWebhooksIndexRoute,
+  AppWebhooksEventsEventRoute: AppWebhooksEventsEventRoute,
 }
 
 const AppRouteWithChildren = AppRoute._addFileChildren(AppRouteChildren)

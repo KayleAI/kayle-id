@@ -1,8 +1,12 @@
 import { afterEach, describe, expect, test, vi } from "vitest";
 import {
+  createWebhookEndpoint,
   createWebhookKey,
+  deactivateWebhookKey,
+  deleteWebhookEndpoint,
   listWebhookEndpoints,
   parseJwkInput,
+  reactivateWebhookKey,
   revealWebhookSigningSecret,
 } from "./api";
 
@@ -161,5 +165,147 @@ describe("webhook api helpers", () => {
       key_id: "demo-key",
       key_type: "RSA",
     });
+  });
+
+  test("creates endpoints with the configured name and subscriptions", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      mockJsonResponse({
+        data: {
+          endpoint: {
+            id: "whe_123",
+            organization_id: "org_123",
+            environment: "live",
+            name: "Primary production webhook",
+            url: "https://example.com/webhooks/kayle",
+            enabled: true,
+            subscribed_event_types: ["verification.attempt.succeeded"],
+            created_at: "2026-03-19T00:00:00.000Z",
+            updated_at: "2026-03-19T00:00:00.000Z",
+            disabled_at: null,
+          },
+          signing_secret: "whsec_123",
+        },
+        error: null,
+      })
+    );
+
+    globalThis.fetch = fetchMock as typeof fetch;
+
+    await createWebhookEndpoint({
+      enabled: true,
+      environment: "live",
+      name: "Primary production webhook",
+      subscribedEventTypes: ["verification.attempt.succeeded"],
+      url: "https://example.com/webhooks/kayle",
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/webhooks/endpoints",
+      expect.objectContaining({
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        method: "POST",
+      })
+    );
+
+    const [, requestOptions] = fetchMock.mock.calls[0] ?? [];
+    expect(JSON.parse(String(requestOptions?.body))).toEqual({
+      enabled: true,
+      environment: "live",
+      name: "Primary production webhook",
+      subscribed_event_types: ["verification.attempt.succeeded"],
+      url: "https://example.com/webhooks/kayle",
+    });
+  });
+
+  test("deletes endpoints with the expected endpoint path", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      mockJsonResponse({
+        data: {
+          message: "Webhook endpoint deleted.",
+          status: "success",
+        },
+        error: null,
+      })
+    );
+
+    globalThis.fetch = fetchMock as typeof fetch;
+
+    await expect(deleteWebhookEndpoint("whe_123")).resolves.toEqual({
+      message: "Webhook endpoint deleted.",
+      status: "success",
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/webhooks/endpoints/whe_123",
+      expect.objectContaining({
+        credentials: "include",
+        method: "DELETE",
+      })
+    );
+  });
+
+  test("deactivates keys with the expected endpoint path", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      mockJsonResponse({
+        data: {
+          id: "whk_123",
+          webhook_endpoint_id: "whe_123",
+          key_id: "demo-key",
+          algorithm: "RSA-OAEP-256",
+          key_type: "RSA",
+          jwk: { e: "AQAB", kty: "RSA", n: "abc123" },
+          is_active: false,
+          created_at: "2026-03-19T00:00:00.000Z",
+          updated_at: "2026-03-20T00:00:00.000Z",
+          disabled_at: "2026-03-20T00:00:00.000Z",
+        },
+        error: null,
+      })
+    );
+
+    globalThis.fetch = fetchMock as typeof fetch;
+
+    await deactivateWebhookKey("whk_123");
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/webhooks/keys/whk_123/deactivate",
+      expect.objectContaining({
+        credentials: "include",
+        method: "POST",
+      })
+    );
+  });
+
+  test("reactivates keys with the expected endpoint path", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      mockJsonResponse({
+        data: {
+          id: "whk_123",
+          webhook_endpoint_id: "whe_123",
+          key_id: "demo-key",
+          algorithm: "RSA-OAEP-256",
+          key_type: "RSA",
+          jwk: { e: "AQAB", kty: "RSA", n: "abc123" },
+          is_active: true,
+          created_at: "2026-03-19T00:00:00.000Z",
+          updated_at: "2026-03-21T00:00:00.000Z",
+          disabled_at: null,
+        },
+        error: null,
+      })
+    );
+
+    globalThis.fetch = fetchMock as typeof fetch;
+
+    await reactivateWebhookKey("whk_123");
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/webhooks/keys/whk_123/reactivate",
+      expect.objectContaining({
+        credentials: "include",
+        method: "POST",
+      })
+    );
   });
 });

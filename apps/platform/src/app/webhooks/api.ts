@@ -32,6 +32,7 @@ export type WebhookEndpoint = {
   id: string;
   organization_id: string;
   environment: Environment;
+  name: string | null;
   url: string;
   enabled: boolean;
   subscribed_event_types: string[];
@@ -43,6 +44,11 @@ export type WebhookEndpoint = {
 export type WebhookEndpointCreateResult = {
   endpoint: WebhookEndpoint;
   signing_secret: string;
+};
+
+export type WebhookDeleteResult = {
+  message: string;
+  status: "success";
 };
 
 export type WebhookSigningSecretResult = {
@@ -99,7 +105,7 @@ export type WebhookDelivery = {
 type QueryValue = boolean | number | string | null | undefined;
 
 type RequestOptions = {
-  method?: "GET" | "PATCH" | "POST";
+  method?: "DELETE" | "GET" | "PATCH" | "POST";
   path: string;
   body?: unknown;
   query?: Record<string, QueryValue>;
@@ -253,11 +259,13 @@ export function listWebhookEndpoints({
 export function createWebhookEndpoint({
   enabled,
   environment,
+  name,
   subscribedEventTypes,
   url,
 }: {
   enabled: boolean;
   environment: Environment;
+  name?: string | null;
   subscribedEventTypes: string[];
   url: string;
 }): Promise<WebhookEndpointCreateResult> {
@@ -265,6 +273,7 @@ export function createWebhookEndpoint({
     method: "POST",
     path: "/endpoints",
     body: {
+      name,
       url,
       environment,
       enabled,
@@ -276,11 +285,13 @@ export function createWebhookEndpoint({
 export function updateWebhookEndpoint({
   endpointId,
   enabled,
+  name,
   subscribedEventTypes,
   url,
 }: {
   endpointId: string;
   enabled: boolean;
+  name?: string | null;
   subscribedEventTypes: string[];
   url: string;
 }): Promise<WebhookEndpoint> {
@@ -288,10 +299,20 @@ export function updateWebhookEndpoint({
     method: "PATCH",
     path: `/endpoints/${endpointId}`,
     body: {
+      name,
       url,
       enabled,
       subscribed_event_types: subscribedEventTypes,
     },
+  });
+}
+
+export function deleteWebhookEndpoint(
+  endpointId: string
+): Promise<WebhookDeleteResult> {
+  return requestWebhook<WebhookDeleteResult>({
+    method: "DELETE",
+    path: `/endpoints/${endpointId}`,
   });
 }
 
@@ -361,6 +382,15 @@ export function deactivateWebhookKey(
   return requestWebhook<WebhookEncryptionKey>({
     method: "POST",
     path: `/keys/${keyId}/deactivate`,
+  });
+}
+
+export function reactivateWebhookKey(
+  keyId: string
+): Promise<WebhookEncryptionKey> {
+  return requestWebhook<WebhookEncryptionKey>({
+    method: "POST",
+    path: `/keys/${keyId}/reactivate`,
   });
 }
 

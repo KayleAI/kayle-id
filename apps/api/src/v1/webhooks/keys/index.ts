@@ -6,6 +6,7 @@ import {
 } from "@kayle-id/database/schema/webhooks";
 import { and, eq } from "drizzle-orm";
 import { deactivateWebhookEncryptionKey } from "@/openapi/v1/webhooks/keys/deactivate";
+import { reactivateWebhookEncryptionKey } from "@/openapi/v1/webhooks/keys/reactivate";
 
 const webhookEncryptionKeys = new OpenAPIHono<{
   Bindings: CloudflareBindings;
@@ -30,10 +31,13 @@ function mapKeyRowToResponse(row: typeof webhook_encryption_keys.$inferSelect) {
   };
 }
 
-webhookEncryptionKeys.openapi(deactivateWebhookEncryptionKey, async (c) => {
-  const organizationId = c.get("organizationId");
-  const params = c.req.valid("param");
-
+async function findWebhookKeyByIdForOrganization({
+  keyId,
+  organizationId,
+}: {
+  keyId: string;
+  organizationId: string;
+}) {
   const [row] = await db
     .select({
       key: webhook_encryption_keys,
@@ -47,11 +51,46 @@ webhookEncryptionKeys.openapi(deactivateWebhookEncryptionKey, async (c) => {
     )
     .where(
       and(
-        eq(webhook_encryption_keys.id, params.key_id),
+        eq(webhook_encryption_keys.id, keyId),
         eq(webhook_endpoints.organizationId, organizationId)
       )
     )
     .limit(1);
+
+  return row ?? null;
+}
+
+async function updateWebhookKeyActiveState({
+  isActive,
+  keyId,
+}: {
+  isActive: boolean;
+  keyId: string;
+}) {
+  await db
+    .update(webhook_encryption_keys)
+    .set({
+      isActive,
+      disabledAt: isActive ? null : new Date(),
+    })
+    .where(eq(webhook_encryption_keys.id, keyId));
+
+  const [updated] = await db
+    .select()
+    .from(webhook_encryption_keys)
+    .where(eq(webhook_encryption_keys.id, keyId))
+    .limit(1);
+
+  return updated;
+}
+
+webhookEncryptionKeys.openapi(deactivateWebhookEncryptionKey, async (c) => {
+  const organizationId = c.get("organizationId");
+  const params = c.req.valid("param");
+  const row = await findWebhookKeyByIdForOrganization({
+    keyId: params.key_id,
+    organizationId,
+  });
 
   if (!row) {
     return c.json(
@@ -68,22 +107,48 @@ webhookEncryptionKeys.openapi(deactivateWebhookEncryptionKey, async (c) => {
     );
   }
 
-  const now = new Date();
+  const updated = await updateWebhookKeyActiveState({
+    isActive: false,
+    keyId: row.key.id,
+  });
+  const data = mapKeyRowToResponse(updated);
 
-  await db
-    .update(webhook_encryption_keys)
-    .set({
-      isActive: false,
-      disabledAt: now,
-    })
-    .where(eq(webhook_encryption_keys.id, row.key.id));
+  return c.json(
+    {
+      data,
+      error: null,
+    },
+    200
+  );
+});
 
-  const [updated] = await db
-    .select()
-    .from(webhook_encryption_keys)
-    .where(eq(webhook_encryption_keys.id, row.key.id))
-    .limit(1);
+webhookEncryptionKeys.openapi(reactivateWebhookEncryptionKey, async (c) => {
+  const organizationId = c.get("organizationId");
+  const params = c.req.valid("param");
+  const row = await findWebhookKeyByIdForOrganization({
+    keyId: params.key_id,
+    organizationId,
+  });
 
+  if (!row) {
+    return c.json(
+      {
+        data: null,
+        error: {
+          code: "NOT_FOUND",
+          message: "Webhook encryption key not found.",
+          hint: "The webhook encryption key with the given ID was not found.",
+          docs: "https://kayle.id/docs/api/webhooks/keys#reactivate",
+        },
+      },
+      404
+    );
+  }
+
+  const updated = await updateWebhookKeyActiveState({
+    isActive: true,
+    keyId: row.key.id,
+  });
   const data = mapKeyRowToResponse(updated);
 
   return c.json(

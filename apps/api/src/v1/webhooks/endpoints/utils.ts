@@ -9,6 +9,8 @@ import type {
 
 export type Environment = "live" | "test";
 
+const SIGNING_SECRET_RANDOM_LENGTH = 32;
+
 export function generateRandomString(length: number): string {
   const alphabet = "abcdefghijklmnopqrstuvwxyz0123456789";
   const randomBytes = new Uint8Array(length);
@@ -33,7 +35,7 @@ export function generateKeyId(environment: Environment): string {
 }
 
 export function generateSigningSecret(): string {
-  return `whsec_${generateRandomString(48)}`;
+  return `whsec_${generateRandomString(SIGNING_SECRET_RANDOM_LENGTH)}`;
 }
 
 function normalizeSubscribedEventTypes(
@@ -63,6 +65,7 @@ export function mapEndpointRowToResponse(
     id: row.id,
     organization_id: organizationId,
     environment: row.environment as Environment,
+    name: row.name,
     url: row.url,
     enabled: row.enabled,
     subscribed_event_types: normalizeSubscribedEventTypes(

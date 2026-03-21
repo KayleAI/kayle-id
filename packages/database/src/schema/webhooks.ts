@@ -31,6 +31,7 @@ export const webhook_endpoints = pgTable(
     environment: text({ enum: ["live", "test"] })
       .default("live")
       .notNull(),
+    name: text("name"),
     url: text("url").notNull(),
     enabled: boolean("enabled").default(true).notNull(),
     subscribedEventTypes: jsonb("subscribed_event_types")
