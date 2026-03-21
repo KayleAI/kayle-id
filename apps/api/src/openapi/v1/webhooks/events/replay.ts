@@ -57,7 +57,7 @@ export const replayWebhookEvent = createRoute({
               error: {
                 code: "CONFLICT",
                 message: "Webhook event cannot be replayed.",
-                hint: "Only succeeded verification events with deliveries can be replayed.",
+                hint: "Only webhook events with deliveries can be replayed.",
                 docs: "https://kayle.id/docs/api/webhooks/events#replay",
               },
             },

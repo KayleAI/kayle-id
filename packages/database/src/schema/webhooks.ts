@@ -1,3 +1,4 @@
+import { SUPPORTED_WEBHOOK_EVENT_TYPES } from "@kayle-id/config/webhook-events";
 import {
   boolean,
   index,
@@ -35,7 +36,7 @@ export const webhook_endpoints = pgTable(
     url: text("url").notNull(),
     enabled: boolean("enabled").default(true).notNull(),
     subscribedEventTypes: jsonb("subscribed_event_types")
-      .default(["verification.attempt.succeeded"])
+      .default([...SUPPORTED_WEBHOOK_EVENT_TYPES])
       .notNull(),
     signingSecretCiphertext: text("signing_secret_ciphertext"),
     createdAt: timestamp("created_at").defaultNow().notNull(),

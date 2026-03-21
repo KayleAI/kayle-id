@@ -6,10 +6,12 @@ import {
 } from "@kayle-id/database/schema/core";
 import { and, eq } from "drizzle-orm";
 import { generateId } from "@/utils/generate-id";
+import { createWebhookDeliveriesForVerificationAttemptFailed } from "@/v1/webhooks/deliveries/service";
 
 export const MAX_FAILED_ATTEMPTS = 3;
 
 type SessionContext = {
+  contractVersion: number;
   id: string;
   organizationId: string;
   environment: "live" | "test";
@@ -25,7 +27,7 @@ function normalizeRiskScore(score: number): number {
   return Math.max(0, Math.min(1, score));
 }
 
-export function markAttemptFailed({
+export async function markAttemptFailed({
   session,
   attemptId,
   failureCode,
@@ -36,12 +38,18 @@ export function markAttemptFailed({
   failureCode: "passport_authenticity_failed" | "selfie_face_mismatch";
   riskScore: number;
 }): Promise<{
+  deliveryIds: string[];
   failedAttempts: number;
   terminalized: boolean;
 }> {
   const now = new Date();
 
-  return db.transaction(async (tx) => {
+  const result = await db.transaction(async (tx) => {
+    const attemptFailedEventId = generateId({
+      type: "evt",
+      environment: session.environment,
+    });
+
     await tx
       .update(verification_attempts)
       .set({
@@ -53,7 +61,7 @@ export function markAttemptFailed({
       .where(eq(verification_attempts.id, attemptId));
 
     await tx.insert(events).values({
-      id: generateId({ type: "evt", environment: session.environment }),
+      id: attemptFailedEventId,
       organizationId: session.organizationId,
       environment: session.environment,
       type: "verification.attempt.failed",
@@ -98,10 +106,29 @@ export function markAttemptFailed({
     session.completedAt = exhaustedRetryLimit ? now : null;
 
     return {
+      attemptFailedEventId,
       failedAttempts: failedAttempts.length,
       terminalized: exhaustedRetryLimit,
     };
   });
+
+  const deliveryIds = await createWebhookDeliveriesForVerificationAttemptFailed(
+    {
+      attemptId,
+      contractVersion: session.contractVersion,
+      environment: session.environment,
+      eventId: result.attemptFailedEventId,
+      failureCode,
+      organizationId: session.organizationId,
+      sessionId: session.id,
+    }
+  );
+
+  return {
+    deliveryIds,
+    failedAttempts: result.failedAttempts,
+    terminalized: result.terminalized,
+  };
 }
 
 export async function markAttemptSucceeded({

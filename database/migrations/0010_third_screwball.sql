@@ -1,0 +1,1 @@
+ALTER TABLE "webhook_endpoints" ALTER COLUMN "subscribed_event_types" SET DEFAULT '["verification.attempt.succeeded","verification.attempt.failed","verification.session.expired","verification.session.cancelled"]'::jsonb;

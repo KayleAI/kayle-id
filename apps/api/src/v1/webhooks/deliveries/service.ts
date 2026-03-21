@@ -21,19 +21,57 @@ const INITIAL_RETRY_DELAY_MS = 60_000;
 
 type DeliveryStatus = typeof webhook_deliveries.$inferSelect.status;
 
+type VerificationAttemptFailedCode =
+  | "passport_authenticity_failed"
+  | "selfie_face_mismatch";
+
+type VerificationAttemptMetadata = {
+  contract_version: number;
+  event_id: string;
+  verification_attempt_id: string;
+  verification_session_id: string;
+};
+
+type VerificationSessionMetadata = {
+  contract_version: number;
+  event_id: string;
+  verification_session_id: string;
+};
+
 type VerificationSucceededPayload = {
   data: {
     claims: VerifyShareManifest["claims"];
     selected_field_keys: string[];
   };
-  metadata: {
-    contract_version: number;
-    event_id: string;
-    verification_attempt_id: string;
-    verification_session_id: string;
-  };
-  type: SupportedWebhookEventType;
+  metadata: VerificationAttemptMetadata;
+  type: "verification.attempt.succeeded";
 };
+
+type VerificationAttemptFailedPayload = {
+  data: {
+    failure_code: VerificationAttemptFailedCode;
+  };
+  metadata: VerificationAttemptMetadata;
+  type: "verification.attempt.failed";
+};
+
+type VerificationSessionExpiredPayload = {
+  data: Record<string, never>;
+  metadata: VerificationSessionMetadata;
+  type: "verification.session.expired";
+};
+
+type VerificationSessionCancelledPayload = {
+  data: Record<string, never>;
+  metadata: VerificationSessionMetadata;
+  type: "verification.session.cancelled";
+};
+
+type WebhookPayload =
+  | VerificationAttemptFailedPayload
+  | VerificationSessionCancelledPayload
+  | VerificationSessionExpiredPayload
+  | VerificationSucceededPayload;
 
 type DeliveryRowResponse = {
   attempt_count: number;
@@ -70,6 +108,73 @@ function buildVerificationSucceededPayload({
       verification_session_id: manifest.sessionId,
     },
     type: "verification.attempt.succeeded",
+  };
+}
+
+function buildVerificationAttemptFailedPayload({
+  attemptId,
+  contractVersion,
+  eventId,
+  failureCode,
+  sessionId,
+}: {
+  attemptId: string;
+  contractVersion: number;
+  eventId: string;
+  failureCode: VerificationAttemptFailedCode;
+  sessionId: string;
+}): VerificationAttemptFailedPayload {
+  return {
+    data: {
+      failure_code: failureCode,
+    },
+    metadata: {
+      contract_version: contractVersion,
+      event_id: eventId,
+      verification_attempt_id: attemptId,
+      verification_session_id: sessionId,
+    },
+    type: "verification.attempt.failed",
+  };
+}
+
+function buildVerificationSessionExpiredPayload({
+  contractVersion,
+  eventId,
+  sessionId,
+}: {
+  contractVersion: number;
+  eventId: string;
+  sessionId: string;
+}): VerificationSessionExpiredPayload {
+  return {
+    data: {},
+    metadata: {
+      contract_version: contractVersion,
+      event_id: eventId,
+      verification_session_id: sessionId,
+    },
+    type: "verification.session.expired",
+  };
+}
+
+function buildVerificationSessionCancelledPayload({
+  contractVersion,
+  eventId,
+  sessionId,
+}: {
+  contractVersion: number;
+  eventId: string;
+  sessionId: string;
+}): VerificationSessionCancelledPayload {
+  return {
+    data: {},
+    metadata: {
+      contract_version: contractVersion,
+      event_id: eventId,
+      verification_session_id: sessionId,
+    },
+    type: "verification.session.cancelled",
   };
 }
 
@@ -215,6 +320,7 @@ async function markWebhookDeliveryFailedAndReload(
 type DeliveryAttemptContext = {
   delivery: typeof webhook_deliveries.$inferSelect;
   endpoint: typeof webhook_endpoints.$inferSelect;
+  eventType: SupportedWebhookEventType;
 };
 
 async function getDeliveryAttemptContext(
@@ -224,8 +330,10 @@ async function getDeliveryAttemptContext(
     .select({
       delivery: webhook_deliveries,
       endpoint: webhook_endpoints,
+      eventType: events.type,
     })
     .from(webhook_deliveries)
+    .innerJoin(events, eq(events.id, webhook_deliveries.eventId))
     .innerJoin(
       webhook_endpoints,
       eq(webhook_endpoints.id, webhook_deliveries.webhookEndpointId)
@@ -233,7 +341,13 @@ async function getDeliveryAttemptContext(
     .where(eq(webhook_deliveries.id, deliveryId))
     .limit(1);
 
-  return row ?? null;
+  return row
+    ? {
+        delivery: row.delivery,
+        endpoint: row.endpoint,
+        eventType: row.eventType as SupportedWebhookEventType,
+      }
+    : null;
 }
 
 async function resolveEndpointSigningSecret({
@@ -260,10 +374,12 @@ async function resolveEndpointSigningSecret({
 async function sendWebhookDeliveryRequest({
   delivery,
   endpoint,
+  eventType,
   signingSecret,
 }: {
   delivery: typeof webhook_deliveries.$inferSelect;
   endpoint: typeof webhook_endpoints.$inferSelect;
+  eventType: SupportedWebhookEventType;
   signingSecret: string;
 }): Promise<Response> {
   const signatureHeader = await createWebhookSignatureHeader({
@@ -276,7 +392,7 @@ async function sendWebhookDeliveryRequest({
     headers: {
       "Content-Type": "application/jose",
       "X-Kayle-Delivery-Id": delivery.id,
-      "X-Kayle-Event": "verification.attempt.succeeded",
+      "X-Kayle-Event": eventType,
       "X-Kayle-Signature": signatureHeader,
     },
     method: "POST",
@@ -329,27 +445,20 @@ async function persistWebhookDeliveryAttemptResult({
     .where(eq(webhook_deliveries.id, delivery.id));
 }
 
-export async function createWebhookDeliveriesForVerificationSucceeded({
-  attemptId,
+async function createWebhookDeliveriesForEvent({
   environment,
   eventId,
-  manifest,
+  eventType,
   organizationId,
+  payload,
 }: {
-  attemptId: string;
   environment: "live" | "test";
   eventId: string;
-  manifest: VerifyShareManifest;
+  eventType: SupportedWebhookEventType;
   organizationId: string;
+  payload: WebhookPayload;
 }): Promise<string[]> {
-  const payload = JSON.stringify(
-    buildVerificationSucceededPayload({
-      attemptId,
-      eventId,
-      manifest,
-    })
-  );
-
+  const serializedPayload = JSON.stringify(payload);
   const candidateEndpoints = await db
     .select()
     .from(webhook_endpoints)
@@ -362,10 +471,7 @@ export async function createWebhookDeliveriesForVerificationSucceeded({
     );
 
   const subscribedEndpoints = candidateEndpoints.filter((endpoint) =>
-    isSubscribedToEventType(
-      endpoint.subscribedEventTypes,
-      "verification.attempt.succeeded"
-    )
+    isSubscribedToEventType(endpoint.subscribedEventTypes, eventType)
   );
 
   if (subscribedEndpoints.length === 0) {
@@ -419,7 +525,7 @@ export async function createWebhookDeliveriesForVerificationSucceeded({
     }
 
     try {
-      const encryptedPayload = await createJWE(payload, {
+      const encryptedPayload = await createJWE(serializedPayload, {
         algorithm: "RSA-OAEP-256",
         keyId: key.keyId,
         publicJwk: key.jwk as Record<string, unknown>,
@@ -453,6 +559,116 @@ export async function createWebhookDeliveriesForVerificationSucceeded({
     }
   }
   return createdDeliveryIds;
+}
+
+export function createWebhookDeliveriesForVerificationSucceeded({
+  attemptId,
+  environment,
+  eventId,
+  manifest,
+  organizationId,
+}: {
+  attemptId: string;
+  environment: "live" | "test";
+  eventId: string;
+  manifest: VerifyShareManifest;
+  organizationId: string;
+}): Promise<string[]> {
+  return createWebhookDeliveriesForEvent({
+    environment,
+    eventId,
+    eventType: "verification.attempt.succeeded",
+    organizationId,
+    payload: buildVerificationSucceededPayload({
+      attemptId,
+      eventId,
+      manifest,
+    }),
+  });
+}
+
+export function createWebhookDeliveriesForVerificationAttemptFailed({
+  attemptId,
+  contractVersion,
+  environment,
+  eventId,
+  failureCode,
+  organizationId,
+  sessionId,
+}: {
+  attemptId: string;
+  contractVersion: number;
+  environment: "live" | "test";
+  eventId: string;
+  failureCode: VerificationAttemptFailedCode;
+  organizationId: string;
+  sessionId: string;
+}): Promise<string[]> {
+  return createWebhookDeliveriesForEvent({
+    environment,
+    eventId,
+    eventType: "verification.attempt.failed",
+    organizationId,
+    payload: buildVerificationAttemptFailedPayload({
+      attemptId,
+      contractVersion,
+      eventId,
+      failureCode,
+      sessionId,
+    }),
+  });
+}
+
+export function createWebhookDeliveriesForVerificationSessionExpired({
+  contractVersion,
+  environment,
+  eventId,
+  organizationId,
+  sessionId,
+}: {
+  contractVersion: number;
+  environment: "live" | "test";
+  eventId: string;
+  organizationId: string;
+  sessionId: string;
+}): Promise<string[]> {
+  return createWebhookDeliveriesForEvent({
+    environment,
+    eventId,
+    eventType: "verification.session.expired",
+    organizationId,
+    payload: buildVerificationSessionExpiredPayload({
+      contractVersion,
+      eventId,
+      sessionId,
+    }),
+  });
+}
+
+export function createWebhookDeliveriesForVerificationSessionCancelled({
+  contractVersion,
+  environment,
+  eventId,
+  organizationId,
+  sessionId,
+}: {
+  contractVersion: number;
+  environment: "live" | "test";
+  eventId: string;
+  organizationId: string;
+  sessionId: string;
+}): Promise<string[]> {
+  return createWebhookDeliveriesForEvent({
+    environment,
+    eventId,
+    eventType: "verification.session.cancelled",
+    organizationId,
+    payload: buildVerificationSessionCancelledPayload({
+      contractVersion,
+      eventId,
+      sessionId,
+    }),
+  });
 }
 
 export async function attemptWebhookDelivery({
@@ -493,6 +709,7 @@ export async function attemptWebhookDelivery({
     const response = await sendWebhookDeliveryRequest({
       delivery: context.delivery,
       endpoint: context.endpoint,
+      eventType: context.eventType,
       signingSecret,
     });
     await persistWebhookDeliveryAttemptResult({

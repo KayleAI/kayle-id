@@ -18,7 +18,10 @@ import { file } from "bun";
 import { eq } from "drizzle-orm";
 import { exportJWK, importSPKI } from "jose";
 import app from "@/index";
-import { createWebhookDeliveriesForVerificationSucceeded } from "@/v1/webhooks/deliveries/service";
+import {
+  createWebhookDeliveriesForVerificationAttemptFailed,
+  createWebhookDeliveriesForVerificationSucceeded,
+} from "@/v1/webhooks/deliveries/service";
 import { encryptWebhookSigningSecret } from "@/v1/webhooks/signing-secret";
 import { setup, type TestData, teardown } from "./setup";
 
@@ -62,7 +65,17 @@ afterAll(async () => {
   TEST_DATA = undefined;
 });
 
-async function seedWebhookEvent(): Promise<{
+function seedWebhookEvent(): Promise<{
+  deliveryId: string;
+  endpointId: string;
+  eventId: string;
+}> {
+  return seedWebhookEventWithType("verification.attempt.succeeded");
+}
+
+async function seedWebhookEventWithType(
+  eventType: "verification.attempt.failed" | "verification.attempt.succeeded"
+): Promise<{
   deliveryId: string;
   endpointId: string;
   eventId: string;
@@ -88,7 +101,7 @@ async function seedWebhookEvent(): Promise<{
       organizationId: TEST_DATA?.organizationId ?? "",
       environment: "live",
       signingSecretCiphertext,
-      subscribedEventTypes: ["verification.attempt.succeeded"],
+      subscribedEventTypes: [eventType],
       url: "https://example.com/webhooks/events",
     })
     .returning();
@@ -106,25 +119,38 @@ async function seedWebhookEvent(): Promise<{
     id: eventId,
     organizationId: TEST_DATA?.organizationId ?? "",
     environment: "live",
-    type: "verification.attempt.succeeded",
+    type: eventType,
     triggerId: `va_live_events_${crypto.randomUUID()}`,
     triggerType: "verification_attempt",
   });
 
-  const [deliveryId] = await createWebhookDeliveriesForVerificationSucceeded({
-    attemptId: `va_live_events_${crypto.randomUUID()}`,
-    environment: "live",
-    eventId,
-    manifest: {
-      claims: {
-        family_name: "DOE",
-      },
-      contractVersion: 1,
-      selectedFieldKeys: ["family_name"],
-      sessionId: `vs_live_events_${crypto.randomUUID()}`,
-    },
-    organizationId: TEST_DATA?.organizationId ?? "",
-  });
+  const deliveryIds =
+    eventType === "verification.attempt.succeeded"
+      ? await createWebhookDeliveriesForVerificationSucceeded({
+          attemptId: `va_live_events_${crypto.randomUUID()}`,
+          environment: "live",
+          eventId,
+          manifest: {
+            claims: {
+              family_name: "DOE",
+            },
+            contractVersion: 1,
+            selectedFieldKeys: ["family_name"],
+            sessionId: `vs_live_events_${crypto.randomUUID()}`,
+          },
+          organizationId: TEST_DATA?.organizationId ?? "",
+        })
+      : await createWebhookDeliveriesForVerificationAttemptFailed({
+          attemptId: `va_live_events_${crypto.randomUUID()}`,
+          contractVersion: 1,
+          environment: "live",
+          eventId,
+          failureCode: "selfie_face_mismatch",
+          organizationId: TEST_DATA?.organizationId ?? "",
+          sessionId: `vs_live_events_${crypto.randomUUID()}`,
+        });
+
+  const [deliveryId] = deliveryIds;
 
   if (!deliveryId) {
     throw new Error("expected_webhook_delivery_to_be_created");
@@ -261,6 +287,49 @@ describe("/v1/webhooks/events", () => {
           webhook_endpoint_id: seeded.endpointId,
         },
       ]);
+
+      const [delivery] = await db
+        .select()
+        .from(webhook_deliveries)
+        .where(eq(webhook_deliveries.id, seeded.deliveryId))
+        .limit(1);
+
+      expect(delivery?.status).toBe("pending");
+      expect(delivery?.attemptCount).toBe(0);
+      expect(delivery?.lastAttemptAt).toBeNull();
+      expect(delivery?.lastStatusCode).toBeNull();
+    }
+  );
+
+  test.serial(
+    "POST /:event_id/replay requeues failed attempt event deliveries",
+    async () => {
+      const seeded = await seedWebhookEventWithType(
+        "verification.attempt.failed"
+      );
+
+      await db
+        .update(webhook_deliveries)
+        .set({
+          attemptCount: 1,
+          lastAttemptAt: new Date("2099-01-01T00:00:00.000Z"),
+          lastStatusCode: 410,
+          nextAttemptAt: null,
+          status: "failed",
+        })
+        .where(eq(webhook_deliveries.id, seeded.deliveryId));
+
+      const response = await app.request(
+        `/v1/webhooks/events/${seeded.eventId}/replay`,
+        {
+          headers: {
+            Authorization: `Bearer ${TEST_DATA?.apiKey}`,
+          },
+          method: "POST",
+        }
+      );
+
+      expect(response.status).toBe(202);
 
       const [delivery] = await db
         .select()

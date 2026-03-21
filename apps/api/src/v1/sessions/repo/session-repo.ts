@@ -7,6 +7,10 @@ import {
 import { and, eq, gt, gte, inArray, lte } from "drizzle-orm";
 import { generateId } from "@/utils/generate-id";
 import type { ShareFields } from "@/v1/sessions/domain/share-contract/types";
+import {
+  createWebhookDeliveriesForVerificationSessionCancelled,
+  createWebhookDeliveriesForVerificationSessionExpired,
+} from "@/v1/webhooks/deliveries/service";
 
 export function listVerificationSessions({
   organizationId,
@@ -132,7 +136,12 @@ export async function cancelVerificationSession({
 }) {
   const now = new Date();
 
-  await db.transaction(async (tx) => {
+  const result = await db.transaction(async (tx) => {
+    const sessionCancelledEventId = generateId({
+      type: "evt",
+      environment: row.environment,
+    });
+
     await tx
       .update(verification_sessions)
       .set({
@@ -156,13 +165,25 @@ export async function cancelVerificationSession({
       );
 
     await tx.insert(events).values({
-      id: generateId({ type: "evt", environment: row.environment }),
+      id: sessionCancelledEventId,
       organizationId,
       environment: row.environment,
       type: "verification.session.cancelled",
       triggerId: row.id,
       triggerType: "verification_session",
     });
+
+    return {
+      sessionCancelledEventId,
+    };
+  });
+
+  await createWebhookDeliveriesForVerificationSessionCancelled({
+    contractVersion: row.contractVersion,
+    environment: row.environment,
+    eventId: result.sessionCancelledEventId,
+    organizationId,
+    sessionId: row.id,
   });
 }
 
@@ -182,7 +203,12 @@ export async function expireVerificationSessionIfNeeded({
     return row;
   }
 
-  await db.transaction(async (tx) => {
+  const result = await db.transaction(async (tx) => {
+    const sessionExpiredEventId = generateId({
+      type: "evt",
+      environment: row.environment,
+    });
+
     await tx
       .update(verification_sessions)
       .set({
@@ -206,13 +232,25 @@ export async function expireVerificationSessionIfNeeded({
       );
 
     await tx.insert(events).values({
-      id: generateId({ type: "evt", environment: row.environment }),
+      id: sessionExpiredEventId,
       organizationId: row.organizationId,
       environment: row.environment,
       type: "verification.session.expired",
       triggerId: row.id,
       triggerType: "verification_session",
     });
+
+    return {
+      sessionExpiredEventId,
+    };
+  });
+
+  await createWebhookDeliveriesForVerificationSessionExpired({
+    contractVersion: row.contractVersion,
+    environment: row.environment,
+    eventId: result.sessionExpiredEventId,
+    organizationId: row.organizationId,
+    sessionId: row.id,
   });
 
   return {

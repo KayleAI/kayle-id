@@ -1,3 +1,4 @@
+import { SUPPORTED_WEBHOOK_EVENT_TYPES } from "@kayle-id/config/webhook-events";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import {
   createWebhookEndpoint,
@@ -176,7 +177,7 @@ describe("webhook api helpers", () => {
             name: "Primary production webhook",
             url: "https://example.com/webhooks/kayle",
             enabled: true,
-            subscribed_event_types: ["verification.attempt.succeeded"],
+            subscribed_event_types: [...SUPPORTED_WEBHOOK_EVENT_TYPES],
             created_at: "2026-03-19T00:00:00.000Z",
             updated_at: "2026-03-19T00:00:00.000Z",
             disabled_at: null,
@@ -192,7 +193,7 @@ describe("webhook api helpers", () => {
     await createWebhookEndpoint({
       enabled: true,
       name: "Primary production webhook",
-      subscribedEventTypes: ["verification.attempt.succeeded"],
+      subscribedEventTypes: [...SUPPORTED_WEBHOOK_EVENT_TYPES],
       url: "https://example.com/webhooks/kayle",
     });
 
@@ -209,7 +210,7 @@ describe("webhook api helpers", () => {
     expect(JSON.parse(String(requestOptions?.body))).toEqual({
       enabled: true,
       name: "Primary production webhook",
-      subscribed_event_types: ["verification.attempt.succeeded"],
+      subscribed_event_types: SUPPORTED_WEBHOOK_EVENT_TYPES,
       url: "https://example.com/webhooks/kayle",
     });
   });

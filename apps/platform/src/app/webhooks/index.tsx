@@ -93,10 +93,7 @@ import {
   type WebhookEncryptionKey,
   type WebhookEndpoint,
   type WebhookEvent,
-  type WebhookSigningSecretResult,
 } from "./api";
-
-const DEFAULT_EVENT_TYPE = SUPPORTED_WEBHOOK_EVENT_TYPES[0];
 
 type WebhooksTab = "endpoints" | "events";
 type EndpointDetailTab = "overview" | "performance" | "deliveries";
@@ -125,26 +122,6 @@ type CreateEndpointSubmission = {
 };
 type CreateEndpointSubmissionResult = {
   publicKeyError: string | null;
-};
-type SecretDialogState =
-  | {
-      endpointId: string;
-      open: true;
-      secret: string;
-      title: string;
-    }
-  | {
-      endpointId: null;
-      open: false;
-      secret: "";
-      title: "";
-    };
-
-const INITIAL_SECRET_DIALOG_STATE: SecretDialogState = {
-  endpointId: null,
-  open: false,
-  secret: "",
-  title: "",
 };
 
 const tabOptions: Array<{
@@ -489,23 +466,27 @@ function getWebhookEventTypeDescription(eventType: string): string {
     return "Dispatch completed verification attempts to this endpoint.";
   }
 
+  if (eventType === "verification.attempt.failed") {
+    return "Dispatch failed verification attempts to this endpoint.";
+  }
+
+  if (eventType === "verification.session.expired") {
+    return "Dispatch verification sessions that expire before completion.";
+  }
+
+  if (eventType === "verification.session.cancelled") {
+    return "Dispatch verification sessions cancelled by the platform.";
+  }
+
   return "Dispatch this event type to the endpoint when it is emitted.";
 }
 
 function getEventSubscriptionSummary(selectedEventTypes: string[]): string {
   if (selectedEventTypes.length === SUPPORTED_WEBHOOK_EVENT_TYPES.length) {
-    return "All supported events";
+    return "All events";
   }
 
   return formatCountLabel(selectedEventTypes.length, "event");
-}
-
-function getEventSubscriptionDetail(selectedEventTypes: string[]): string {
-  if (selectedEventTypes.length === SUPPORTED_WEBHOOK_EVENT_TYPES.length) {
-    return "Receive every supported webhook event.";
-  }
-
-  return selectedEventTypes.join(", ");
 }
 
 function getCreateEndpointInitialPublicKey({
@@ -534,10 +515,6 @@ function getCreateEndpointInitialPublicKey({
 function getWebhookEventReplayDisabledReason(
   event: WebhookEvent
 ): string | null {
-  if (event.type !== DEFAULT_EVENT_TYPE) {
-    return "Only verification.attempt.succeeded events can be replayed.";
-  }
-
   if (event.deliveries.length === 0) {
     return "This event has no deliveries to replay.";
   }
@@ -735,17 +712,12 @@ function EventSubscriptionMenu({
       <DropdownMenuTrigger
         render={
           <Button
-            className="h-auto min-h-11 w-full items-start justify-between gap-3 px-3 py-2 text-left"
+            className="h-auto min-h-11 w-full items-center justify-between gap-3 px-3 py-2 text-left"
             type="button"
             variant="outline"
           >
-            <div className="min-w-0">
-              <div className="font-normal text-sm">
-                {getEventSubscriptionSummary(selectedEventTypes)}
-              </div>
-              <div className="truncate text-muted-foreground text-xs">
-                {getEventSubscriptionDetail(selectedEventTypes)}
-              </div>
+            <div className="min-w-0 font-normal text-sm">
+              {getEventSubscriptionSummary(selectedEventTypes)}
             </div>
             <ChevronDownIcon className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
           </Button>
@@ -891,7 +863,7 @@ function EndpointListCard({
             return (
               <TableRow key={endpoint.id}>
                 <TableCell className="w-[42%]">
-                  <div className="min-w-0 space-y-1.5">
+                  <div className="min-w-0 space-y-0.5">
                     <Link
                       className="block truncate font-medium transition-colors hover:text-foreground/80 hover:underline"
                       params={{ endpoint: endpoint.id }}
@@ -905,17 +877,10 @@ function EndpointListCard({
                   </div>
                 </TableCell>
                 <TableCell className="w-[24%]">
-                  <div className="min-w-0 space-y-1.5">
-                    <div className="font-medium text-sm">
-                      {getEventSubscriptionSummary(
-                        endpoint.subscribed_event_types
-                      )}
-                    </div>
-                    <div className="truncate text-muted-foreground text-xs">
-                      {getEventSubscriptionDetail(
-                        endpoint.subscribed_event_types
-                      )}
-                    </div>
+                  <div className="font-medium text-sm">
+                    {getEventSubscriptionSummary(
+                      endpoint.subscribed_event_types
+                    )}
                   </div>
                 </TableCell>
                 <TableCell className="w-[14%]">
@@ -1211,13 +1176,8 @@ function EndpointDetailsPanel({ endpoint }: { endpoint: WebhookEndpoint }) {
         </div>
         <div className="grid grid-cols-[8rem_minmax(0,1fr)] gap-3 px-4 py-2.5">
           <dt className="text-muted-foreground">Listening to</dt>
-          <dd className="min-w-0 space-y-0.5">
-            <div>
-              {getEventSubscriptionSummary(endpoint.subscribed_event_types)}
-            </div>
-            <div className="text-muted-foreground text-xs">
-              {getEventSubscriptionDetail(endpoint.subscribed_event_types)}
-            </div>
+          <dd className="min-w-0">
+            {getEventSubscriptionSummary(endpoint.subscribed_event_types)}
           </dd>
         </div>
       </dl>
@@ -1406,9 +1366,8 @@ function EditEndpointDrawer({
 
   return (
     <Sheet
-      onOpenChange={(open) => {
-        setIsOpen(open);
-
+      onOpenChange={setIsOpen}
+      onOpenChangeComplete={(open) => {
         if (!open) {
           onReset();
         }
@@ -1677,7 +1636,7 @@ function EventsTabContent({
             {events.map((event) => (
               <TableRow key={event.id}>
                 <TableCell>
-                  <div className="min-w-0 space-y-1.5">
+                  <div className="min-w-0 space-y-0.5">
                     <Link
                       className="block truncate font-medium transition-colors hover:text-foreground/80 hover:underline"
                       params={{ event: event.id }}
@@ -2062,12 +2021,10 @@ export function WebhooksPage({
   activeTab: activeTabProp,
   onActiveTabChange,
 }: WebhooksPageProps = {}) {
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [internalActiveTab, setInternalActiveTab] =
     useState<WebhooksTab>("endpoints");
-  const [secretDialog, setSecretDialog] = useState<SecretDialogState>(
-    INITIAL_SECRET_DIALOG_STATE
-  );
   const activeTab = activeTabProp ?? internalActiveTab;
 
   const endpointsQuery = useQuery({
@@ -2117,19 +2074,6 @@ export function WebhooksPage({
     return queryClient.invalidateQueries({ queryKey: ["webhooks"] });
   }
 
-  function openSecretDialog({
-    endpoint_id,
-    signing_secret,
-    title,
-  }: WebhookSigningSecretResult & { title: string }) {
-    setSecretDialog({
-      endpointId: endpoint_id,
-      open: true,
-      secret: signing_secret,
-      title,
-    });
-  }
-
   function handleActiveTabChange(nextTab: WebhooksTab): void {
     setInternalActiveTab(nextTab);
     onActiveTabChange?.(nextTab);
@@ -2163,11 +2107,9 @@ export function WebhooksPage({
     }
 
     await refreshWebhookQueries();
-    handleActiveTabChange("endpoints");
-    openSecretDialog({
-      endpoint_id: result.endpoint.id,
-      signing_secret: result.signing_secret,
-      title: "Webhook signing secret created",
+    navigate({
+      params: { endpoint: result.endpoint.id },
+      to: "/webhooks/$endpoint",
     });
 
     return {
@@ -2245,15 +2187,6 @@ export function WebhooksPage({
           />
         </TabsContent>
       </Tabs>
-
-      <SecretDialog
-        onOpenChange={(open) => {
-          if (!open) {
-            setSecretDialog(INITIAL_SECRET_DIALOG_STATE);
-          }
-        }}
-        state={secretDialog}
-      />
     </div>
   );
 }
@@ -2851,57 +2784,6 @@ export function WebhookEndpointPage({ endpointId }: { endpointId: string }) {
   );
 }
 
-function SecretDialog({
-  onOpenChange,
-  state,
-}: {
-  onOpenChange: (open: boolean) => void;
-  state: SecretDialogState;
-}) {
-  const { copied, copy } = useCopyToClipboard();
-
-  return (
-    <Dialog onOpenChange={onOpenChange} open={state.open}>
-      <DialogContent className="flex w-full max-w-2xl! flex-col">
-        <DialogHeader>
-          <DialogTitle>{state.title}</DialogTitle>
-        </DialogHeader>
-        <div className="space-y-2">
-          <Label htmlFor="signing-secret">Signing secret</Label>
-          <div className="relative">
-            <Textarea
-              className="min-h-[144px] resize-none pr-24 font-mono text-sm"
-              id="signing-secret"
-              readOnly
-              value={state.secret}
-            />
-            <Button
-              aria-label="Copy signing secret"
-              className="absolute top-3 right-3"
-              onClick={() => copy(state.secret)}
-              size="sm"
-              type="button"
-              variant="outline"
-            >
-              <CopyIcon className="mr-2 size-4" />
-              {copied ? "Copied" : "Copy"}
-            </Button>
-          </div>
-          <p className="text-muted-foreground text-sm">
-            This is the current outbound signing secret for endpoint{" "}
-            <span className="font-mono">{state.endpointId}</span>.
-          </p>
-        </div>
-        <DialogFooter>
-          <Button onClick={() => onOpenChange(false)} type="button">
-            Close
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
 function CreateEndpointDrawer({
   onSubmit,
 }: {
@@ -2963,7 +2845,6 @@ function CreateEndpointDrawer({
       });
 
       setIsOpen(false);
-      resetState();
       toast.success("Webhook endpoint created");
 
       if (result.publicKeyError) {
@@ -2982,8 +2863,8 @@ function CreateEndpointDrawer({
 
   return (
     <Sheet
-      onOpenChange={(open) => {
-        setIsOpen(open);
+      onOpenChange={setIsOpen}
+      onOpenChangeComplete={(open) => {
         if (!open) {
           resetState();
         }

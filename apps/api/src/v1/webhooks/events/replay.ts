@@ -50,21 +50,6 @@ replayEvent.openapi(replayWebhookEvent, async (c) => {
     );
   }
 
-  if (event.type !== "verification.attempt.succeeded") {
-    return c.json(
-      {
-        data: null,
-        error: {
-          code: "CONFLICT",
-          message: "Webhook event cannot be replayed.",
-          hint: "Only succeeded verification events with deliveries can be replayed.",
-          docs: "https://kayle.id/docs/api/webhooks/events#replay",
-        },
-      },
-      409
-    );
-  }
-
   const requeuedDeliveries = await requeueWebhookDeliveriesForEvent({
     eventId: event.id,
   });
@@ -76,7 +61,7 @@ replayEvent.openapi(replayWebhookEvent, async (c) => {
         error: {
           code: "CONFLICT",
           message: "Webhook event cannot be replayed.",
-          hint: "Only succeeded verification events with deliveries can be replayed.",
+          hint: "Only webhook events with deliveries can be replayed.",
           docs: "https://kayle.id/docs/api/webhooks/events#replay",
         },
       },

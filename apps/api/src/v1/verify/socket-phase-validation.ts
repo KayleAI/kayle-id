@@ -1,3 +1,4 @@
+import { attemptWebhookDelivery } from "@/v1/webhooks/deliveries/service";
 import { getNfcTransferStatus, getSelfieTransferStatus } from "./data-payload";
 import { resolveVerifyErrorMessage } from "./error-response";
 import { matchFaces } from "./face-matcher-client";
@@ -76,6 +77,19 @@ async function rejectAttemptWithVerdict({
     failureCode: code,
     riskScore,
   });
+
+  if (result.deliveryIds.length > 0) {
+    context.scheduleTask(
+      (async () => {
+        for (const deliveryId of result.deliveryIds) {
+          await attemptWebhookDelivery({
+            authSecret: context.env.AUTH_SECRET,
+            deliveryId,
+          });
+        }
+      })()
+    );
+  }
 
   return {
     outcome: "rejected" as const,
