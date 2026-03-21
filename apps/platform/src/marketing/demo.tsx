@@ -45,7 +45,9 @@ import type {
 } from "@/demo/types";
 import {
   buildDemoDocumentPreview,
+  buildDemoWebhookEventPreview,
   type DemoDocumentPreview,
+  type DemoWebhookEventPreview,
   formatDemoClaimValue,
 } from "@/marketing/demo-document";
 
@@ -302,20 +304,32 @@ function getStepOneSummary({
 }
 
 function getStepTwoSummary({
-  canReviewOutcome,
   hasSession,
   sessionStatus,
+  webhook,
 }: {
-  canReviewOutcome: boolean;
   hasSession: boolean;
   sessionStatus: DemoRunView["session_status"];
+  webhook: DemoRunView["webhook"];
 }): string {
   if (!hasSession) {
     return "Create a session in Step 1 first.";
   }
 
-  if (canReviewOutcome) {
-    if (sessionStatus?.status === "completed") {
+  if (webhook?.event_type === "verification.attempt.failed") {
+    return sessionStatus?.status === "in_progress"
+      ? "An attempt failed. Open Step 3 or continue on mobile."
+      : "An attempt failed. Open Step 3 to review it.";
+  }
+
+  if (webhook) {
+    return webhook.event_type === "verification.attempt.succeeded"
+      ? "Finished. Open Step 3."
+      : "A webhook event is ready. Open Step 3.";
+  }
+
+  if (sessionStatus?.is_terminal) {
+    if (sessionStatus.status === "completed") {
       return "Finished. Open Step 3.";
     }
 
@@ -343,11 +357,17 @@ function getStepThreeSummary({
   }
 
   if (webhook) {
-    return "The result is ready.";
+    return webhook.event_type === "verification.attempt.succeeded"
+      ? "The verified document is ready."
+      : "The latest webhook event is ready.";
   }
 
   if (sessionStatus?.status === "completed") {
-    return "Waiting for the result.";
+    return "Waiting for the verified document.";
+  }
+
+  if (sessionStatus?.is_terminal) {
+    return "Waiting for the final webhook event.";
   }
 
   return "No result is available. Restart to try again.";
@@ -894,6 +914,75 @@ function DemoDocumentPreviewPanel({
   );
 }
 
+function DemoWebhookEventPreviewPanel({
+  payload,
+  preview,
+}: {
+  payload: string;
+  preview: DemoWebhookEventPreview;
+}) {
+  return (
+    <div className="mr-15 mb-15 rounded-[2rem] border border-neutral-200/80 bg-white/94 px-6 py-8 sm:px-8">
+      <div className="text-center">
+        <p className="font-medium text-[0.7rem] text-neutral-500 uppercase tracking-[0.28em]">
+          Webhook Event
+        </p>
+        <h3 className="mt-3 text-balance font-light text-[2rem] text-neutral-950 tracking-tight sm:text-[2.25rem]">
+          {preview.title}
+        </h3>
+        <p className="mx-auto mt-3 max-w-2xl text-balance text-neutral-600 text-sm leading-relaxed">
+          {preview.description}
+        </p>
+      </div>
+
+      <dl className="mx-auto mt-8 grid max-w-3xl gap-6 border-neutral-200/80 sm:grid-cols-2">
+        <ProfileFieldItem
+          label="Event Type"
+          monospace
+          value={preview.eventType ?? "Unknown"}
+        />
+        <ProfileFieldItem
+          label="Contract Version"
+          monospace
+          value={
+            preview.contractVersion === null
+              ? "Unknown"
+              : String(preview.contractVersion)
+          }
+        />
+        <ProfileFieldItem
+          label="Verification Session"
+          monospace
+          value={preview.verificationSessionId ?? "Unknown"}
+        />
+        {preview.verificationAttemptId ? (
+          <ProfileFieldItem
+            label="Verification Attempt"
+            monospace
+            value={preview.verificationAttemptId}
+          />
+        ) : null}
+        {preview.failureCode ? (
+          <ProfileFieldItem
+            label="Failure Code"
+            monospace
+            value={preview.failureCode}
+          />
+        ) : null}
+      </dl>
+
+      <div className="mx-auto mt-8 max-w-3xl">
+        <p className="font-medium text-[0.7rem] text-neutral-500 uppercase tracking-[0.28em]">
+          Decrypted Payload
+        </p>
+        <pre className="mt-3 overflow-x-auto rounded-[1.4rem] border border-neutral-200/80 bg-neutral-950 px-4 py-4 font-mono text-[0.76rem] text-neutral-100 leading-relaxed">
+          {payload}
+        </pre>
+      </div>
+    </div>
+  );
+}
+
 function DocumentStatePanel({
   description,
   title,
@@ -920,30 +1009,39 @@ function getWebhookPanelState({
   processedWebhook: ProcessedWebhookState;
   run: DemoRunView | null;
 }): { description: string; title: string } | null {
+  const sessionStatus = run?.session_status ?? null;
+
   if (!run?.webhook) {
     return {
-      title: "Waiting for the document",
-      description:
-        "Finish the verification on mobile and the shared document will appear here.",
+      title: sessionStatus?.is_terminal
+        ? "Waiting for the webhook"
+        : "Waiting for the result",
+      description: sessionStatus?.is_terminal
+        ? "This run has ended. Waiting for the final webhook delivery to arrive."
+        : "Finish the verification on mobile and the latest webhook result will appear here.",
     };
   }
 
   if (processedWebhook.status === "verified") {
     return {
       title: "Preparing the result",
-      description: "Decrypting the verified document locally in this browser.",
+      description:
+        "Verifying the signature and decrypting the webhook payload locally in this browser.",
     };
   }
 
   if (!processedWebhook.decryptedPayload) {
     return {
       title: "Preparing the result",
-      description: "Waiting for the document payload to finish decrypting.",
+      description: "Waiting for the webhook payload to finish decrypting.",
     };
   }
 
   return {
-    title: "Document unavailable",
+    title:
+      run.webhook.event_type === "verification.attempt.succeeded"
+        ? "Document unavailable"
+        : "Webhook event unavailable",
     description: "The result arrived, but it could not be formatted cleanly.",
   };
 }
@@ -1001,6 +1099,10 @@ function WebhookPanel({
     () => buildDemoDocumentPreview(processedWebhook.decryptedPayload),
     [processedWebhook.decryptedPayload]
   );
+  const eventPreview = useMemo(
+    () => buildDemoWebhookEventPreview(processedWebhook.decryptedPayload),
+    [processedWebhook.decryptedPayload]
+  );
   const state = useMemo(
     () => getWebhookPanelState({ processedWebhook, run }),
     [processedWebhook, run]
@@ -1008,6 +1110,15 @@ function WebhookPanel({
 
   if (documentPreview) {
     return <DemoDocumentPreviewPanel preview={documentPreview} />;
+  }
+
+  if (eventPreview && processedWebhook.decryptedPayload) {
+    return (
+      <DemoWebhookEventPreviewPanel
+        payload={processedWebhook.decryptedPayload}
+        preview={eventPreview}
+      />
+    );
   }
 
   if (processedWebhook.error) {
@@ -1387,9 +1498,9 @@ function DemoVerificationStep({
 }) {
   const sessionStatus = run?.session_status ?? null;
   const stepTwoSummary = getStepTwoSummary({
-    canReviewOutcome: Boolean(sessionStatus?.is_terminal || run?.webhook),
     hasSession,
     sessionStatus,
+    webhook: run?.webhook ?? null,
   });
 
   return (
@@ -1428,10 +1539,8 @@ function DemoOutcomeStep({
   run: DemoRunView | null;
 }) {
   const sessionStatus = run?.session_status ?? null;
-  const hasNoSuccessfulResult = Boolean(
-    sessionStatus?.is_terminal &&
-      sessionStatus.status !== "completed" &&
-      !run?.webhook
+  const isWaitingForTerminalWebhook = Boolean(
+    sessionStatus?.is_terminal && !run?.webhook
   );
   const stepThreeSummary = getStepThreeSummary({
     canReviewOutcome,
@@ -1451,13 +1560,12 @@ function DemoOutcomeStep({
       title="Review the outcome"
     >
       <div className="space-y-8">
-        {hasNoSuccessfulResult ? (
+        {isWaitingForTerminalWebhook ? (
           <Alert>
-            <AlertTitle>No encrypted result is available</AlertTitle>
+            <AlertTitle>Waiting for the webhook delivery</AlertTitle>
             <AlertDescription>
-              This run ended in a terminal non-success state, so there is no
-              successful webhook payload to decrypt. Restart the demo to try
-              again.
+              This run has ended, but the final webhook event has not arrived
+              yet. Keep this page open or restart the demo to try again.
             </AlertDescription>
           </Alert>
         ) : null}
@@ -1472,9 +1580,7 @@ function DemoOutcomeStep({
           </Button>
         </div>
 
-        {hasNoSuccessfulResult ? null : (
-          <WebhookPanel processedWebhook={processedWebhook} run={run} />
-        )}
+        <WebhookPanel processedWebhook={processedWebhook} run={run} />
       </div>
     </DemoStepPanel>
   );

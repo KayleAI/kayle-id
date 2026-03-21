@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { SUPPORTED_WEBHOOK_EVENT_TYPES } from "@kayle-id/config/webhook-events";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import {
@@ -7,6 +8,7 @@ import {
   deleteWebhookEndpoint,
   listWebhookEndpoints,
   parseJwkInput,
+  parsePublicKeyInput,
   reactivateWebhookKey,
   revealWebhookSigningSecret,
 } from "./api";
@@ -53,6 +55,29 @@ describe("parseJwkInput", () => {
   test("rejects missing kty", () => {
     expect(() => parseJwkInput(JSON.stringify({ n: "abc123" }))).toThrow(
       "Public JWK must include a `kty` field."
+    );
+  });
+});
+
+describe("parsePublicKeyInput", () => {
+  test("parses a PEM public key into a JWK", async () => {
+    const pem = readFileSync(
+      new URL("../../../../../tests/secrets/rsa_public.pem", import.meta.url),
+      "utf8"
+    );
+
+    await expect(parsePublicKeyInput(pem)).resolves.toMatchObject({
+      alg: "RSA-OAEP-256",
+      e: expect.any(String),
+      key_ops: ["encrypt"],
+      kty: "RSA",
+      n: expect.any(String),
+    });
+  });
+
+  test("rejects unsupported public key input", async () => {
+    await expect(parsePublicKeyInput("not a key")).rejects.toThrow(
+      "Paste a public JWK JSON object or a PEM public key in BEGIN PUBLIC KEY format."
     );
   });
 });

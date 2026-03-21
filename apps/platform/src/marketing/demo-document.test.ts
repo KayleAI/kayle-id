@@ -1,6 +1,7 @@
 import { expect, test } from "vitest";
 import {
   buildDemoDocumentPreview,
+  buildDemoWebhookEventPreview,
   buildPassportMachineReadableZone,
   formatDemoClaimValue,
   formatDemoDocumentDate,
@@ -139,4 +140,31 @@ test("buildDemoDocumentPreview includes machine readable zone for passports", ()
     "P<GBRDOE<<JANE<MARIE<<<<<<<<<<<<<<<<<<<<<<<<",
     "1234567897GBR9004126F3204164<<<<<<<<<<<<<<08",
   ]);
+});
+
+test("buildDemoWebhookEventPreview reads non-success webhook payloads", () => {
+  const preview = buildDemoWebhookEventPreview(
+    JSON.stringify({
+      type: "verification.attempt.failed",
+      data: {
+        failure_code: "passport_authenticity_failed",
+      },
+      metadata: {
+        contract_version: 1,
+        verification_attempt_id: "va_demo_test",
+        verification_session_id: "vs_demo_test",
+      },
+    })
+  );
+
+  expect(preview).toEqual({
+    contractVersion: 1,
+    description:
+      "A verification attempt failed with Passport Authenticity Failed.",
+    eventType: "verification.attempt.failed",
+    failureCode: "passport_authenticity_failed",
+    title: "Attempt Failed",
+    verificationAttemptId: "va_demo_test",
+    verificationSessionId: "vs_demo_test",
+  });
 });

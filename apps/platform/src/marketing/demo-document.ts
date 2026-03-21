@@ -26,6 +26,16 @@ export type DemoDecryptedWebhook = {
   verificationSessionId: string | null;
 };
 
+export type DemoWebhookEventPreview = {
+  contractVersion: number | null;
+  description: string;
+  eventType: string | null;
+  failureCode: string | null;
+  title: string;
+  verificationAttemptId: string | null;
+  verificationSessionId: string | null;
+};
+
 export type DemoDocumentPreview = {
   claims: Record<string, unknown>;
   contractVersion: number | null;
@@ -228,9 +238,11 @@ function toStringArray(value: unknown): string[] {
   return normalizedValues;
 }
 
-export function parseDemoDecryptedWebhook(
-  payload: string | null
-): DemoDecryptedWebhook | null {
+function parseDemoWebhookPayload(payload: string | null): {
+  data: Record<string, unknown>;
+  metadata: Record<string, unknown> | null;
+  type: string | null;
+} | null {
   if (!payload) {
     return null;
   }
@@ -243,27 +255,131 @@ export function parseDemoDecryptedWebhook(
 
     const data = isRecord(parsed.data) ? parsed.data : null;
     const metadata = isRecord(parsed.metadata) ? parsed.metadata : null;
-    const claims = isRecord(data?.claims) ? data.claims : null;
 
-    if (!claims) {
+    if (!data) {
       return null;
     }
 
     return {
-      claims,
-      contractVersion:
-        typeof metadata?.contract_version === "number"
-          ? metadata.contract_version
-          : null,
-      selectedFieldKeys: toStringArray(data?.selected_field_keys),
+      data,
+      metadata,
       type: toNonEmptyString(parsed.type),
-      verificationSessionId: toNonEmptyString(
-        metadata?.verification_session_id
-      ),
     };
   } catch {
     return null;
   }
+}
+
+export function parseDemoDecryptedWebhook(
+  payload: string | null
+): DemoDecryptedWebhook | null {
+  const parsed = parseDemoWebhookPayload(payload);
+  const claims =
+    parsed && isRecord(parsed.data.claims) ? parsed.data.claims : null;
+
+  if (!claims) {
+    return null;
+  }
+
+  return {
+    claims,
+    contractVersion:
+      typeof parsed.metadata?.contract_version === "number"
+        ? parsed.metadata.contract_version
+        : null,
+    selectedFieldKeys: toStringArray(parsed.data.selected_field_keys),
+    type: parsed.type,
+    verificationSessionId: toNonEmptyString(
+      parsed.metadata?.verification_session_id
+    ),
+  };
+}
+
+function formatWebhookEventLabel(eventType: string | null): string {
+  switch (eventType) {
+    case "verification.attempt.failed":
+      return "Attempt Failed";
+    case "verification.attempt.succeeded":
+      return "Attempt Succeeded";
+    case "verification.session.cancelled":
+      return "Session Cancelled";
+    case "verification.session.expired":
+      return "Session Expired";
+    default:
+      return "Webhook Event";
+  }
+}
+
+function formatFailureCodeLabel(failureCode: string | null): string | null {
+  if (!failureCode) {
+    return null;
+  }
+
+  return failureCode
+    .split("_")
+    .map((segment) =>
+      segment.length > 0
+        ? `${segment[0]?.toUpperCase() ?? ""}${segment.slice(1)}`
+        : segment
+    )
+    .join(" ");
+}
+
+function buildWebhookEventDescription({
+  eventType,
+  failureCode,
+}: {
+  eventType: string | null;
+  failureCode: string | null;
+}): string {
+  const failureCodeLabel = formatFailureCodeLabel(failureCode);
+
+  switch (eventType) {
+    case "verification.attempt.failed":
+      return failureCodeLabel
+        ? `A verification attempt failed with ${failureCodeLabel}.`
+        : "A verification attempt failed.";
+    case "verification.attempt.succeeded":
+      return "The verified document payload was received successfully.";
+    case "verification.session.cancelled":
+      return "The verification session was cancelled before completion.";
+    case "verification.session.expired":
+      return "The verification session expired before completion.";
+    default:
+      return "The latest webhook payload was received successfully.";
+  }
+}
+
+export function buildDemoWebhookEventPreview(
+  payload: string | null
+): DemoWebhookEventPreview | null {
+  const parsed = parseDemoWebhookPayload(payload);
+
+  if (!parsed) {
+    return null;
+  }
+
+  const failureCode = toNonEmptyString(parsed.data.failure_code);
+
+  return {
+    contractVersion:
+      typeof parsed.metadata?.contract_version === "number"
+        ? parsed.metadata.contract_version
+        : null,
+    description: buildWebhookEventDescription({
+      eventType: parsed.type,
+      failureCode,
+    }),
+    eventType: parsed.type,
+    failureCode,
+    title: formatWebhookEventLabel(parsed.type),
+    verificationAttemptId: toNonEmptyString(
+      parsed.metadata?.verification_attempt_id
+    ),
+    verificationSessionId: toNonEmptyString(
+      parsed.metadata?.verification_session_id
+    ),
+  };
 }
 
 export function inferDemoDocumentKind(

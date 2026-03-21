@@ -1,3 +1,4 @@
+import { SUPPORTED_WEBHOOK_EVENT_TYPES } from "@kayle-id/config/webhook-events";
 import type {
   DemoRequestedShareFields,
   DemoSessionShareFields,
@@ -177,7 +178,7 @@ export async function createDemoWebhookEndpoint({
     body: {
       url: buildDemoWebhookUrl({ request, runId, token }),
       enabled: true,
-      subscribed_event_types: ["verification.attempt.succeeded"],
+      subscribed_event_types: [...SUPPORTED_WEBHOOK_EVENT_TYPES],
     },
   });
 

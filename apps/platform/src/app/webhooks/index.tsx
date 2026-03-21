@@ -65,7 +65,7 @@ import {
   TrashIcon,
   WebhookIcon,
 } from "lucide-react";
-import { type ReactNode, useEffect, useState } from "react";
+import { type ChangeEvent, type ReactNode, useEffect, useState } from "react";
 import { toast } from "sonner";
 import { AppHeading } from "@/components/app-heading";
 import InfoCard from "@/components/info";
@@ -82,7 +82,7 @@ import {
   listWebhookEndpoints,
   listWebhookEvents,
   listWebhookKeys,
-  parseJwkInput,
+  parsePublicKeyInput,
   reactivateWebhookKey,
   replayWebhookEvent,
   retryWebhookDelivery,
@@ -489,7 +489,7 @@ function getEventSubscriptionSummary(selectedEventTypes: string[]): string {
   return formatCountLabel(selectedEventTypes.length, "event");
 }
 
-function getCreateEndpointInitialPublicKey({
+async function getCreateEndpointInitialPublicKey({
   publicKeyId,
   publicKeyInput,
   shouldConfigurePublicKey,
@@ -497,7 +497,7 @@ function getCreateEndpointInitialPublicKey({
   publicKeyId: string;
   publicKeyInput: string;
   shouldConfigurePublicKey: boolean;
-}): CreateEndpointInitialPublicKey | null {
+}): Promise<CreateEndpointInitialPublicKey | null> {
   if (!shouldConfigurePublicKey) {
     return null;
   }
@@ -507,7 +507,7 @@ function getCreateEndpointInitialPublicKey({
   }
 
   return {
-    jwk: parseJwkInput(publicKeyInput),
+    jwk: await parsePublicKeyInput(publicKeyInput),
     keyId: publicKeyId.trim(),
   };
 }
@@ -767,6 +767,19 @@ function PublicKeyFields({
   onJwkInputChange: (value: string) => void;
   onKeyIdChange: (value: string) => void;
 }) {
+  async function handleFileChange(
+    event: ChangeEvent<HTMLInputElement>
+  ): Promise<void> {
+    const file = event.target.files?.[0];
+
+    if (!file) {
+      return;
+    }
+
+    onJwkInputChange(await file.text());
+    event.target.value = "";
+  }
+
   return (
     <div className="space-y-4">
       <div className="space-y-2">
@@ -780,17 +793,25 @@ function PublicKeyFields({
       </div>
 
       <div className="space-y-2">
-        <Label htmlFor={jwkInputId}>Public JWK</Label>
+        <Label htmlFor={jwkInputId}>Public key</Label>
+        <Input
+          accept=".pem,.pub,.txt"
+          className="min-h-11"
+          onChange={handleFileChange}
+          type="file"
+        />
         <Textarea
           className="min-h-[220px] font-mono text-sm"
           id={jwkInputId}
           onChange={(event) => onJwkInputChange(event.target.value)}
-          placeholder={`{\n  "kty": "RSA",\n  "n": "...",\n  "e": "AQAB",\n  "alg": "RSA-OAEP-256"\n}`}
+          placeholder={
+            "-----BEGIN PUBLIC KEY-----\nMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8A...\n-----END PUBLIC KEY-----\n\nor paste a JWK JSON object"
+          }
           value={jwkInput}
         />
         <p className="text-muted-foreground text-sm">
-          The uploaded key becomes the active encryption key for new deliveries
-          to this endpoint.
+          Paste a PEM public key or JWK, or upload a `.pem` file. The key will
+          become the active encryption key for new deliveries to this endpoint.
         </p>
       </div>
     </div>
@@ -1507,7 +1528,7 @@ function EndpointKeysCard({
   } else if (keys.length === 0) {
     content = (
       <div className="px-4 py-5 text-muted-foreground text-sm">
-        No public keys yet. Add a public JWK to encrypt outbound payloads for
+        No public keys yet. Add a public key to encrypt outbound payloads for
         this destination.
       </div>
     );
@@ -2834,7 +2855,7 @@ function CreateEndpointDrawer({
       setIsSubmitting(true);
       const result = await onSubmit({
         enabled,
-        initialPublicKey: getCreateEndpointInitialPublicKey({
+        initialPublicKey: await getCreateEndpointInitialPublicKey({
           publicKeyId,
           publicKeyInput,
           shouldConfigurePublicKey,
@@ -3002,7 +3023,10 @@ function CreateEndpointDrawer({
                       jwkInputId="create-endpoint-jwk"
                       keyId={publicKeyId}
                       keyIdId="create-endpoint-key-id"
-                      onJwkInputChange={setPublicKeyInput}
+                      onJwkInputChange={(value) => {
+                        setPublicKeyInput(value);
+                        setErrorMessage("");
+                      }}
                       onKeyIdChange={setPublicKeyId}
                     />
                   ) : null}
@@ -3064,7 +3088,7 @@ function CreateKeyDialog({
     try {
       await onSubmit({
         endpointId,
-        jwk: parseJwkInput(jwkInput),
+        jwk: await parsePublicKeyInput(jwkInput),
         keyId: keyId.trim(),
       });
       setIsOpen(false);
